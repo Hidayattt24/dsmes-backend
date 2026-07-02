@@ -13,7 +13,7 @@ package main
 
 import (
 	"github.com/gofiber/fiber/v3"
-	fiberSwagger "github.com/gofiber/swagger"
+	"github.com/gofiber/contrib/v3/swaggerui"
 
 	"github.com/dsmes/dsmes-backend/internal/container"
 	"github.com/dsmes/dsmes-backend/internal/middleware"
@@ -35,7 +35,12 @@ import (
 func registerRoutes(app *fiber.App, c *container.Container) {
 	// ── Swagger UI (development / staging only) ───────────────────────────────
 	if c.Config.Swagger.Enabled {
-		app.Get("/swagger/*", fiberSwagger.HandlerDefault)
+		app.Use(swaggerui.New(swaggerui.Config{
+			BasePath: "/",
+			FilePath: "./docs/swagger.json",
+			Path:     "swagger",
+			Title:    "DSMES Backend API Documentation",
+		}))
 		c.Logger.Sugar().Infof("Swagger UI → http://%s/swagger/", c.Config.Swagger.Host)
 	}
 
