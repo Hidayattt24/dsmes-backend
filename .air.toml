@@ -1,0 +1,57 @@
+# .air.toml — Air hot-reload configuration.
+#
+# Air watches for file changes and automatically recompiles + restarts the
+# server during development. This eliminates the manual `go run` → `Ctrl+C`
+# → `go run` cycle.
+#
+# Install Air: go install github.com/air-verse/air@latest
+# Run:         air  (from project root)
+# Or:          make dev
+
+[build]
+  # Binary output location (inside tmp/ which is gitignored).
+  bin = "./tmp/main"
+
+  # Build command — compile the cmd/api entrypoint.
+  cmd = "go build -o ./tmp/main ./cmd/api"
+
+  # Delay in milliseconds after a file change before rebuilding.
+  # A small delay batches rapid consecutive saves (e.g. IDE auto-format).
+  delay = 1000
+
+  # Files and directories to exclude from the watcher.
+  exclude_dir = [
+    "assets", "tmp", "vendor",
+    "testdata", "docs",
+    ".git", ".agents",
+  ]
+
+  # File extensions that trigger a rebuild.
+  include_ext = ["go", "tpl", "tmpl", "html", "env"]
+
+  # Files matching these patterns are excluded even inside watched dirs.
+  exclude_file = []
+
+  # If true, Air logs the build command output.
+  log = "build-errors.log"
+
+  # Kill the process on rebuild before starting the new binary.
+  kill_delay = "0s"
+
+  # Arguments passed to the running binary.
+  args_bin = []
+
+[color]
+  # Coloured output in terminal.
+  build  = "yellow"
+  runner = "green"
+  main   = "magenta"
+  watcher = "cyan"
+
+[log]
+  # Show timestamp in Air's own log output.
+  time = true
+
+[misc]
+  # Clean the tmp directory when Air exits.
+  clean_on_exit = true

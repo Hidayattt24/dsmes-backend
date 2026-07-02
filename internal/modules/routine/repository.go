@@ -1,0 +1,74 @@
+package routine
+
+import (
+	"context"
+	"errors"
+
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+
+	"github.com/dsmes/dsmes-backend/internal/domain"
+	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
+)
+
+type routineRepository struct {
+	db  *gorm.DB
+	log *zap.Logger
+}
+
+func NewRoutineRepository(db *gorm.DB, log *zap.Logger) RoutineRepository {
+	return &routineRepository{db: db, log: log}
+}
+
+func (r *routineRepository) FindAllByPatientID(ctx context.Context, patientID string) ([]domain.Routine, error) {
+	var items []domain.Routine
+	err := r.db.WithContext(ctx).
+		Preload("RoutineTimes").
+		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Find(&items).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch routines", err)
+	}
+	return items, nil
+}
+
+func (r *routineRepository) FindTimeByID(ctx context.Context, id string) (*domain.RoutineTime, error) {
+	var t domain.RoutineTime
+	err := r.db.WithContext(ctx).
+		Where("id = ? AND deleted_at IS NULL", id).
+		First(&t).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("routine time not found")
+		}
+		return nil, errs.NewInternal("failed to fetch routine time", err)
+	}
+	return &t, nil
+}
+
+func (r *routineRepository) UpdateTime(ctx context.Context, t *domain.RoutineTime) error {
+	result := r.db.WithContext(ctx).Save(t)
+	if result.Error != nil {
+		return errs.NewInternal("failed to update routine time", result.Error)
+	}
+	return nil
+}
+
+func (r *routineRepository) CreateLog(ctx context.Context, log *domain.RoutineLogEntry) error {
+	if err := r.db.WithContext(ctx).Create(log).Error; err != nil {
+		return errs.NewInternal("failed to create routine log entry", err)
+	}
+	return nil
+}
+
+func (r *routineRepository) FindLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.RoutineLogEntry, error) {
+	var logs []domain.RoutineLogEntry
+	err := r.db.WithContext(ctx).
+		Preload("RoutineTime").
+		Where("patient_id = ? AND DATE(logged_at) = ? AND deleted_at IS NULL", patientID, dateStr).
+		Find(&logs).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch routine logs", err)
+	}
+	return logs, nil
+}

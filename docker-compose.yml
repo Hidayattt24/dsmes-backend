@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DSMES Backend — Docker Compose
+#
+# Services:
+#   postgres  — PostgreSQL 16 database
+#   app       — Go backend (optional; use `make dev` for local development)
+#
+# Usage:
+#   make docker-up        Start only PostgreSQL (for local dev with Air)
+#   docker compose up     Start both PostgreSQL and the app container
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: dsmes_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-dsmes_db}
+      POSTGRES_USER:     ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      # Asia/Makassar = WIT (Waktu Indonesia Timur) = UTC+9
+      TZ: Asia/Makassar
+      PGTZ: Asia/Makassar
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      # Named volume for data persistence across container restarts.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-dsmes_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dsmes_net
+
+  # ── Application (optional — prefer `make dev` for local development) ────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dsmes_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override DB_HOST to use the Docker service name instead of localhost.
+      DB_HOST: postgres
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dsmes_net
+    profiles:
+      # Only started when explicitly requested: docker compose --profile app up
+      # This keeps `make docker-up` from building the app container during dev.
+      - app
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  dsmes_net:
+    driver: bridge
