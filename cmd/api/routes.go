@@ -40,6 +40,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 			FilePath: "./docs/swagger.json",
 			Path:     "swagger",
 			Title:    "DSMES Backend API Documentation",
+			CacheAge: -1, // Disable caching so spec changes are reflected immediately
 		}))
 		c.Logger.Sugar().Infof("Swagger UI → http://%s/swagger/", c.Config.Swagger.Host)
 	}

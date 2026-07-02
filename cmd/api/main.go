@@ -1,21 +1,24 @@
 // cmd/api/main.go — Application entrypoint.
 //
-// Responsibilities (in order):
-//  1. Build the dependency container (config → logger → db → app → jwt).
-//  2. Register routes on the Fiber application.
-//  3. Start the HTTP server and block until graceful shutdown.
+// @title           DSMES Backend API
+// @version         1.0.0
+// @description     Diabetes Self-Management Education and Support — Backend API
+// @termsOfService  http://swagger.io/terms/
 //
-// This file contains ZERO business logic. All wiring is delegated to the
-// container package. Adding a new module means calling its router from
-// registerRoutes() — nothing here changes.
+// @contact.name    DSMES Team
+// @contact.email   support@dsmes.id
 //
-// Dependency injection strategy:
+// @license.name    MIT
+// @license.url     https://opensource.org/licenses/MIT
 //
-//	container.Build() → *Container (all deps in one struct)
-//	↓
-//	registerRoutes(c.App, c)   ← passes container to route layer
-//	↓
-//	ModuleRouter(v1, c.DB, c.JWT, c.Logger)  ← handler/service/repo receive only what they need
+// @host            localhost:8080
+// @BasePath        /api/v1
+// @schemes         http https
+//
+// @securityDefinitions.apikey BearerAuth
+// @in                         header
+// @name                       Authorization
+// @description                Type "Bearer" followed by a space and the JWT token.
 package main
 
 import (
