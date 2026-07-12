@@ -160,3 +160,30 @@ func (s *nutritionService) UpdateFood(ctx context.Context, id string, req Create
 	res := ToFoodResponse(food)
 	return &res, nil
 }
+
+func (s *nutritionService) GetPatientMealLogs(ctx context.Context, patientID string, dateStr string) ([]MealLogResponse, error) {
+	if dateStr == "" {
+		dateStr = time.Now().Format("2006-01-02")
+	}
+
+	meals, err := s.repo.FindMealsByPatientAndDate(ctx, patientID, dateStr)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := make([]MealLogResponse, len(meals))
+	for i, m := range meals {
+		var fResp FoodResponse
+		if m.Food != nil {
+			fResp = ToFoodResponse(m.Food)
+		}
+		resp[i] = MealLogResponse{
+			ID:                m.ID,
+			Food:              fResp,
+			MealType:          m.MealType,
+			PortionMultiplier: m.PortionMultiplier,
+			LoggedAt:          m.LoggedAt.Format(time.RFC3339),
+		}
+	}
+	return resp, nil
+}

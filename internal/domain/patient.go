@@ -41,6 +41,14 @@ type Patient struct {
 	Status              AccountStatus `gorm:"type:account_status_enum;not null;default:aktif" json:"status"`
 	AssignedPuskesmasID *string       `gorm:"type:uuid" json:"assigned_puskesmas_id"`
 	LastActiveAt        *time.Time    `json:"last_active_at"`
+	BPJS                string        `gorm:"type:varchar(50)" json:"bpjs"`
+	NIK                 string        `gorm:"type:varchar(50)" json:"nik"`
+	EmergencyName       string        `gorm:"type:varchar(150)" json:"emergency_name"`
+	EmergencyRelation   string        `gorm:"type:varchar(100)" json:"emergency_relation"`
+	EmergencyPhone      string        `gorm:"type:varchar(20)" json:"emergency_phone"`
+	DiabetesType        string        `gorm:"type:varchar(50)" json:"diabetes_type"`
+	Compliance          int           `gorm:"type:int;default:0" json:"compliance"`
+	InterventionType    string        `gorm:"type:varchar(50)" json:"intervention_type"`
 
 	// Relations
 	AssignedPuskesmas *StaffAccount `gorm:"foreignKey:AssignedPuskesmasID" json:"assigned_puskesmas,omitempty"`

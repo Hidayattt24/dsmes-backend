@@ -297,3 +297,21 @@ func (h *EducationHandler) Publish(c fiber.Ctx) error {
 	}
 	return response.Success(c, "article published successfully", nil)
 }
+
+// Delete handles DELETE /api/v1/admin/education/articles/:id
+func (h *EducationHandler) Delete(c fiber.Ctx) error {
+	id := c.Params("id")
+	if err := h.svc.DeleteArticle(c.Context(), id); err != nil {
+		return err
+	}
+	return response.NoContent(c)
+}
+
+// GetStats handles GET /api/v1/admin/education/stats
+func (h *EducationHandler) GetStats(c fiber.Ctx) error {
+	res, err := h.svc.GetStats(c.Context())
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "education statistics retrieved", res)
+}

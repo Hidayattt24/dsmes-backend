@@ -25,6 +25,7 @@ type NutritionService interface {
 	GetRecentFoods(ctx context.Context, patientID string) ([]FoodResponse, error)
 	LogMeal(ctx context.Context, patientID string, req LogMealRequest) (*MealLogResponse, error)
 	GetDailyNutritionSummary(ctx context.Context, patientID string, dateStr string) (*DailyNutritionSummaryResponse, error)
+	GetPatientMealLogs(ctx context.Context, patientID string, dateStr string) ([]MealLogResponse, error)
 	CreateFood(ctx context.Context, req CreateFoodRequest) (*FoodResponse, error)
 	UpdateFood(ctx context.Context, id string, req CreateFoodRequest) (*FoodResponse, error)
 }

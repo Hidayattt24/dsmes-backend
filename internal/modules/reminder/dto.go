@@ -50,3 +50,13 @@ func ToReminderResponse(r *domain.Reminder) ReminderResponse {
 		ActiveDays:         days,
 	}
 }
+
+type MedicationLogResponse struct {
+	ID            string                  `json:"id"`
+	ReminderID    string                  `json:"reminder_id"`
+	ActivityName  string                  `json:"activity_name"`
+	Category      domain.ReminderCategory `json:"category"`
+	ScheduledTime string                  `json:"scheduled_time"`
+	Status        domain.ReminderLogStatus `json:"status"`
+	LoggedDate    string                  `json:"logged_date"`
+}

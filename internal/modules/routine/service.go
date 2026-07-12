@@ -111,3 +111,54 @@ func (s *routineService) GetOnboardingStatus(ctx context.Context, patientID stri
 		ReminderActive: reminderActive,
 	}, nil
 }
+
+func (s *routineService) GetPatientActivityLogs(ctx context.Context, patientID string, dateStr string) ([]ActivityLogResponse, error) {
+	if dateStr == "" {
+		dateStr = time.Now().Format("2006-01-02")
+	}
+
+	routines, err := s.repo.FindAllByPatientID(ctx, patientID)
+	if err != nil {
+		return nil, err
+	}
+
+	logs, err := s.repo.FindLogsByPatientAndDate(ctx, patientID, dateStr)
+	if err != nil {
+		return nil, err
+	}
+
+	logMap := make(map[string]domain.RoutineLogEntry)
+	for _, log := range logs {
+		logMap[log.RoutineTimeID] = log
+	}
+
+	var resp []ActivityLogResponse
+	for _, r := range routines {
+		for _, t := range r.RoutineTimes {
+			if t.Status != domain.WaktuSet {
+				continue
+			}
+
+			status := domain.LogPending
+			loggedAtStr := ""
+			logID := ""
+
+			if log, exists := logMap[t.ID]; exists {
+				status = log.Status
+				loggedAtStr = log.LoggedAt.Format(time.RFC3339)
+				logID = log.ID
+			}
+
+			resp = append(resp, ActivityLogResponse{
+				ID:              logID,
+				RoutineType:     r.RoutineType,
+				DescriptiveName: r.DescriptiveName,
+				ScheduledTime:   t.ScheduledTime,
+				Status:          status,
+				LoggedAt:        loggedAtStr,
+			})
+		}
+	}
+
+	return resp, nil
+}

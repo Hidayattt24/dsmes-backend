@@ -184,3 +184,14 @@ func (h *ReminderHandler) MarkRead(c fiber.Ctx) error {
 	}
 	return response.Success(c, "all notifications marked as read", nil)
 }
+
+// GetPatientMedicationLogs handles GET /api/v1/admin/patients/:id/medications or /api/v1/puskesmas/patients/:id/medications
+func (h *ReminderHandler) GetPatientMedicationLogs(c fiber.Ctx) error {
+	patientID := c.Params("id")
+	dateStr := c.Query("date")
+	res, err := h.svc.GetPatientMedicationLogs(c.Context(), patientID, dateStr)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient medication logs retrieved", res)
+}

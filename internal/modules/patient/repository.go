@@ -35,6 +35,26 @@ func (r *patientRepository) FindAll(ctx context.Context, filter PatientFilterQue
 		q = q.Where("full_name ILIKE ? OR email ILIKE ?", searchPattern, searchPattern)
 	}
 
+	if filter.Gender != "" && filter.Gender != "Semua" {
+		genderVal := domain.Gender(filter.Gender)
+		if filter.Gender == "Laki-laki" || filter.Gender == "laki_laki" {
+			genderVal = domain.GenderLakiLaki
+		} else if filter.Gender == "Perempuan" || filter.Gender == "perempuan" {
+			genderVal = domain.GenderPerempuan
+		}
+		q = q.Where("gender = ?", genderVal)
+	}
+
+	if filter.Status != "" && filter.Status != "Semua" {
+		statusVal := domain.AccountStatus(filter.Status)
+		if filter.Status == "Aktif" || filter.Status == "aktif" {
+			statusVal = domain.StatusAktif
+		} else if filter.Status == "Nonaktif" || filter.Status == "nonaktif" {
+			statusVal = domain.StatusNonaktif
+		}
+		q = q.Where("status = ?", statusVal)
+	}
+
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, errs.NewInternal("failed to count patients", err)
 	}
@@ -130,4 +150,38 @@ func (r *patientRepository) CreateWithOnboarding(ctx context.Context, p *domain.
 
 		return nil
 	})
+}
+
+func (r *patientRepository) GetStats(ctx context.Context, puskesmasID string) (*PatientStats, error) {
+	var total int64
+	var active int64
+	var avgAge float64
+
+	baseQuery := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("deleted_at IS NULL")
+	if puskesmasID != "" {
+		baseQuery = baseQuery.Where("assigned_puskesmas_id = ?", puskesmasID)
+	}
+
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, errs.NewInternal("failed to count total patients for stats", err)
+	}
+
+	if err := baseQuery.Where("status = ?", domain.StatusAktif).Count(&active).Error; err != nil {
+		return nil, errs.NewInternal("failed to count active patients for stats", err)
+	}
+
+	var ageResult struct {
+		AvgAge float64
+	}
+	err := baseQuery.Select("COALESCE(AVG(EXTRACT(YEAR FROM AGE(NOW(), date_of_birth))), 0) as avg_age").Scan(&ageResult).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to calculate average age", err)
+	}
+	avgAge = ageResult.AvgAge
+
+	return &PatientStats{
+		TotalPatients:  total,
+		ActivePatients: active,
+		AverageAge:     int(avgAge),
+	}, nil
 }

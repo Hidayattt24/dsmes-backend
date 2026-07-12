@@ -20,12 +20,19 @@ type RegisterPatientRequest struct {
 }
 
 type UpdatePatientProfileRequest struct {
-	FullName        string  `json:"full_name"       validate:"required,min=3,max=150"`
-	Nickname        string  `json:"nickname"`
-	WhatsappNumber  string  `json:"whatsapp_number" validate:"required,numeric,min=10,max=20"`
-	HeightCm        float64 `json:"height_cm"       validate:"required,gt=0"`
-	WeightKg        float64 `json:"weight_kg"       validate:"required,gt=0"`
-	ProfilePhotoURL string  `json:"profile_photo_url"`
+	FullName          string  `json:"full_name"       validate:"required,min=3,max=150"`
+	Nickname          string  `json:"nickname"`
+	WhatsappNumber    string  `json:"whatsapp_number" validate:"required,numeric,min=10,max=20"`
+	HeightCm          float64 `json:"height_cm"       validate:"required,gt=0"`
+	WeightKg          float64 `json:"weight_kg"       validate:"required,gt=0"`
+	ProfilePhotoURL   string  `json:"profile_photo_url"`
+	BPJS              string  `json:"bpjs"`
+	NIK               string  `json:"nik"`
+	EmergencyName     string  `json:"emergency_name"`
+	EmergencyRelation string  `json:"emergency_relation"`
+	EmergencyPhone    string  `json:"emergency_phone"`
+	DiabetesType      string  `json:"diabetes_type"`
+	InterventionType  string  `json:"intervention_type"`
 }
 
 type AssignPuskesmasRequest struct {
@@ -48,6 +55,14 @@ type PatientResponse struct {
 	ProfilePhotoURL    string               `json:"profile_photo_url"`
 	Status             domain.AccountStatus `json:"status"`
 	CreatedAt          string               `json:"created_at"`
+	BPJS               string               `json:"bpjs"`
+	NIK                string               `json:"nik"`
+	EmergencyName      string               `json:"emergency_name"`
+	EmergencyRelation  string               `json:"emergency_relation"`
+	EmergencyPhone     string               `json:"emergency_phone"`
+	DiabetesType       string               `json:"diabetes_type"`
+	Compliance         int                  `json:"compliance"`
+	InterventionType   string               `json:"intervention_type"`
 }
 
 type PatientDetailResponse struct {
@@ -78,6 +93,14 @@ func ToPatientResponse(p *domain.Patient) PatientResponse {
 		ProfilePhotoURL:    p.ProfilePhotoURL,
 		Status:             p.Status,
 		CreatedAt:          p.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		BPJS:               p.BPJS,
+		NIK:                p.NIK,
+		EmergencyName:      p.EmergencyName,
+		EmergencyRelation:  p.EmergencyRelation,
+		EmergencyPhone:     p.EmergencyPhone,
+		DiabetesType:       p.DiabetesType,
+		Compliance:         p.Compliance,
+		InterventionType:   p.InterventionType,
 	}
 }
 
@@ -98,8 +121,16 @@ func ToPatientDetailResponse(p *domain.Patient) PatientDetailResponse {
 type PatientFilterQuery struct {
 	PuskesmasID string
 	Search      string
+	Gender      string
+	Status      string
 	Page        int
 	Limit       int
+}
+
+type PatientStats struct {
+	TotalPatients  int64 `json:"total_patients"`
+	ActivePatients int64 `json:"active_patients"`
+	AverageAge     int   `json:"average_age"`
 }
 
 // ParseDOB parses date of birth string "YYYY-MM-DD"

@@ -41,6 +41,7 @@ func main() {
 	migrationFiles := []string{
 		"000001_create_auth_and_staff_tables.up.sql",
 		"000002_create_remaining_tables.up.sql",
+		"000003_add_patient_gaps_and_quiz_tables.up.sql",
 	}
 
 	for _, fileName := range migrationFiles {

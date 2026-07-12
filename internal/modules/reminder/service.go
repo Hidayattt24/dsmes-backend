@@ -149,3 +149,53 @@ func (s *reminderService) GetNotifications(ctx context.Context, patientID string
 func (s *reminderService) MarkAllRead(ctx context.Context, patientID string) error {
 	return s.repo.MarkNotificationsAsRead(ctx, patientID)
 }
+
+func (s *reminderService) GetPatientMedicationLogs(ctx context.Context, patientID string, dateStr string) ([]MedicationLogResponse, error) {
+	if dateStr == "" {
+		dateStr = time.Now().Format("2006-01-02")
+	}
+
+	reminders, err := s.repo.FindAllByPatientID(ctx, patientID)
+	if err != nil {
+		return nil, err
+	}
+
+	logs, err := s.repo.FindLogsByPatientAndDate(ctx, patientID, dateStr)
+	if err != nil {
+		return nil, err
+	}
+
+	logMap := make(map[string]domain.DailyReminderLog)
+	for _, log := range logs {
+		logMap[log.ReminderID] = log
+	}
+
+	var resp []MedicationLogResponse
+	for _, r := range reminders {
+		if r.Category != domain.CategoryMedisObat {
+			continue
+		}
+
+		status := domain.ReminderPending
+		loggedDate := ""
+		logID := ""
+
+		if log, exists := logMap[r.ID]; exists {
+			status = log.Status
+			loggedDate = log.LogDate.Format("2006-01-02")
+			logID = log.ID
+		}
+
+		resp = append(resp, MedicationLogResponse{
+			ID:            logID,
+			ReminderID:    r.ID,
+			ActivityName:  r.ActivityName,
+			Category:      r.Category,
+			ScheduledTime: r.ScheduledTime,
+			Status:        status,
+			LoggedDate:    loggedDate,
+		})
+	}
+
+	return resp, nil
+}

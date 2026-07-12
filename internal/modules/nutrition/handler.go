@@ -167,3 +167,14 @@ func (h *NutritionHandler) UpdateFood(c fiber.Ctx) error {
 	}
 	return response.Success(c, "food item updated", res)
 }
+
+// GetPatientMealLogs handles GET /api/v1/admin/patients/:id/meals or /api/v1/puskesmas/patients/:id/meals
+func (h *NutritionHandler) GetPatientMealLogs(c fiber.Ctx) error {
+	patientID := c.Params("id")
+	dateStr := c.Query("date")
+	res, err := h.svc.GetPatientMealLogs(c.Context(), patientID, dateStr)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient meal logs retrieved", res)
+}

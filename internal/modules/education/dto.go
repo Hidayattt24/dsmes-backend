@@ -23,6 +23,8 @@ type CreateArticleRequest struct {
 	AuthorName           string           `json:"author_name"`
 	BannerImageURL       string           `json:"banner_image_url"`
 	Summary              string           `json:"summary"                validate:"required"`
+	Content              string           `json:"content"`
+	YoutubeLink          string           `json:"youtube_link"`
 	Sections             []SectionRequest `json:"sections"`
 }
 
@@ -53,6 +55,8 @@ type ArticleListResponse struct {
 	Summary              string               `json:"summary"`
 	Status               domain.ArticleStatus `json:"status"`
 	CreatedAt            string               `json:"created_at"`
+	Content              string               `json:"content"`
+	YoutubeLink          string               `json:"youtube_link"`
 }
 
 type ArticleDetailResponse struct {
@@ -63,6 +67,13 @@ type ArticleDetailResponse struct {
 type CategoryResponse struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+type EducationStats struct {
+	TotalEducation    int64 `json:"total_education"`
+	TotalCategories   int64 `json:"total_categories"`
+	PublishedArticles int64 `json:"published_articles"`
+	TotalReads        int64 `json:"total_reads"`
 }
 
 func ToCategoryResponse(c *domain.ArticleCategory) CategoryResponse {
@@ -88,6 +99,8 @@ func ToArticleListResponse(a *domain.Article) ArticleListResponse {
 		Summary:              a.Summary,
 		Status:               a.Status,
 		CreatedAt:            a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Content:              a.Content,
+		YoutubeLink:          a.YoutubeLink,
 	}
 }
 

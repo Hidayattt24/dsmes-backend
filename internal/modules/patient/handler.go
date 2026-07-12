@@ -71,9 +71,13 @@ func (h *PatientHandler) List(c fiber.Ctx) error {
 		}
 	}
 	search := c.Query("search")
+	gender := c.Query("gender")
+	status := c.Query("status")
 
 	items, total, err := h.svc.ListPatients(c.Context(), PatientFilterQuery{
 		Search: search,
+		Gender: gender,
+		Status: status,
 		Page:   page,
 		Limit:  limit,
 	})
@@ -123,10 +127,14 @@ func (h *PatientHandler) ListPuskesmas(c fiber.Ctx) error {
 		}
 	}
 	search := c.Query("search")
+	gender := c.Query("gender")
+	status := c.Query("status")
 
 	items, total, err := h.svc.ListPatients(c.Context(), PatientFilterQuery{
 		PuskesmasID: claims.UserID,
 		Search:      search,
+		Gender:      gender,
+		Status:      status,
 		Page:        page,
 		Limit:       limit,
 	})
@@ -274,4 +282,26 @@ func (h *PatientHandler) Delete(c fiber.Ctx) error {
 		return err
 	}
 	return response.NoContent(c)
+}
+
+// GetStats handles GET /api/v1/admin/patients/stats
+func (h *PatientHandler) GetStats(c fiber.Ctx) error {
+	res, err := h.svc.GetStats(c.Context(), "")
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient statistics retrieved", res)
+}
+
+// GetStatsPuskesmas handles GET /api/v1/puskesmas/patients/stats
+func (h *PatientHandler) GetStatsPuskesmas(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+	res, err := h.svc.GetStats(c.Context(), claims.UserID)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient statistics retrieved", res)
 }

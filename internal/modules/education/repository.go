@@ -197,3 +197,44 @@ func (r *educationRepository) ReplaceSections(ctx context.Context, articleID str
 		return nil
 	})
 }
+
+func (r *educationRepository) DeleteArticle(ctx context.Context, id string) error {
+	result := r.db.WithContext(ctx).Model(&domain.Article{}).Where("id = ?", id).Update("deleted_at", gorm.Expr("NOW()"))
+	if result.Error != nil {
+		return errs.NewInternal("failed to soft delete article", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return errs.NewNotFound("article not found")
+	}
+	return nil
+}
+
+func (r *educationRepository) GetStats(ctx context.Context) (*EducationStats, error) {
+	var totalArticles int64
+	var totalCategories int64
+	var publishedArticles int64
+	var totalReads int64
+
+	if err := r.db.WithContext(ctx).Model(&domain.Article{}).Where("deleted_at IS NULL").Count(&totalArticles).Error; err != nil {
+		return nil, errs.NewInternal("failed to count articles", err)
+	}
+
+	if err := r.db.WithContext(ctx).Model(&domain.ArticleCategory{}).Where("deleted_at IS NULL").Count(&totalCategories).Error; err != nil {
+		return nil, errs.NewInternal("failed to count categories", err)
+	}
+
+	if err := r.db.WithContext(ctx).Model(&domain.Article{}).Where("status = ? AND deleted_at IS NULL", domain.StatusPublikasi).Count(&publishedArticles).Error; err != nil {
+		return nil, errs.NewInternal("failed to count published articles", err)
+	}
+
+	if err := r.db.WithContext(ctx).Model(&domain.ArticleView{}).Where("deleted_at IS NULL").Count(&totalReads).Error; err != nil {
+		return nil, errs.NewInternal("failed to count article views", err)
+	}
+
+	return &EducationStats{
+		TotalEducation:    totalArticles,
+		TotalCategories:   totalCategories,
+		PublishedArticles: publishedArticles,
+		TotalReads:        totalReads,
+	}, nil
+}

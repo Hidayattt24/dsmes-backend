@@ -122,3 +122,14 @@ func (h *RoutineHandler) Status(c fiber.Ctx) error {
 	}
 	return response.Success(c, "onboarding status checked", res)
 }
+
+// GetPatientActivityLogs handles GET /api/v1/admin/patients/:id/activities or /api/v1/puskesmas/patients/:id/activities
+func (h *RoutineHandler) GetPatientActivityLogs(c fiber.Ctx) error {
+	patientID := c.Params("id")
+	dateStr := c.Query("date")
+	res, err := h.svc.GetPatientActivityLogs(c.Context(), patientID, dateStr)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient routine activity logs retrieved", res)
+}

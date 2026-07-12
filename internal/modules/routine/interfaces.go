@@ -19,4 +19,5 @@ type RoutineService interface {
 	ConfigureRoutineTime(ctx context.Context, patientID string, routineTimeID string, req UpdateRoutineTimeRequest) (*RoutineTimeResponse, error)
 	LogRoutine(ctx context.Context, patientID string, req LogRoutineRequest) (*RoutineLogResponse, error)
 	GetOnboardingStatus(ctx context.Context, patientID string) (*OnboardingStatusResponse, error)
+	GetPatientActivityLogs(ctx context.Context, patientID string, dateStr string) ([]ActivityLogResponse, error)
 }

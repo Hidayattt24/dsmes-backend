@@ -63,3 +63,12 @@ func ToRoutineResponse(r *domain.Routine) RoutineResponse {
 		RoutineTimes:    times,
 	}
 }
+
+type ActivityLogResponse struct {
+	ID              string                  `json:"id"`
+	RoutineType     domain.RoutineType      `json:"routine_type"`
+	DescriptiveName string                  `json:"descriptive_name"`
+	ScheduledTime   *string                 `json:"scheduled_time"`
+	Status          domain.RoutineLogStatus `json:"status"`
+	LoggedAt        string                  `json:"logged_at"`
+}

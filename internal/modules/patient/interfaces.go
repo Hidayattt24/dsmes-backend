@@ -13,6 +13,7 @@ type PatientRepository interface {
 	Create(ctx context.Context, p *domain.Patient) error
 	Update(ctx context.Context, p *domain.Patient) error
 	Delete(ctx context.Context, id string) error
+	GetStats(ctx context.Context, puskesmasID string) (*PatientStats, error)
 
 	// Transactional onboarding helpers
 	CreateWithOnboarding(ctx context.Context, p *domain.Patient, defaultRoutines []domain.Routine, defaultReminders []domain.Reminder) error
@@ -26,4 +27,5 @@ type PatientService interface {
 	AssignPuskesmas(ctx context.Context, id string, req AssignPuskesmasRequest) (*PatientDetailResponse, error)
 	ToggleStatus(ctx context.Context, id string) (*PatientResponse, error)
 	DeletePatient(ctx context.Context, id string) error
+	GetStats(ctx context.Context, puskesmasID string) (*PatientStats, error)
 }

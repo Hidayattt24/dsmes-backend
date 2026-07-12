@@ -85,6 +85,8 @@ func (s *educationService) CreateArticle(ctx context.Context, staffID string, re
 		Summary:              req.Summary,
 		Status:               domain.StatusDraft,
 		CreatedBy:            &staffID,
+		Content:              req.Content,
+		YoutubeLink:          req.YoutubeLink,
 	}
 
 	if err = s.repo.CreateArticle(ctx, article); err != nil {
@@ -142,6 +144,8 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Cre
 	article.AuthorName = req.AuthorName
 	article.BannerImageURL = req.BannerImageURL
 	article.Summary = req.Summary
+	article.Content = req.Content
+	article.YoutubeLink = req.YoutubeLink
 
 	if err = s.repo.UpdateArticle(ctx, article); err != nil {
 		return nil, err
@@ -220,4 +224,12 @@ func (s *educationService) ListSavedArticles(ctx context.Context, patientID stri
 		resp[i] = ToArticleListResponse(&items[i])
 	}
 	return resp, nil
+}
+
+func (s *educationService) DeleteArticle(ctx context.Context, id string) error {
+	return s.repo.DeleteArticle(ctx, id)
+}
+
+func (s *educationService) GetStats(ctx context.Context) (*EducationStats, error) {
+	return s.repo.GetStats(ctx)
 }

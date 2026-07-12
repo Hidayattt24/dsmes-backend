@@ -173,6 +173,13 @@ func (s *patientService) UpdateProfile(ctx context.Context, patientID string, re
 	if req.ProfilePhotoURL != "" {
 		patient.ProfilePhotoURL = req.ProfilePhotoURL
 	}
+	patient.BPJS = req.BPJS
+	patient.NIK = req.NIK
+	patient.EmergencyName = req.EmergencyName
+	patient.EmergencyRelation = req.EmergencyRelation
+	patient.EmergencyPhone = req.EmergencyPhone
+	patient.DiabetesType = req.DiabetesType
+	patient.InterventionType = req.InterventionType
 
 	if err = s.repo.Update(ctx, patient); err != nil {
 		return nil, err
@@ -226,6 +233,10 @@ func (s *patientService) ToggleStatus(ctx context.Context, id string) (*PatientR
 
 func (s *patientService) DeletePatient(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *patientService) GetStats(ctx context.Context, puskesmasID string) (*PatientStats, error) {
+	return s.repo.GetStats(ctx, puskesmasID)
 }
 
 // Helpers

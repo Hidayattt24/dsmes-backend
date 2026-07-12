@@ -15,6 +15,8 @@ type EducationRepository interface {
 	CreateArticle(ctx context.Context, a *domain.Article) error
 	UpdateArticle(ctx context.Context, a *domain.Article) error
 	PublishArticle(ctx context.Context, id string) error
+	DeleteArticle(ctx context.Context, id string) error
+	GetStats(ctx context.Context) (*EducationStats, error)
 
 	RecordView(ctx context.Context, view *domain.ArticleView) error
 	MarkCompleted(ctx context.Context, completion *domain.UserArticleCompletion) error
@@ -32,6 +34,8 @@ type EducationService interface {
 	CreateArticle(ctx context.Context, staffID string, req CreateArticleRequest) (*ArticleDetailResponse, error)
 	UpdateArticle(ctx context.Context, id string, req CreateArticleRequest) (*ArticleDetailResponse, error)
 	PublishArticle(ctx context.Context, id string) error
+	DeleteArticle(ctx context.Context, id string) error
+	GetStats(ctx context.Context) (*EducationStats, error)
 
 	CompleteArticle(ctx context.Context, patientID string, id string) error
 	ToggleSaveArticle(ctx context.Context, patientID string, id string) (bool, error)

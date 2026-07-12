@@ -38,6 +38,8 @@ type Article struct {
 	Summary               string        `gorm:"type:text" json:"summary"`
 	Status                ArticleStatus `gorm:"type:article_status_enum;not null;default:draft" json:"status"`
 	CreatedBy             *string       `gorm:"type:uuid" json:"created_by"`
+	Content               string        `gorm:"type:text" json:"content"`
+	YoutubeLink           string        `gorm:"type:varchar(255)" json:"youtube_link"`
 
 	// Relations
 	Category        *ArticleCategory `gorm:"foreignKey:CategoryID" json:"category,omitempty"`

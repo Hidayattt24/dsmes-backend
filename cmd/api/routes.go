@@ -20,9 +20,11 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/modules/auth"
 	"github.com/dsmes/dsmes-backend/internal/modules/blood_sugar"
 	"github.com/dsmes/dsmes-backend/internal/modules/checkin"
+	"github.com/dsmes/dsmes-backend/internal/modules/dashboard"
 	"github.com/dsmes/dsmes-backend/internal/modules/education"
 	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
 	"github.com/dsmes/dsmes-backend/internal/modules/patient"
+	"github.com/dsmes/dsmes-backend/internal/modules/quiz"
 	"github.com/dsmes/dsmes-backend/internal/modules/reminder"
 	"github.com/dsmes/dsmes-backend/internal/modules/routine"
 	"github.com/dsmes/dsmes-backend/internal/modules/settings"
@@ -107,6 +109,16 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	settingsSvc := settings.NewSettingsService(settingsRepo, c.Logger)
 	settingsHandler := settings.NewSettingsHandler(settingsSvc, c.Logger)
 
+	// 11. Quiz / Questionnaire
+	quizRepo := quiz.NewQuizRepository(c.DB, c.Logger)
+	quizSvc := quiz.NewQuizService(quizRepo, c.Logger)
+	quizHandler := quiz.NewQuizHandler(quizSvc, c.Logger)
+
+	// 12. Dashboard
+	dashboardRepo := dashboard.NewDashboardRepository(c.DB, c.Logger)
+	dashboardSvc := dashboard.NewDashboardService(dashboardRepo, c.Logger)
+	dashboardHandler := dashboard.NewDashboardHandler(dashboardSvc, c.Logger)
+
 	// ── API v1 ────────────────────────────────────────────────────────────────
 	v1 := app.Group("/api/v1")
 
@@ -120,6 +132,9 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		middleware.RequireRole("admin"),
 	)
 	{
+		// Dashboard Statistics
+		admin.Get("/dashboard/stats", dashboardHandler.GetAdmin)
+
 		// Staff Management
 		admin.Get("/staff", staffHandler.List)
 		admin.Post("/staff", staffHandler.Create)
@@ -132,6 +147,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Put("/me", staffHandler.UpdateMe)
 
 		// Patient Management
+		admin.Get("/patients/stats", patientHandler.GetStats)
 		admin.Get("/patients", patientHandler.List)
 		admin.Get("/patients/:id", patientHandler.GetByID)
 		admin.Patch("/patients/:id/status", patientHandler.ToggleStatus)
@@ -141,15 +157,32 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Blood Sugar Logs view
 		admin.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
 
+		// Patient Logs views
+		admin.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
+		admin.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
+		admin.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
+
 		// Global Foods Management
 		admin.Post("/foods", nutritionHandler.CreateFood)
 		admin.Put("/foods/:id", nutritionHandler.UpdateFood)
 
 		// Education content CRUD
+		admin.Get("/education/stats", eduHandler.GetStats)
 		admin.Get("/education/articles", eduHandler.ListAdmin)
 		admin.Post("/education/articles", eduHandler.Create)
 		admin.Put("/education/articles/:id", eduHandler.Update)
 		admin.Patch("/education/articles/:id/publish", eduHandler.Publish)
+		admin.Delete("/education/articles/:id", eduHandler.Delete)
+
+		// Quiz / Questionnaire Management
+		admin.Get("/quiz/stats", quizHandler.GetStats)
+		admin.Get("/quiz", quizHandler.List)
+		admin.Get("/quiz/:id", quizHandler.GetByID)
+		admin.Post("/quiz", quizHandler.Create)
+		admin.Put("/quiz/:id", quizHandler.Update)
+		admin.Delete("/quiz/:id", quizHandler.Delete)
+		admin.Get("/quiz/:id/participants", quizHandler.ListParticipants)
+		admin.Get("/quiz/:id/participant/:participant_id", quizHandler.GetParticipantDetail)
 
 		// Support Tickets Management
 		admin.Get("/support/tickets", settingsHandler.GetAllTickets)
@@ -166,16 +199,28 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		puskesmas.Put("/me", staffHandler.UpdateMe)
 
 		// Patient Monitoring
+		puskesmas.Get("/patients/stats", patientHandler.GetStatsPuskesmas)
 		puskesmas.Get("/patients", patientHandler.ListPuskesmas)
 		puskesmas.Get("/patients/:id", patientHandler.GetByID)
 		puskesmas.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
+		puskesmas.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
+		puskesmas.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
+		puskesmas.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
 
 		// Dashboard statistics
 		puskesmas.Get("/dashboard/blood-sugar", bsHandler.GetDashboard)
+		puskesmas.Get("/dashboard/stats", dashboardHandler.GetPuskesmas)
 
 		// Education articles list
 		puskesmas.Get("/education/articles", eduHandler.ListPublished)
 		puskesmas.Get("/education/articles/:id", eduHandler.GetByID)
+
+		// Quiz Monitoring
+		puskesmas.Get("/quiz/stats", quizHandler.GetStats)
+		puskesmas.Get("/quiz", quizHandler.List)
+		puskesmas.Get("/quiz/:id", quizHandler.GetByID)
+		puskesmas.Get("/quiz/:id/participants", quizHandler.ListParticipants)
+		puskesmas.Get("/quiz/:id/participant/:participant_id", quizHandler.GetParticipantDetail)
 	}
 
 	// ── Protected: Patient Group (JWT + RequireRole("patient")) ───────────────
