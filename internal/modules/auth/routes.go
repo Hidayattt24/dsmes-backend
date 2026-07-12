@@ -15,7 +15,7 @@ import (
 func RegisterRoutes(router fiber.Router, c *container.Container) {
 	// Wire: Repository ← Service ← Handler
 	repo := NewAuthRepository(c.DB, c.Logger)
-	svc := NewAuthService(repo, c.JWT, c.Logger)
+	svc := NewAuthService(repo, c.JWT, c.Email, c.Logger)
 	h := NewAuthHandler(svc, c.Logger)
 
 	// Public auth routes — no JWT middleware

@@ -7,16 +7,18 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
+	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 )
 
 type patientService struct {
-	repo PatientRepository
-	log  *zap.Logger
+	repo  PatientRepository
+	email email.EmailService
+	log   *zap.Logger
 }
 
-func NewPatientService(repo PatientRepository, log *zap.Logger) PatientService {
-	return &patientService{repo: repo, log: log}
+func NewPatientService(repo PatientRepository, email email.EmailService, log *zap.Logger) PatientService {
+	return &patientService{repo: repo, email: email, log: log}
 }
 
 func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatientRequest) (*PatientDetailResponse, error) {
@@ -124,6 +126,14 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	if err = s.repo.CreateWithOnboarding(ctx, patient, defaultRoutines, defaultReminders); err != nil {
 		return nil, err
 	}
+
+	// Send welcome email in the background
+	go func() {
+		bgCtx := context.Background()
+		if err := s.email.SendWelcomeEmail(bgCtx, patient.Email, patient.FullName); err != nil {
+			s.log.Error("patient: failed to send welcome email", zap.String("email", patient.Email), zap.Error(err))
+		}
+	}()
 
 	res := ToPatientDetailResponse(patient)
 	return &res, nil

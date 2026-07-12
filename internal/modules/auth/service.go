@@ -10,18 +10,20 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
+	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
 )
 
 type authService struct {
-	repo AuthRepository
-	jwt  *jwtpkg.Manager
-	log  *zap.Logger
+	repo  AuthRepository
+	jwt   *jwtpkg.Manager
+	email email.EmailService
+	log   *zap.Logger
 }
 
-func NewAuthService(repo AuthRepository, jwt *jwtpkg.Manager, log *zap.Logger) AuthService {
-	return &authService{repo: repo, jwt: jwt, log: log}
+func NewAuthService(repo AuthRepository, jwt *jwtpkg.Manager, email email.EmailService, log *zap.Logger) AuthService {
+	return &authService{repo: repo, jwt: jwt, email: email, log: log}
 }
 
 // ── StaffLogin ────────────────────────────────────────────────────────────────
@@ -135,22 +137,33 @@ func (s *authService) ForgotPassword(ctx context.Context, req ForgotPasswordRequ
 	}
 
 	otp := generateOTP()
+	// Store only hashed OTP in database
+	otpHash, err := bcrypt.GenerateFromPassword([]byte(otp), bcrypt.DefaultCost)
+	if err != nil {
+		return errs.NewInternal("failed to hash OTP", err)
+	}
+
 	token := &PasswordResetToken{
 		OwnerType: ownerType,
 		OwnerID:   ownerID,
 		Email:     req.Email,
-		OTPCode:   otp,
+		OTPCode:   string(otpHash),
 		IsUsed:    false,
-		ExpiresAt: time.Now().Add(15 * time.Minute),
+		ExpiresAt: time.Now().Add(5 * time.Minute), // Expire in 5 minutes
 	}
 
 	if err := s.repo.CreateResetToken(ctx, token); err != nil {
 		return err
 	}
 
-	s.log.Info("auth: OTP generated (dev only)",
+	// Send OTP email using Resend
+	if err := s.email.SendPasswordResetOTP(ctx, req.Email, otp); err != nil {
+		s.log.Error("auth: failed to send password reset OTP email", zap.String("email", req.Email), zap.Error(err))
+		return errs.NewInternal("failed to send OTP email", err)
+	}
+
+	s.log.Info("auth: OTP generated and sent successfully",
 		zap.String("email", req.Email),
-		zap.String("otp", otp),
 		zap.Time("expires_at", token.ExpiresAt),
 	)
 
@@ -161,10 +174,23 @@ func (s *authService) ForgotPassword(ctx context.Context, req ForgotPasswordRequ
 
 func (s *authService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) error {
 	ownerType := OwnerType(req.OwnerType)
-	_, err := s.repo.FindValidResetToken(ctx, req.Email, req.OTPCode, ownerType)
+	tokens, err := s.repo.FindActiveResetTokens(ctx, req.Email, ownerType)
 	if err != nil {
 		return errs.NewBadRequest("OTP is invalid or has expired")
 	}
+
+	var matched bool
+	for _, token := range tokens {
+		if err := bcrypt.CompareHashAndPassword([]byte(token.OTPCode), []byte(req.OTPCode)); err == nil {
+			matched = true
+			break
+		}
+	}
+
+	if !matched {
+		return errs.NewBadRequest("OTP is invalid or has expired")
+	}
+
 	return nil
 }
 
@@ -173,8 +199,20 @@ func (s *authService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) error
 func (s *authService) ResetPassword(ctx context.Context, req ResetPasswordRequest) error {
 	ownerType := OwnerType(req.OwnerType)
 
-	token, err := s.repo.FindValidResetToken(ctx, req.Email, req.OTPCode, ownerType)
+	tokens, err := s.repo.FindActiveResetTokens(ctx, req.Email, ownerType)
 	if err != nil {
+		return errs.NewBadRequest("OTP is invalid or has expired")
+	}
+
+	var matchedToken *PasswordResetToken
+	for _, t := range tokens {
+		if err := bcrypt.CompareHashAndPassword([]byte(t.OTPCode), []byte(req.OTPCode)); err == nil {
+			matchedToken = &t
+			break
+		}
+	}
+
+	if matchedToken == nil {
 		return errs.NewBadRequest("OTP is invalid or has expired")
 	}
 
@@ -184,16 +222,16 @@ func (s *authService) ResetPassword(ctx context.Context, req ResetPasswordReques
 	}
 
 	if ownerType == OwnerTypeStaff {
-		if err = s.repo.UpdateStaffPassword(ctx, token.OwnerID, string(hash)); err != nil {
+		if err = s.repo.UpdateStaffPassword(ctx, matchedToken.OwnerID, string(hash)); err != nil {
 			return err
 		}
 	} else {
-		if err = s.repo.UpdatePatientPassword(ctx, token.OwnerID, string(hash)); err != nil {
+		if err = s.repo.UpdatePatientPassword(ctx, matchedToken.OwnerID, string(hash)); err != nil {
 			return err
 		}
 	}
 
-	return s.repo.MarkTokenUsed(ctx, token.ID)
+	return s.repo.MarkTokenUsed(ctx, matchedToken.ID)
 }
 
 // ── RefreshToken ──────────────────────────────────────────────────────────────

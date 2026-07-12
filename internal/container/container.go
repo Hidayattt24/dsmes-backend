@@ -35,6 +35,7 @@ import (
 
 	"github.com/dsmes/dsmes-backend/internal/bootstrap"
 	"github.com/dsmes/dsmes-backend/internal/config"
+	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
 	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
 )
 
@@ -61,6 +62,9 @@ type Container struct {
 	// JWT is the token manager used by the auth service to issue and validate
 	// JWT access/refresh token pairs.
 	JWT *jwtpkg.Manager
+
+	// Email is the Resend-backed email service used to send OTP and welcome emails.
+	Email email.EmailService
 }
 
 // Build initialises all infrastructure dependencies in the correct order and
@@ -97,12 +101,16 @@ func Build() (*Container, error) {
 	// 5. JWT manager
 	jwtManager := jwtpkg.NewManager(cfg)
 
+	// 6. Email service
+	emailService := email.NewResendEmailService(cfg, logger)
+
 	return &Container{
 		Config: cfg,
 		Logger: logger,
 		DB:     db,
 		App:    app,
 		JWT:    jwtManager,
+		Email:  emailService,
 	}, nil
 }
 

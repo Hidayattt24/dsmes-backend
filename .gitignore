@@ -46,3 +46,6 @@ docker-compose.override.yml
 
 #skill
 .agents/
+
+# ── Local Seeds ───────────────────────────────────────────────────────────────
+cmd/seed/

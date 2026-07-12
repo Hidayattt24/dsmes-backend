@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Selamat Datang di DSMES Aceh</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f7fafc;
+      margin: 0;
+      padding: 0;
+      color: #2d3748;
+    }
+    .container {
+      max-width: 600px;
+      margin: 40px auto;
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+    }
+    .header {
+      background-color: #0f766e;
+      padding: 30px;
+      text-align: center;
+      color: #ffffff;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .content {
+      padding: 40px;
+      line-height: 1.6;
+    }
+    .welcome-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f766e;
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+    .message {
+      font-size: 16px;
+      margin-bottom: 24px;
+    }
+    .features-list {
+      background-color: #f8fafc;
+      border-radius: 6px;
+      padding: 20px;
+      margin: 24px 0;
+      border-left: 4px solid #0f766e;
+    }
+    .features-list ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .features-list li {
+      margin-bottom: 10px;
+    }
+    .footer {
+      background-color: #f7fafc;
+      padding: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: #a0aec0;
+      border-top: 1px solid #e2e8f0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>DSMES Aceh</h1>
+    </div>
+    <div class="content">
+      <h2 class="welcome-title">Selamat Datang, {{.Name}}!</h2>
+      <div class="message">
+        Terima kasih telah bergabung dengan platform Digital DSMES Aceh. Kami sangat senang bisa menjadi bagian dari perjalanan kesehatan Anda untuk mengelola diabetes secara lebih baik dan mandiri.
+      </div>
+      
+      <p>Melalui aplikasi Digital DSMES, Anda dapat mengakses berbagai fitur pendukung:</p>
+      <div class="features-list">
+        <ul>
+          <li><strong>Edukasi Interaktif</strong> - Belajar mandiri melalui materi terkurasi tentang pengelolaan Diabetes Melitus.</li>
+          <li><strong>Pemantauan Mandiri</strong> - Catat dan pantau rutin gula darah harian Anda.</li>
+          <li><strong>Rencana Nutrisi</strong> - Konsumsi kalori harian yang terpantau dengan kalkulator nutrisi.</li>
+          <li><strong>Bimbingan Tenaga Medis</strong> - Dapatkan pemantauan langsung dari puskesmas dan staf kami.</li>
+        </ul>
+      </div>
+      
+      <p>Aplikasi ini dapat diakses langsung melalui perangkat mobile Anda. Mulailah mencatat rutin harian Anda hari ini!</p>
+    </div>
+    <div class="footer">
+      &copy; 2026 DSMES Aceh. All rights reserved.<br>
+      Dinas Kesehatan Provinsi Aceh, Indonesia.
+    </div>
+  </div>
+</body>
+</html>

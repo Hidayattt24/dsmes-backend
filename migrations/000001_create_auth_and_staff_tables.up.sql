@@ -40,7 +40,7 @@ CREATE TABLE password_reset_tokens (
     owner_type  owner_type_enum NOT NULL,
     owner_id    UUID        NOT NULL,
     email       VARCHAR(150) NOT NULL,
-    otp_code    VARCHAR(10)  NOT NULL,
+    otp_code    VARCHAR(255) NOT NULL,
     is_used     BOOLEAN      NOT NULL DEFAULT false,
     expires_at  TIMESTAMPTZ  NOT NULL,
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()

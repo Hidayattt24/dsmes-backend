@@ -19,7 +19,7 @@ type AuthRepository interface {
 
 	// ── OTP / Reset ────────────────────────────────────────────────────────────
 	CreateResetToken(ctx context.Context, token *PasswordResetToken) error
-	FindValidResetToken(ctx context.Context, email, otpCode string, ownerType OwnerType) (*PasswordResetToken, error)
+	FindActiveResetTokens(ctx context.Context, email string, ownerType OwnerType) ([]PasswordResetToken, error)
 	MarkTokenUsed(ctx context.Context, id string) error
 
 	// ── Session / Refresh ──────────────────────────────────────────────────────

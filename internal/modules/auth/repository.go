@@ -118,19 +118,17 @@ func (r *authRepository) CreateResetToken(ctx context.Context, token *PasswordRe
 	return nil
 }
 
-func (r *authRepository) FindValidResetToken(ctx context.Context, email, otpCode string, ownerType OwnerType) (*PasswordResetToken, error) {
-	var t PasswordResetToken
+func (r *authRepository) FindActiveResetTokens(ctx context.Context, email string, ownerType OwnerType) ([]PasswordResetToken, error) {
+	var tokens []PasswordResetToken
 	err := r.db.WithContext(ctx).
-		Where("email = ? AND otp_code = ? AND owner_type = ? AND is_used = false AND expires_at > ?",
-			email, otpCode, ownerType, time.Now()).
-		First(&t).Error
+		Where("email = ? AND owner_type = ? AND is_used = false AND expires_at > ?",
+			email, ownerType, time.Now()).
+		Order("expires_at DESC").
+		Find(&tokens).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errs.NewNotFound("OTP not found or expired")
-		}
-		return nil, errs.NewInternal("failed to find reset token", err)
+		return nil, errs.NewInternal("failed to find active reset tokens", err)
 	}
-	return &t, nil
+	return tokens, nil
 }
 
 func (r *authRepository) MarkTokenUsed(ctx context.Context, id string) error {

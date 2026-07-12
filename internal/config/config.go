@@ -19,6 +19,7 @@ type Config struct {
 	JWT      JWTConfig
 	Log      LogConfig
 	Swagger  SwaggerConfig
+	Email    EmailConfig
 }
 
 // AppConfig holds HTTP server and general application settings.
@@ -73,6 +74,12 @@ type SwaggerConfig struct {
 	Host    string `mapstructure:"SWAGGER_HOST"`
 }
 
+// EmailConfig holds Resend API configuration settings.
+type EmailConfig struct {
+	ResendAPIKey    string `mapstructure:"RESEND_API_KEY"`
+	ResendFromEmail string `mapstructure:"RESEND_FROM_EMAIL"`
+}
+
 // Load reads configuration from the .env file and environment variables.
 // Environment variables always override .env values (12-factor app).
 func Load() (*Config, error) {
@@ -107,6 +114,9 @@ func Load() (*Config, error) {
 
 	v.SetDefault("SWAGGER_ENABLED", true)
 	v.SetDefault("SWAGGER_HOST", "localhost:8080")
+
+	v.SetDefault("RESEND_API_KEY", "")
+	v.SetDefault("RESEND_FROM_EMAIL", "onboarding@resend.dev")
 
 	// ── .env file ─────────────────────────────────────────────────────────────
 	v.SetConfigName(".env")
@@ -166,6 +176,10 @@ func Load() (*Config, error) {
 	cfg.Swagger = SwaggerConfig{
 		Enabled: v.GetBool("SWAGGER_ENABLED"),
 		Host:    v.GetString("SWAGGER_HOST"),
+	}
+	cfg.Email = EmailConfig{
+		ResendAPIKey:    v.GetString("RESEND_API_KEY"),
+		ResendFromEmail: v.GetString("RESEND_FROM_EMAIL"),
 	}
 
 	return cfg, nil

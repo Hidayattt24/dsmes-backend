@@ -2,6 +2,9 @@ package domain
 
 import (
 	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // StaffRole represents the role field on a staff account.
@@ -48,7 +51,8 @@ func (StaffAccount) TableName() string { return "staff_accounts" }
 
 // PasswordResetToken is a one-time OTP token for password reset.
 type PasswordResetToken struct {
-	BaseModel
+	ID        string    `gorm:"type:uuid;primaryKey" json:"id"`
+	CreatedAt time.Time `gorm:"autoCreateTime;not null" json:"created_at"`
 
 	OwnerType OwnerType `gorm:"type:owner_type_enum;not null" json:"owner_type"`
 	OwnerID   string    `gorm:"type:uuid;not null" json:"owner_id"`
@@ -60,9 +64,17 @@ type PasswordResetToken struct {
 
 func (PasswordResetToken) TableName() string { return "password_reset_tokens" }
 
+func (p *PasswordResetToken) BeforeCreate(_ *gorm.DB) error {
+	if p.ID == "" {
+		p.ID = uuid.NewString()
+	}
+	return nil
+}
+
 // AuthSession tracks active refresh tokens for logout/revocation support.
 type AuthSession struct {
-	BaseModel
+	ID        string    `gorm:"type:uuid;primaryKey" json:"id"`
+	CreatedAt time.Time `gorm:"autoCreateTime;not null" json:"created_at"`
 
 	OwnerType    OwnerType `gorm:"type:owner_type_enum;not null" json:"owner_type"`
 	OwnerID      string    `gorm:"type:uuid;not null" json:"owner_id"`
@@ -72,3 +84,10 @@ type AuthSession struct {
 }
 
 func (AuthSession) TableName() string { return "auth_sessions" }
+
+func (a *AuthSession) BeforeCreate(_ *gorm.DB) error {
+	if a.ID == "" {
+		a.ID = uuid.NewString()
+	}
+	return nil
+}

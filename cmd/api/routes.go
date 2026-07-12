@@ -66,7 +66,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 
 	// 2. Patient
 	patientRepo := patient.NewPatientRepository(c.DB, c.Logger)
-	patientSvc := patient.NewPatientService(patientRepo, c.Logger)
+	patientSvc := patient.NewPatientService(patientRepo, c.Email, c.Logger)
 	patientHandler := patient.NewPatientHandler(patientSvc, c.Logger)
 
 	// 3. Routine
