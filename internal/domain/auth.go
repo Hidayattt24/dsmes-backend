@@ -57,7 +57,7 @@ type PasswordResetToken struct {
 	OwnerType OwnerType `gorm:"type:owner_type_enum;not null" json:"owner_type"`
 	OwnerID   string    `gorm:"type:uuid;not null" json:"owner_id"`
 	Email     string    `gorm:"type:varchar(150);not null" json:"email"`
-	OTPCode   string    `gorm:"type:varchar(10);not null" json:"otp_code"`
+	OTPCode   string    `gorm:"type:varchar(255);not null" json:"otp_code"`
 	IsUsed    bool      `gorm:"not null;default:false" json:"is_used"`
 	ExpiresAt time.Time `gorm:"not null" json:"expires_at"`
 }
