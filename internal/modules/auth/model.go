@@ -13,8 +13,8 @@ type AuthSession = domain.AuthSession
 type StaffRole = domain.StaffRole
 
 const (
-	RoleAdmin     = domain.RoleAdmin
-	RolePuskesmas = domain.RolePuskesmas
+	RoleAdmin = domain.RoleAdmin
+	RoleStaff = domain.RoleStaff
 )
 
 type AccountStatus = domain.AccountStatus

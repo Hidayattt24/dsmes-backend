@@ -11,12 +11,12 @@
 //	admin := v1.Group("/admin")
 //	admin.Use(middleware.JWT(cfg), middleware.RequireRole("admin"))
 //
-//	puskesmas := v1.Group("/puskesmas")
-//	puskesmas.Use(middleware.JWT(cfg), middleware.RequireRole("puskesmas"))
+//	staff := v1.Group("/staff")
+//	staff.Use(middleware.JWT(cfg), middleware.RequireRole("staff"))
 //
-//	// Multi-role: accessible by admin AND puskesmas
+//	// Multi-role: accessible by admin AND staff
 //	shared := v1.Group("/shared")
-//	shared.Use(middleware.JWT(cfg), middleware.RequireRole("admin", "puskesmas"))
+//	shared.Use(middleware.JWT(cfg), middleware.RequireRoles("admin", "staff"))
 package middleware
 
 import (
@@ -54,6 +54,11 @@ func RequireRole(roles ...string) fiber.Handler {
 			"message": "access denied — insufficient permissions",
 		})
 	}
+}
+
+// RequireRoles is an alias for RequireRole to improve readability when specifying multiple roles.
+func RequireRoles(roles ...string) fiber.Handler {
+	return RequireRole(roles...)
 }
 
 // ClaimsFromContext extracts the typed JWT claims from the Fiber context.

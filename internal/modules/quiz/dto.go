@@ -69,7 +69,7 @@ type ParticipantResponse struct {
 	PatientID      string    `json:"patient_id"`
 	PatientName    string    `json:"patient_name"`
 	PatientAvatar  string    `json:"patient_avatar,omitempty"`
-	Puskesmas      string    `json:"puskesmas"`
+	AssignedStaff  string    `json:"assigned_staff"`
 	CompletionDate time.Time `json:"completion_date"`
 	Score          int       `json:"score"`
 	Passed         bool      `json:"passed"`

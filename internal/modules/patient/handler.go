@@ -98,8 +98,8 @@ func (h *PatientHandler) List(c fiber.Ctx) error {
 	})
 }
 
-// ListPuskesmas handles GET /api/v1/puskesmas/patients
-// @Summary      List assigned patients (Puskesmas)
+// ListStaff handles GET /api/v1/staff/patients
+// @Summary      List assigned patients (Staff)
 // @Tags         patient
 // @Security     BearerAuth
 // @Produce      json
@@ -107,8 +107,8 @@ func (h *PatientHandler) List(c fiber.Ctx) error {
 // @Param        page    query  int     false  "Page number"
 // @Param        limit   query  int     false  "Limit"
 // @Success      200     {object}  map[string]any
-// @Router       /puskesmas/patients [get]
-func (h *PatientHandler) ListPuskesmas(c fiber.Ctx) error {
+// @Router       /staff/patients [get]
+func (h *PatientHandler) ListStaff(c fiber.Ctx) error {
 	claims := middleware.ClaimsFromContext(c)
 	if claims == nil {
 		return fiber.ErrUnauthorized
@@ -131,12 +131,12 @@ func (h *PatientHandler) ListPuskesmas(c fiber.Ctx) error {
 	status := c.Query("status")
 
 	items, total, err := h.svc.ListPatients(c.Context(), PatientFilterQuery{
-		PuskesmasID: claims.UserID,
-		Search:      search,
-		Gender:      gender,
-		Status:      status,
-		Page:        page,
-		Limit:       limit,
+		StaffID: claims.UserID,
+		Search:  search,
+		Gender:  gender,
+		Status:  status,
+		Page:    page,
+		Limit:   limit,
 	})
 	if err != nil {
 		return err
@@ -155,7 +155,7 @@ func (h *PatientHandler) ListPuskesmas(c fiber.Ctx) error {
 	})
 }
 
-// GetByID handles GET /api/v1/admin/patients/:id or /api/v1/puskesmas/patients/:id
+// GetByID handles GET /api/v1/admin/patients/:id or /api/v1/staff/patients/:id
 // @Summary      Get patient details
 // @Tags         patient
 // @Security     BearerAuth
@@ -223,19 +223,19 @@ func (h *PatientHandler) UpdateMe(c fiber.Ctx) error {
 	return response.Success(c, "profile updated", res)
 }
 
-// AssignPuskesmas handles PATCH /api/v1/admin/patients/:id/assign
-// @Summary      Assign patient to puskesmas
+// AssignStaff handles PATCH /api/v1/admin/patients/:id/assign
+// @Summary      Assign patient to monitoring staff
 // @Tags         patient
 // @Security     BearerAuth
 // @Accept       json
 // @Produce      json
-// @Param        id    path  string                  true  "Patient ID"
-// @Param        body  body  AssignPuskesmasRequest  true  "Puskesmas ID"
+// @Param        id    path  string              true  "Patient ID"
+// @Param        body  body  AssignStaffRequest  true  "Staff ID"
 // @Success      200  {object}  map[string]any
 // @Router       /admin/patients/{id}/assign [patch]
-func (h *PatientHandler) AssignPuskesmas(c fiber.Ctx) error {
+func (h *PatientHandler) AssignStaff(c fiber.Ctx) error {
 	id := c.Params("id")
-	var req AssignPuskesmasRequest
+	var req AssignStaffRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return errs.NewBadRequest("invalid request body")
 	}
@@ -244,11 +244,11 @@ func (h *PatientHandler) AssignPuskesmas(c fiber.Ctx) error {
 		return response.ValidationError(c, fieldErrs)
 	}
 
-	res, err := h.svc.AssignPuskesmas(c.Context(), id, req)
+	res, err := h.svc.AssignStaff(c.Context(), id, req)
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "puskesmas assigned successfully", res)
+	return response.Success(c, "staff assigned successfully", res)
 }
 
 // ToggleStatus handles PATCH /api/v1/admin/patients/:id/status
@@ -293,8 +293,8 @@ func (h *PatientHandler) GetStats(c fiber.Ctx) error {
 	return response.Success(c, "patient statistics retrieved", res)
 }
 
-// GetStatsPuskesmas handles GET /api/v1/puskesmas/patients/stats
-func (h *PatientHandler) GetStatsPuskesmas(c fiber.Ctx) error {
+// GetStatsStaff handles GET /api/v1/staff/patients/stats
+func (h *PatientHandler) GetStatsStaff(c fiber.Ctx) error {
 	claims := middleware.ClaimsFromContext(c)
 	if claims == nil {
 		return fiber.ErrUnauthorized

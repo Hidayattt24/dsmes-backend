@@ -35,8 +35,8 @@ type UpdatePatientProfileRequest struct {
 	InterventionType  string  `json:"intervention_type"`
 }
 
-type AssignPuskesmasRequest struct {
-	PuskesmasID string `json:"puskesmas_id" validate:"required,uuid4"`
+type AssignStaffRequest struct {
+	StaffID string `json:"staff_id" validate:"required,uuid4"`
 }
 
 type PatientResponse struct {
@@ -67,10 +67,10 @@ type PatientResponse struct {
 
 type PatientDetailResponse struct {
 	PatientResponse
-	AssignedPuskesmas *PuskesmasInfo `json:"assigned_puskesmas,omitempty"`
+	AssignedStaff *StaffInfo `json:"assigned_staff,omitempty"`
 }
 
-type PuskesmasInfo struct {
+type StaffInfo struct {
 	ID            string `json:"id"`
 	FullName      string `json:"full_name"`
 	PositionTitle string `json:"position_title"`
@@ -108,18 +108,18 @@ func ToPatientDetailResponse(p *domain.Patient) PatientDetailResponse {
 	detail := PatientDetailResponse{
 		PatientResponse: ToPatientResponse(p),
 	}
-	if p.AssignedPuskesmas != nil {
-		detail.AssignedPuskesmas = &PuskesmasInfo{
-			ID:            p.AssignedPuskesmas.ID,
-			FullName:      p.AssignedPuskesmas.FullName,
-			PositionTitle: p.AssignedPuskesmas.PositionTitle,
+	if p.AssignedStaff != nil {
+		detail.AssignedStaff = &StaffInfo{
+			ID:            p.AssignedStaff.ID,
+			FullName:      p.AssignedStaff.FullName,
+			PositionTitle: p.AssignedStaff.PositionTitle,
 		}
 	}
 	return detail
 }
 
 type PatientFilterQuery struct {
-	PuskesmasID string
+	StaffID string
 	Search      string
 	Gender      string
 	Status      string

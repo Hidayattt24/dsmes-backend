@@ -39,14 +39,14 @@ CREATE TABLE patients (
     medical_status         VARCHAR(100),
     profile_photo_url      TEXT,
     status                 account_status_enum NOT NULL DEFAULT 'aktif',
-    assigned_puskesmas_id  UUID         REFERENCES staff_accounts(id) ON DELETE SET NULL,
+    assigned_staff_id      UUID         REFERENCES staff_accounts(id) ON DELETE SET NULL,
     last_active_at         TIMESTAMPTZ,
     created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
     deleted_at             TIMESTAMPTZ
 );
 
-CREATE INDEX idx_patients_puskesmas ON patients(assigned_puskesmas_id);
+CREATE INDEX idx_patients_staff      ON patients(assigned_staff_id);
 CREATE INDEX idx_patients_deleted   ON patients(deleted_at) WHERE deleted_at IS NOT NULL;
 
 -- ── Routines ─────────────────────────────────────────────────────────────────
@@ -365,3 +365,10 @@ CREATE TABLE support_tickets (
     deleted_at    TIMESTAMPTZ,
     resolved_at   TIMESTAMPTZ
 );
+
+-- Seed initial User (Patient) account (password is 'password123')
+INSERT INTO patients (id, email, password_hash, full_name, nickname, whatsapp_number, gender, date_of_birth, height_cm, weight_kg, blood_type, daily_calorie_target, status)
+VALUES 
+    ('f9a74a10-2fbe-443b-8cf7-0d5db6509f6e', 'patient@dsmes.com', '$2a$10$w850aK9B74hC4s/5Z1yOSeKpeKkI2wL3121X77.i.J7cO7N0l/Jb.', 'Jane Doe', 'Jane', '081234567890', 'perempuan', '1990-01-01', 165.0, 55.0, 'O', 2000, 'aktif')
+ON CONFLICT DO NOTHING;
+

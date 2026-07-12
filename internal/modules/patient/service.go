@@ -189,19 +189,19 @@ func (s *patientService) UpdateProfile(ctx context.Context, patientID string, re
 	return &res, nil
 }
 
-func (s *patientService) AssignPuskesmas(ctx context.Context, id string, req AssignPuskesmasRequest) (*PatientDetailResponse, error) {
+func (s *patientService) AssignStaff(ctx context.Context, id string, req AssignStaffRequest) (*PatientDetailResponse, error) {
 	patient, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	patient.AssignedPuskesmasID = &req.PuskesmasID
+	patient.AssignedStaffID = &req.StaffID
 
 	if err = s.repo.Update(ctx, patient); err != nil {
 		return nil, err
 	}
 
-	// Refetch to preload assigned puskesmas
+	// Refetch to preload assigned staff
 	refetched, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -235,8 +235,8 @@ func (s *patientService) DeletePatient(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *patientService) GetStats(ctx context.Context, puskesmasID string) (*PatientStats, error) {
-	return s.repo.GetStats(ctx, puskesmasID)
+func (s *patientService) GetStats(ctx context.Context, staffID string) (*PatientStats, error) {
+	return s.repo.GetStats(ctx, staffID)
 }
 
 // Helpers

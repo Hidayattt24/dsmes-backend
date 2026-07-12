@@ -7,8 +7,8 @@
 //   - /api/health        → public liveness check (no auth required)
 //   - /api/v1/auth/...   → authentication (public + protected)
 //   - /api/v1/admin/...  → admin-only routes (JWT + RequireRole("admin"))
-//   - /api/v1/puskesmas/ → puskesmas-only routes (JWT + RequireRole("puskesmas"))
-//   - /api/v1/patient/   → patient-only routes (JWT + RequireRole("patient"))
+//   - /api/v1/staff/     → staff-only monitoring routes (JWT + RequireRole("staff"))
+//   - /api/v1/patient/   → patient-only routes (JWT + RequireRole("user"))
 package main
 
 import (
@@ -151,7 +151,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Get("/patients", patientHandler.List)
 		admin.Get("/patients/:id", patientHandler.GetByID)
 		admin.Patch("/patients/:id/status", patientHandler.ToggleStatus)
-		admin.Patch("/patients/:id/assign", patientHandler.AssignPuskesmas)
+		admin.Patch("/patients/:id/assign", patientHandler.AssignStaff)
 		admin.Delete("/patients/:id", patientHandler.Delete)
 
 		// Blood Sugar Logs view
@@ -189,44 +189,44 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Patch("/support/tickets/:id/resolve", settingsHandler.ResolveTicket)
 	}
 
-	// ── Protected: Puskesmas Group (JWT + RequireRole("puskesmas")) ───────────
-	puskesmas := v1.Group("/puskesmas",
+	// ── Protected: Staff Group (JWT + RequireRole("staff")) ───────────────────
+	staff := v1.Group("/staff",
 		middleware.JWT(c.Config),
-		middleware.RequireRole("puskesmas"),
+		middleware.RequireRole("staff"),
 	)
 	{
-		puskesmas.Get("/me", staffHandler.GetMe)
-		puskesmas.Put("/me", staffHandler.UpdateMe)
+		staff.Get("/me", staffHandler.GetMe)
+		staff.Put("/me", staffHandler.UpdateMe)
 
 		// Patient Monitoring
-		puskesmas.Get("/patients/stats", patientHandler.GetStatsPuskesmas)
-		puskesmas.Get("/patients", patientHandler.ListPuskesmas)
-		puskesmas.Get("/patients/:id", patientHandler.GetByID)
-		puskesmas.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
-		puskesmas.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
-		puskesmas.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
-		puskesmas.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
+		staff.Get("/patients/stats", patientHandler.GetStatsStaff)
+		staff.Get("/patients", patientHandler.ListStaff)
+		staff.Get("/patients/:id", patientHandler.GetByID)
+		staff.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
+		staff.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
+		staff.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
+		staff.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
 
 		// Dashboard statistics
-		puskesmas.Get("/dashboard/blood-sugar", bsHandler.GetDashboard)
-		puskesmas.Get("/dashboard/stats", dashboardHandler.GetPuskesmas)
+		staff.Get("/dashboard/blood-sugar", bsHandler.GetDashboard)
+		staff.Get("/dashboard/stats", dashboardHandler.GetStaff)
 
 		// Education articles list
-		puskesmas.Get("/education/articles", eduHandler.ListPublished)
-		puskesmas.Get("/education/articles/:id", eduHandler.GetByID)
+		staff.Get("/education/articles", eduHandler.ListPublished)
+		staff.Get("/education/articles/:id", eduHandler.GetByID)
 
 		// Quiz Monitoring
-		puskesmas.Get("/quiz/stats", quizHandler.GetStats)
-		puskesmas.Get("/quiz", quizHandler.List)
-		puskesmas.Get("/quiz/:id", quizHandler.GetByID)
-		puskesmas.Get("/quiz/:id/participants", quizHandler.ListParticipants)
-		puskesmas.Get("/quiz/:id/participant/:participant_id", quizHandler.GetParticipantDetail)
+		staff.Get("/quiz/stats", quizHandler.GetStats)
+		staff.Get("/quiz", quizHandler.List)
+		staff.Get("/quiz/:id", quizHandler.GetByID)
+		staff.Get("/quiz/:id/participants", quizHandler.ListParticipants)
+		staff.Get("/quiz/:id/participant/:participant_id", quizHandler.GetParticipantDetail)
 	}
 
-	// ── Protected: Patient Group (JWT + RequireRole("patient")) ───────────────
+	// ── Protected: Patient Group (JWT + RequireRole("user")) ───────────────
 	patientGroup := v1.Group("/patient",
 		middleware.JWT(c.Config),
-		middleware.RequireRole("patient"),
+		middleware.RequireRole("user"),
 	)
 	{
 		patientGroup.Get("/me", patientHandler.GetMe)

@@ -27,7 +27,8 @@ import (
 // Using a custom struct (not jwt.MapClaims) gives type-safe claim access.
 type Claims struct {
 	UserID string `json:"user_id"`
-	Role   string `json:"role"` // admin | puskesmas | patient
+	Email  string `json:"email"`
+	Role   string `json:"role"` // admin | staff | user
 	jwt.RegisteredClaims
 }
 
@@ -48,6 +49,7 @@ type Manager struct {
 }
 
 // NewManager creates a JWT Manager from application config.
+// NewManager creates a JWT Manager from application config.
 func NewManager(cfg *config.Config) *Manager {
 	return &Manager{
 		secret:          []byte(cfg.JWT.Secret),
@@ -58,14 +60,15 @@ func NewManager(cfg *config.Config) *Manager {
 }
 
 // GenerateTokenPair creates a new access + refresh token pair for the given user.
-// userID should be the UUID primary key; role is "admin", "puskesmas", or "patient".
-func (m *Manager) GenerateTokenPair(userID, role string) (*TokenPair, error) {
+// userID should be the UUID primary key; role is "admin", "staff", or "user".
+func (m *Manager) GenerateTokenPair(userID, email, role string) (*TokenPair, error) {
 	now := time.Now()
 	accessExpiry := now.Add(m.accessTokenTTL)
 
 	// ── Access token ──────────────────────────────────────────────────────────
 	accessClaims := Claims{
 		UserID: userID,
+		Email:  email,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    m.issuer,
@@ -85,6 +88,7 @@ func (m *Manager) GenerateTokenPair(userID, role string) (*TokenPair, error) {
 	// ── Refresh token ─────────────────────────────────────────────────────────
 	refreshClaims := Claims{
 		UserID: userID,
+		Email:  email,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    m.issuer,

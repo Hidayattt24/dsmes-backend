@@ -123,7 +123,7 @@ func (h *RoutineHandler) Status(c fiber.Ctx) error {
 	return response.Success(c, "onboarding status checked", res)
 }
 
-// GetPatientActivityLogs handles GET /api/v1/admin/patients/:id/activities or /api/v1/puskesmas/patients/:id/activities
+// GetPatientActivityLogs handles GET /api/v1/admin/patients/:id/activities or /api/v1/staff/patients/:id/activities
 func (h *RoutineHandler) GetPatientActivityLogs(c fiber.Ctx) error {
 	patientID := c.Params("id")
 	dateStr := c.Query("date")

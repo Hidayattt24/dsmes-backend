@@ -40,7 +40,7 @@ func (s *authService) StaffLogin(ctx context.Context, req StaffLoginRequest) (*L
 		return nil, errs.NewUnauthorized("invalid email or password")
 	}
 
-	tokens, err := s.jwt.GenerateTokenPair(staff.ID, string(staff.Role))
+	tokens, err := s.jwt.GenerateTokenPair(staff.ID, staff.Email, string(staff.Role))
 	if err != nil {
 		return nil, errs.NewInternal("failed to generate tokens", err)
 	}
@@ -82,7 +82,7 @@ func (s *authService) PatientLogin(ctx context.Context, req PatientLoginRequest)
 		return nil, errs.NewUnauthorized("invalid email or password")
 	}
 
-	tokens, err := s.jwt.GenerateTokenPair(patient.ID, "patient")
+	tokens, err := s.jwt.GenerateTokenPair(patient.ID, patient.Email, "user")
 	if err != nil {
 		return nil, errs.NewInternal("failed to generate tokens", err)
 	}
@@ -102,7 +102,7 @@ func (s *authService) PatientLogin(ctx context.Context, req PatientLoginRequest)
 			ID:       patient.ID,
 			FullName: patient.FullName,
 			Email:    patient.Email,
-			Role:     "patient",
+			Role:     "user",
 		},
 		Tokens: *tokens,
 	}, nil
@@ -211,7 +211,7 @@ func (s *authService) RefreshToken(ctx context.Context, req RefreshTokenRequest)
 
 	_ = s.repo.RevokeSession(ctx, req.RefreshToken)
 
-	tokens, err := s.jwt.GenerateTokenPair(claims.UserID, claims.Role)
+	tokens, err := s.jwt.GenerateTokenPair(claims.UserID, claims.Email, claims.Role)
 	if err != nil {
 		return nil, errs.NewInternal("failed to generate tokens", err)
 	}

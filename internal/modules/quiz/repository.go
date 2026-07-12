@@ -155,7 +155,7 @@ func (r *quizRepository) FindAttemptsByQuizID(ctx context.Context, quizID string
 	var attempts []domain.QuizAttempt
 	err := r.db.WithContext(ctx).
 		Preload("Patient").
-		Preload("Patient.AssignedPuskesmas").
+		Preload("Patient.AssignedStaff").
 		Where("quiz_id = ? AND deleted_at IS NULL", quizID).
 		Order("completed_at DESC").
 		Find(&attempts).Error
@@ -169,7 +169,7 @@ func (r *quizRepository) FindAttemptByID(ctx context.Context, quizID string, par
 	var attempt domain.QuizAttempt
 	err := r.db.WithContext(ctx).
 		Preload("Patient").
-		Preload("Patient.AssignedPuskesmas").
+		Preload("Patient.AssignedStaff").
 		Preload("Answers").
 		Preload("Answers.Question").
 		Where("quiz_id = ? AND patient_id = ? AND deleted_at IS NULL", quizID, participantID).

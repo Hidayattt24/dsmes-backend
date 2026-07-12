@@ -26,8 +26,8 @@ func (r *patientRepository) FindAll(ctx context.Context, filter PatientFilterQue
 
 	q := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("deleted_at IS NULL")
 
-	if filter.PuskesmasID != "" {
-		q = q.Where("assigned_puskesmas_id = ?", filter.PuskesmasID)
+	if filter.StaffID != "" {
+		q = q.Where("assigned_staff_id = ?", filter.StaffID)
 	}
 
 	if filter.Search != "" {
@@ -60,7 +60,7 @@ func (r *patientRepository) FindAll(ctx context.Context, filter PatientFilterQue
 	}
 
 	offset := (filter.Page - 1) * filter.Limit
-	err := q.Preload("AssignedPuskesmas").
+	err := q.Preload("AssignedStaff").
 		Offset(offset).Limit(filter.Limit).
 		Order("created_at DESC").
 		Find(&items).Error
@@ -74,7 +74,7 @@ func (r *patientRepository) FindAll(ctx context.Context, filter PatientFilterQue
 func (r *patientRepository) FindByID(ctx context.Context, id string) (*domain.Patient, error) {
 	var p domain.Patient
 	err := r.db.WithContext(ctx).
-		Preload("AssignedPuskesmas").
+		Preload("AssignedStaff").
 		Where("id = ? AND deleted_at IS NULL", id).
 		First(&p).Error
 	if err != nil {
@@ -89,7 +89,7 @@ func (r *patientRepository) FindByID(ctx context.Context, id string) (*domain.Pa
 func (r *patientRepository) FindByEmail(ctx context.Context, email string) (*domain.Patient, error) {
 	var p domain.Patient
 	err := r.db.WithContext(ctx).
-		Preload("AssignedPuskesmas").
+		Preload("AssignedStaff").
 		Where("email = ? AND deleted_at IS NULL", email).
 		First(&p).Error
 	if err != nil {
@@ -152,14 +152,14 @@ func (r *patientRepository) CreateWithOnboarding(ctx context.Context, p *domain.
 	})
 }
 
-func (r *patientRepository) GetStats(ctx context.Context, puskesmasID string) (*PatientStats, error) {
+func (r *patientRepository) GetStats(ctx context.Context, staffID string) (*PatientStats, error) {
 	var total int64
 	var active int64
 	var avgAge float64
 
 	baseQuery := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("deleted_at IS NULL")
-	if puskesmasID != "" {
-		baseQuery = baseQuery.Where("assigned_puskesmas_id = ?", puskesmasID)
+	if staffID != "" {
+		baseQuery = baseQuery.Where("assigned_staff_id = ?", staffID)
 	}
 
 	if err := baseQuery.Count(&total).Error; err != nil {

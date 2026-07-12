@@ -26,7 +26,7 @@ func NewAuthHandler(svc AuthService, log *zap.Logger) *AuthHandler {
 // StaffLogin handles POST /api/v1/auth/staff/login
 //
 // @Summary      Staff login
-// @Description  Authenticates an admin or puskesmas staff member and returns a JWT token pair.
+// @Description  Authenticates an admin or staff member and returns a JWT token pair.
 // @Tags         auth
 // @Accept       json
 // @Produce      json
@@ -34,6 +34,7 @@ func NewAuthHandler(svc AuthService, log *zap.Logger) *AuthHandler {
 // @Success      200   {object}  map[string]any
 // @Failure      400   {object}  map[string]any
 // @Failure      401   {object}  map[string]any
+
 // @Failure      422   {object}  map[string]any
 // @Router       /auth/staff/login [post]
 func (h *AuthHandler) StaffLogin(c fiber.Ctx) error {

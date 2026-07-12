@@ -8,7 +8,7 @@
 -- ── Enum types ───────────────────────────────────────────────────────────────
 -- All enums are defined once here; subsequent migrations reference them.
 
-CREATE TYPE staff_role_enum          AS ENUM ('admin', 'puskesmas');
+CREATE TYPE staff_role_enum          AS ENUM ('admin', 'staff');
 CREATE TYPE account_status_enum      AS ENUM ('aktif', 'nonaktif');
 CREATE TYPE owner_type_enum          AS ENUM ('staff', 'patient');
 
@@ -61,3 +61,11 @@ CREATE TABLE auth_sessions (
 
 CREATE INDEX idx_sessions_owner ON auth_sessions(owner_type, owner_id);
 CREATE INDEX idx_sessions_token ON auth_sessions(refresh_token);
+
+-- Seed initial admin and staff accounts (password is 'password123')
+INSERT INTO staff_accounts (id, full_name, username, email, password_hash, role, status)
+VALUES 
+    ('e6c464c2-5509-4c17-a068-07e8ef6e61f2', 'System Administrator', 'admin', 'admin@dsmes.com', '$2a$10$w850aK9B74hC4s/5Z1yOSeKpeKkI2wL3121X77.i.J7cO7N0l/Jb.', 'admin', 'aktif'),
+    ('b5220c4c-70e6-42d7-a5eb-0b5c15668e1a', 'Monitoring Staff', 'staff', 'staff@dsmes.com', '$2a$10$w850aK9B74hC4s/5Z1yOSeKpeKkI2wL3121X77.i.J7cO7N0l/Jb.', 'staff', 'aktif')
+ON CONFLICT DO NOTHING;
+

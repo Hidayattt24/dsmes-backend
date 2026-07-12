@@ -26,8 +26,8 @@ func (h *DashboardHandler) GetAdmin(c fiber.Ctx) error {
 	return response.Success(c, "admin dashboard stats retrieved", res)
 }
 
-// GetPuskesmas handles GET /api/v1/puskesmas/dashboard/stats
-func (h *DashboardHandler) GetPuskesmas(c fiber.Ctx) error {
+// GetStaff handles GET /api/v1/staff/dashboard/stats
+func (h *DashboardHandler) GetStaff(c fiber.Ctx) error {
 	claims := middleware.ClaimsFromContext(c)
 	if claims == nil {
 		return fiber.ErrUnauthorized
@@ -37,5 +37,5 @@ func (h *DashboardHandler) GetPuskesmas(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "puskesmas dashboard stats retrieved", res)
+	return response.Success(c, "staff dashboard stats retrieved", res)
 }

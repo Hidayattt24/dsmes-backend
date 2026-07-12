@@ -8,8 +8,8 @@ import (
 type StaffRole string
 
 const (
-	RoleAdmin     StaffRole = "admin"
-	RolePuskesmas StaffRole = "puskesmas"
+	RoleAdmin StaffRole = "admin"
+	RoleStaff StaffRole = "staff"
 )
 
 // AccountStatus represents the active/inactive status of any account.
@@ -28,7 +28,7 @@ const (
 	OwnerTypePatient OwnerType = "patient"
 )
 
-// StaffAccount represents an admin or puskesmas monitoring account.
+// StaffAccount represents an admin or staff monitoring account.
 type StaffAccount struct {
 	BaseModel
 

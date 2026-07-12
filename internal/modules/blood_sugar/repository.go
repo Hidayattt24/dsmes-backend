@@ -45,7 +45,7 @@ func (r *bloodSugarRepository) FindAllByPatientID(ctx context.Context, patientID
 	return items, total, nil
 }
 
-func (r *bloodSugarRepository) GetDistributionForPuskesmas(ctx context.Context, puskesmasID string) (*GlucoseDistributionResponse, error) {
+func (r *bloodSugarRepository) GetDistributionForStaff(ctx context.Context, staffID string) (*GlucoseDistributionResponse, error) {
 	var res GlucoseDistributionResponse
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT 
@@ -55,8 +55,8 @@ func (r *bloodSugarRepository) GetDistributionForPuskesmas(ctx context.Context, 
 			COALESCE(COUNT(*) FILTER (WHERE b.status = 'rendah'), 0) AS rendah_count
 		FROM blood_sugar_logs b
 		JOIN patients p ON p.id = b.patient_id
-		WHERE p.assigned_puskesmas_id = ? AND b.deleted_at IS NULL AND p.deleted_at IS NULL
-	`, puskesmasID).Scan(&res).Error
+		WHERE p.assigned_staff_id = ? AND b.deleted_at IS NULL AND p.deleted_at IS NULL
+	`, staffID).Scan(&res).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch distribution", err)
 	}

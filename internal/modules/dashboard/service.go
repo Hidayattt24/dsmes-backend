@@ -19,6 +19,6 @@ func (s *dashboardService) GetAdminDashboard(ctx context.Context) (*AdminDashboa
 	return s.repo.GetAdminStats(ctx)
 }
 
-func (s *dashboardService) GetStaffDashboard(ctx context.Context, puskesmasID string) (*StaffDashboardResponse, error) {
-	return s.repo.GetStaffStats(ctx, puskesmasID)
+func (s *dashboardService) GetStaffDashboard(ctx context.Context, staffID string) (*StaffDashboardResponse, error) {
+	return s.repo.GetStaffStats(ctx, staffID)
 }

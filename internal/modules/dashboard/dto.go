@@ -12,7 +12,7 @@ type MonthData struct {
 type AdminDashboardResponse struct {
 	TotalPatients    int64       `json:"total_patients"`
 	ActivePatients   int64       `json:"active_patients"`
-	TotalPuskesmas   int64       `json:"total_puskesmas"`
+	TotalStaff       int64       `json:"total_staff"`
 	TotalArticles    int64       `json:"total_articles"`
 	TotalQuizzes     int64       `json:"total_quizzes"`
 	TotalSugarLogs   int64       `json:"total_sugar_logs"`

@@ -39,7 +39,7 @@ type Patient struct {
 	MedicalStatus       string        `gorm:"type:varchar(100)" json:"medical_status"`
 	ProfilePhotoURL     string        `gorm:"type:text" json:"profile_photo_url"`
 	Status              AccountStatus `gorm:"type:account_status_enum;not null;default:aktif" json:"status"`
-	AssignedPuskesmasID *string       `gorm:"type:uuid" json:"assigned_puskesmas_id"`
+	AssignedStaffID     *string       `gorm:"type:uuid;column:assigned_staff_id" json:"assigned_staff_id"`
 	LastActiveAt        *time.Time    `json:"last_active_at"`
 	BPJS                string        `gorm:"type:varchar(50)" json:"bpjs"`
 	NIK                 string        `gorm:"type:varchar(50)" json:"nik"`
@@ -51,7 +51,7 @@ type Patient struct {
 	InterventionType    string        `gorm:"type:varchar(50)" json:"intervention_type"`
 
 	// Relations
-	AssignedPuskesmas *StaffAccount `gorm:"foreignKey:AssignedPuskesmasID" json:"assigned_puskesmas,omitempty"`
+	AssignedStaff *StaffAccount `gorm:"foreignKey:AssignedStaffID" json:"assigned_staff,omitempty"`
 }
 
 func (Patient) TableName() string { return "patients" }

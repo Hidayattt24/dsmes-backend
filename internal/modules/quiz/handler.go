@@ -21,7 +21,7 @@ func NewQuizHandler(svc QuizService, log *zap.Logger) *QuizHandler {
 	return &QuizHandler{svc: svc, log: log}
 }
 
-// List handles GET /api/v1/admin/quiz or /api/v1/puskesmas/quiz
+// List handles GET /api/v1/admin/quiz or /api/v1/staff/quiz
 func (h *QuizHandler) List(c fiber.Ctx) error {
 	page := 1
 	if pStr := c.Query("page"); pStr != "" {
@@ -56,10 +56,10 @@ func (h *QuizHandler) List(c fiber.Ctx) error {
 	})
 }
 
-// GetByID handles GET /api/v1/admin/quiz/:id or /api/v1/puskesmas/quiz/:id
+// GetByID handles GET /api/v1/admin/quiz/:id or /api/v1/staff/quiz/:id
 func (h *QuizHandler) GetByID(c fiber.Ctx) error {
 	claims := middleware.ClaimsFromContext(c)
-	isAdminOrStaff := claims != nil && (claims.Role == "admin" || claims.Role == "puskesmas")
+	isAdminOrStaff := claims != nil && (claims.Role == "admin" || claims.Role == "staff")
 
 	id := c.Params("id")
 	res, err := h.svc.GetQuiz(c.Context(), id, isAdminOrStaff)
@@ -120,7 +120,7 @@ func (h *QuizHandler) Delete(c fiber.Ctx) error {
 	return response.NoContent(c)
 }
 
-// GetStats handles GET /api/v1/admin/quiz/stats or /api/v1/puskesmas/quiz/stats
+// GetStats handles GET /api/v1/admin/quiz/stats or /api/v1/staff/quiz/stats
 func (h *QuizHandler) GetStats(c fiber.Ctx) error {
 	res, err := h.svc.GetStats(c.Context())
 	if err != nil {
@@ -129,7 +129,7 @@ func (h *QuizHandler) GetStats(c fiber.Ctx) error {
 	return response.Success(c, "quiz statistics retrieved", res)
 }
 
-// ListParticipants handles GET /api/v1/admin/quiz/:id/participants or /api/v1/puskesmas/quiz/:id/participants
+// ListParticipants handles GET /api/v1/admin/quiz/:id/participants or /api/v1/staff/quiz/:id/participants
 func (h *QuizHandler) ListParticipants(c fiber.Ctx) error {
 	id := c.Params("id")
 	res, err := h.svc.ListParticipants(c.Context(), id)
@@ -139,7 +139,7 @@ func (h *QuizHandler) ListParticipants(c fiber.Ctx) error {
 	return response.Success(c, "quiz participants retrieved", res)
 }
 
-// GetParticipantDetail handles GET /api/v1/admin/quiz/:id/participant/:participant_id or /api/v1/puskesmas/quiz/:id/participant/:participant_id
+// GetParticipantDetail handles GET /api/v1/admin/quiz/:id/participant/:participant_id or /api/v1/staff/quiz/:id/participant/:participant_id
 func (h *QuizHandler) GetParticipantDetail(c fiber.Ctx) error {
 	id := c.Params("id")
 	participantID := c.Params("participant_id")

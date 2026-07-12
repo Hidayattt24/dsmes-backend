@@ -8,7 +8,7 @@ type CreateStaffRequest struct {
 	Email          string           `json:"email"           validate:"required,email"`
 	Password       string           `json:"password"        validate:"required,min=6"`
 	WhatsappNumber string           `json:"whatsapp_number" validate:"required,numeric,min=10,max=20"`
-	Role           domain.StaffRole `json:"role"            validate:"required,oneof=admin puskesmas"`
+	Role           domain.StaffRole `json:"role"            validate:"required,oneof=admin staff"`
 	PositionTitle  string           `json:"position_title"`
 	ShortBio       string           `json:"short_bio"`
 }

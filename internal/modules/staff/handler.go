@@ -24,11 +24,11 @@ func NewStaffHandler(svc StaffService, log *zap.Logger) *StaffHandler {
 
 // List handles GET /api/v1/admin/staff
 // @Summary      List all staff
-// @Description  Get a paginated list of staff members (admin & puskesmas)
+// @Description  Get a paginated list of staff members (admin & staff)
 // @Tags         staff
 // @Security     BearerAuth
 // @Produce      json
-// @Param        role   query  string  false  "Filter by role (admin/puskesmas)"
+// @Param        role   query  string  false  "Filter by role (admin/staff)"
 // @Param        page   query  int     false  "Page number (default: 1)"
 // @Param        limit  query  int     false  "Limit (default: 10)"
 // @Success      200    {object}  map[string]any

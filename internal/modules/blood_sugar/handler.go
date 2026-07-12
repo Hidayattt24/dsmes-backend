@@ -98,8 +98,8 @@ func (h *BloodSugarHandler) GetHistory(c fiber.Ctx) error {
 	})
 }
 
-// GetPatientHistory handles GET /api/v1/admin/patients/:id/blood-sugar
-// @Summary      Get patient blood sugar history (Admin/Puskesmas)
+// GetPatientHistory handles GET /api/v1/admin/patients/:id/blood-sugar or /api/v1/staff/patients/:id/blood-sugar
+// @Summary      Get patient blood sugar history (Admin/Staff)
 // @Tags         blood-sugar
 // @Security     BearerAuth
 // @Produce      json
@@ -141,22 +141,22 @@ func (h *BloodSugarHandler) GetPatientHistory(c fiber.Ctx) error {
 	})
 }
 
-// GetDashboard handles GET /api/v1/puskesmas/dashboard/blood-sugar
-// @Summary      Get puskesmas monitoring stats
+// GetDashboard handles GET /api/v1/staff/dashboard/blood-sugar
+// @Summary      Get staff monitoring stats
 // @Tags         blood-sugar
 // @Security     BearerAuth
 // @Produce      json
 // @Success      200  {object}  map[string]any
-// @Router       /puskesmas/dashboard/blood-sugar [get]
+// @Router       /staff/dashboard/blood-sugar [get]
 func (h *BloodSugarHandler) GetDashboard(c fiber.Ctx) error {
 	claims := middleware.ClaimsFromContext(c)
 	if claims == nil {
 		return fiber.ErrUnauthorized
 	}
 
-	res, err := h.svc.GetPuskesmasDashboard(c.Context(), claims.UserID)
+	res, err := h.svc.GetStaffDashboard(c.Context(), claims.UserID)
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "puskesmas dashboard statistics retrieved", res)
+	return response.Success(c, "staff dashboard statistics retrieved", res)
 }

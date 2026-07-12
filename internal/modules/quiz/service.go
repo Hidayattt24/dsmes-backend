@@ -142,12 +142,12 @@ func (s *quizService) ListParticipants(ctx context.Context, quizID string) ([]Pa
 	for i, a := range attempts {
 		pName := "-"
 		pAvatar := ""
-		puskesmas := "-"
+		assignedStaff := "-"
 		if a.Patient != nil {
 			pName = a.Patient.FullName
 			pAvatar = a.Patient.ProfilePhotoURL
-			if a.Patient.AssignedPuskesmas != nil {
-				puskesmas = a.Patient.AssignedPuskesmas.FullName
+			if a.Patient.AssignedStaff != nil {
+				assignedStaff = a.Patient.AssignedStaff.FullName
 			}
 		}
 
@@ -156,7 +156,7 @@ func (s *quizService) ListParticipants(ctx context.Context, quizID string) ([]Pa
 			PatientID:      a.PatientID,
 			PatientName:    pName,
 			PatientAvatar:  pAvatar,
-			Puskesmas:      puskesmas,
+			AssignedStaff:  assignedStaff,
 			CompletionDate: a.CompletedAt,
 			Score:          a.Score,
 			Passed:         a.Passed,
@@ -180,12 +180,12 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, quizID string, p
 
 	pName := "-"
 	pAvatar := ""
-	puskesmas := "-"
+	assignedStaff := "-"
 	if attempt.Patient != nil {
 		pName = attempt.Patient.FullName
 		pAvatar = attempt.Patient.ProfilePhotoURL
-		if attempt.Patient.AssignedPuskesmas != nil {
-			puskesmas = attempt.Patient.AssignedPuskesmas.FullName
+		if attempt.Patient.AssignedStaff != nil {
+			assignedStaff = attempt.Patient.AssignedStaff.FullName
 		}
 	}
 
@@ -194,7 +194,7 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, quizID string, p
 		PatientID:      attempt.PatientID,
 		PatientName:    pName,
 		PatientAvatar:  pAvatar,
-		Puskesmas:      puskesmas,
+		AssignedStaff:  assignedStaff,
 		CompletionDate: attempt.CompletedAt,
 		Score:          attempt.Score,
 		Passed:         attempt.Passed,

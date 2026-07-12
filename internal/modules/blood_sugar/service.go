@@ -63,6 +63,6 @@ func (s *bloodSugarService) GetPatientHistory(ctx context.Context, patientID str
 	return resp, total, nil
 }
 
-func (s *bloodSugarService) GetPuskesmasDashboard(ctx context.Context, puskesmasID string) (*GlucoseDistributionResponse, error) {
-	return s.repo.GetDistributionForPuskesmas(ctx, puskesmasID)
+func (s *bloodSugarService) GetStaffDashboard(ctx context.Context, staffID string) (*GlucoseDistributionResponse, error) {
+	return s.repo.GetDistributionForStaff(ctx, staffID)
 }
