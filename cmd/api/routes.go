@@ -133,7 +133,10 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	)
 	{
 		// Dashboard Statistics
+		admin.Get("/dashboard", dashboardHandler.GetAdmin)
 		admin.Get("/dashboard/stats", dashboardHandler.GetAdmin)
+		admin.Get("/dashboard/top-articles", dashboardHandler.GetTopArticles)
+		admin.Get("/dashboard/activity-chart", dashboardHandler.GetActivityChart)
 
 		// Staff Management
 		admin.Get("/staff", staffHandler.List)

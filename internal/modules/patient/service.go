@@ -139,6 +139,28 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	return &res, nil
 }
 
+func populateSummary(res *PatientResponse, summary *PatientSummaryData) {
+	if summary == nil {
+		return
+	}
+	res.LatestBloodSugar = summary.LatestBloodSugar
+	if summary.LatestBloodSugarTime != nil {
+		tStr := summary.LatestBloodSugarTime.Format("2006-01-02T15:04:05Z07:00")
+		res.LatestBloodSugarTime = &tStr
+	}
+	res.LatestBloodSugarStatus = summary.LatestBloodSugarStatus
+	res.AverageBloodSugar = summary.AverageBloodSugar
+	res.LatestWeight = summary.LatestWeight
+	res.BMI = summary.BMI
+	res.LatestMealCalories = summary.LatestMealCalories
+	res.LatestMealType = summary.LatestMealType
+	res.LatestActivityName = summary.LatestActivityName
+	if summary.LatestActivityTime != nil {
+		tStr := summary.LatestActivityTime.Format("2006-01-02T15:04:05Z07:00")
+		res.LatestActivityTime = &tStr
+	}
+}
+
 func (s *patientService) ListPatients(ctx context.Context, filter PatientFilterQuery) ([]PatientResponse, int64, error) {
 	if filter.Page < 1 {
 		filter.Page = 1
@@ -155,6 +177,10 @@ func (s *patientService) ListPatients(ctx context.Context, filter PatientFilterQ
 	resp := make([]PatientResponse, len(items))
 	for i := range items {
 		resp[i] = ToPatientResponse(&items[i])
+		summary, err := s.repo.GetPatientSummary(ctx, items[i].ID)
+		if err == nil && summary != nil {
+			populateSummary(&resp[i], summary)
+		}
 	}
 
 	return resp, total, nil
@@ -166,6 +192,12 @@ func (s *patientService) GetPatient(ctx context.Context, id string) (*PatientDet
 		return nil, err
 	}
 	res := ToPatientDetailResponse(patient)
+
+	summary, err := s.repo.GetPatientSummary(ctx, id)
+	if err == nil && summary != nil {
+		populateSummary(&res.PatientResponse, summary)
+	}
+
 	return &res, nil
 }
 
@@ -190,6 +222,17 @@ func (s *patientService) UpdateProfile(ctx context.Context, patientID string, re
 	patient.EmergencyPhone = req.EmergencyPhone
 	patient.DiabetesType = req.DiabetesType
 	patient.InterventionType = req.InterventionType
+	patient.PatientCode = req.PatientCode
+	patient.Address = req.Address
+	if req.DiagnosisDate != "" {
+		if t, err := ParseDOB(req.DiagnosisDate); err == nil {
+			patient.DiagnosisDate = &t
+		}
+	}
+	patient.CurrentMedication = req.CurrentMedication
+	patient.Allergies = req.Allergies
+	patient.SmokingStatus = req.SmokingStatus
+	patient.PhysicalActivityLevel = req.PhysicalActivityLevel
 
 	if err = s.repo.Update(ctx, patient); err != nil {
 		return nil, err

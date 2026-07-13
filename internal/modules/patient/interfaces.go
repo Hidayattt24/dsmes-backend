@@ -14,6 +14,7 @@ type PatientRepository interface {
 	Update(ctx context.Context, p *domain.Patient) error
 	Delete(ctx context.Context, id string) error
 	GetStats(ctx context.Context, staffID string) (*PatientStats, error)
+	GetPatientSummary(ctx context.Context, patientID string) (*PatientSummaryData, error)
 
 	// Transactional onboarding helpers
 	CreateWithOnboarding(ctx context.Context, p *domain.Patient, defaultRoutines []domain.Routine, defaultReminders []domain.Reminder) error

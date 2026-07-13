@@ -10,15 +10,21 @@ type MonthData struct {
 }
 
 type AdminDashboardResponse struct {
-	TotalPatients    int64       `json:"total_patients"`
-	ActivePatients   int64       `json:"active_patients"`
-	TotalStaff       int64       `json:"total_staff"`
-	TotalArticles    int64       `json:"total_articles"`
-	TotalQuizzes     int64       `json:"total_quizzes"`
-	TotalSugarLogs   int64       `json:"total_sugar_logs"`
-	PatientMonthly   []MonthData `json:"patient_monthly"`
+	TotalPatients       int64       `json:"total_patients"`
+	ActivePatients      int64       `json:"active_patients"`
+	TotalStaff          int64       `json:"total_staff"`
+	TotalArticles       int64       `json:"total_articles"`
+	TotalQuizzes        int64       `json:"total_quizzes"`
+	TotalSugarLogs      int64       `json:"total_sugar_logs"`
+	TotalMealLogs       int64       `json:"total_meal_logs"`
+	TotalActivityLogs   int64       `json:"total_activity_logs"`
+	TotalMedicationLogs int64       `json:"total_medication_logs"`
+	AverageBloodSugar   float64     `json:"average_blood_sugar"`
+	TodayRecords        int64       `json:"today_records"`
+	NewRegistrations    int64       `json:"new_registrations"`
+	PatientMonthly      []MonthData `json:"patient_monthly"`
 	ArticleViewsMonthly []MonthData `json:"article_views_monthly"`
-	SugarLogsMonthly []MonthData `json:"sugar_logs_monthly"`
+	SugarLogsMonthly    []MonthData `json:"sugar_logs_monthly"`
 }
 
 type GlucoseDistribution struct {
@@ -49,4 +55,18 @@ type StaffDashboardResponse struct {
 	GlucoseDistribution    GlucoseDistribution `json:"glucose_distribution"`
 	PriorityPatients       []PriorityPatient   `json:"priority_patients"`
 	NonCompliantPatients   []PriorityPatient   `json:"non_compliant_patients"`
+}
+
+type TopArticleResponse struct {
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Category     string `json:"category"`
+	ReadCount    int64  `json:"read_count"`
+	ThumbnailURL string `json:"thumbnail_url"`
+}
+
+type ActivityChartResponse struct {
+	Day           string  `json:"day"`
+	Value         int64   `json:"value"`
+	HeightPercent float64 `json:"height_percent"`
 }

@@ -39,3 +39,33 @@ func (h *DashboardHandler) GetStaff(c fiber.Ctx) error {
 	}
 	return response.Success(c, "staff dashboard stats retrieved", res)
 }
+
+// GetTopArticles handles GET /api/v1/admin/dashboard/top-articles
+// @Summary      Get top read articles (Admin)
+// @Tags         dashboard
+// @Security     BearerAuth
+// @Produce      json
+// @Success      200  {object}  map[string]any
+// @Router       /admin/dashboard/top-articles [get]
+func (h *DashboardHandler) GetTopArticles(c fiber.Ctx) error {
+	res, err := h.svc.GetTopArticles(c.Context())
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "top articles retrieved", res)
+}
+
+// GetActivityChart handles GET /api/v1/admin/dashboard/activity-chart
+// @Summary      Get 7-day activity stats chart (Admin)
+// @Tags         dashboard
+// @Security     BearerAuth
+// @Produce      json
+// @Success      200  {object}  map[string]any
+// @Router       /admin/dashboard/activity-chart [get]
+func (h *DashboardHandler) GetActivityChart(c fiber.Ctx) error {
+	res, err := h.svc.GetActivityChart(c.Context())
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "activity chart retrieved", res)
+}

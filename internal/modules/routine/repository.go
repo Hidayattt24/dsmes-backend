@@ -63,10 +63,13 @@ func (r *routineRepository) CreateLog(ctx context.Context, log *domain.RoutineLo
 
 func (r *routineRepository) FindLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.RoutineLogEntry, error) {
 	var logs []domain.RoutineLogEntry
-	err := r.db.WithContext(ctx).
-		Preload("RoutineTime").
-		Where("patient_id = ? AND DATE(logged_at) = ? AND deleted_at IS NULL", patientID, dateStr).
-		Find(&logs).Error
+	q := r.db.WithContext(ctx).Preload("RoutineTime").Preload("RoutineTime.Routine").Where("patient_id = ? AND deleted_at IS NULL", patientID)
+	if dateStr != "" {
+		q = q.Where("DATE(logged_at) = ?", dateStr)
+	} else {
+		q = q.Where("logged_at >= NOW() - INTERVAL '30 days'")
+	}
+	err := q.Order("logged_at DESC").Find(&logs).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch routine logs", err)
 	}

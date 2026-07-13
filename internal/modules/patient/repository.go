@@ -3,6 +3,7 @@ package patient
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -184,4 +185,88 @@ func (r *patientRepository) GetStats(ctx context.Context, staffID string) (*Pati
 		ActivePatients: active,
 		AverageAge:     int(avgAge),
 	}, nil
+}
+
+func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID string) (*PatientSummaryData, error) {
+	var summary PatientSummaryData
+
+	// 1. Get average blood sugar and latest blood sugar
+	var latestBS domain.BloodSugarLog
+	err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Order("measured_at DESC").
+		First(&latestBS).Error
+	if err == nil {
+		val := latestBS.GlucoseValue
+		summary.LatestBloodSugar = &val
+		summary.LatestBloodSugarTime = &latestBS.MeasuredAt
+		statusStr := string(latestBS.Status)
+		summary.LatestBloodSugarStatus = &statusStr
+	}
+
+	var avgBS float64
+	err = r.db.WithContext(ctx).Model(&domain.BloodSugarLog{}).
+		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Select("COALESCE(AVG(glucose_value), 0)").
+		Scan(&avgBS).Error
+	if err == nil && avgBS > 0 {
+		summary.AverageBloodSugar = &avgBS
+	}
+
+	// 1b. Get latest meal calories and type
+	var latestMeal domain.MealLog
+	err = r.db.WithContext(ctx).
+		Preload("Food").
+		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Order("logged_at DESC").
+		First(&latestMeal).Error
+	if err == nil {
+		var cals float64
+		if latestMeal.Food != nil {
+			cals = latestMeal.Food.Calories * latestMeal.PortionMultiplier
+		}
+		summary.LatestMealCalories = &cals
+		mType := string(latestMeal.MealType)
+		summary.LatestMealType = &mType
+	}
+
+	// 2. Get latest weight and height from patient to calculate BMI
+	var patient domain.Patient
+	err = r.db.WithContext(ctx).
+		Select("weight_kg, height_cm").
+		Where("id = ? AND deleted_at IS NULL", patientID).
+		First(&patient).Error
+	if err == nil {
+		w := patient.WeightKg
+		summary.LatestWeight = &w
+		if patient.HeightCm > 0 {
+			heightM := patient.HeightCm / 100.0
+			bmi := w / (heightM * heightM)
+			summary.BMI = &bmi
+		}
+	}
+
+	// 3. Get latest completed activity
+	type ActivityResult struct {
+		DescriptiveName string
+		LoggedAt        time.Time
+	}
+	var actResult ActivityResult
+	err = r.db.WithContext(ctx).Raw(`
+		SELECT r.descriptive_name, le.logged_at
+		FROM routine_log_entries le
+		JOIN routine_times rt ON rt.id = le.routine_time_id
+		JOIN routines r ON r.id = rt.routine_id
+		WHERE le.patient_id = ? AND le.status = 'Completed' AND le.deleted_at IS NULL AND rt.deleted_at IS NULL AND r.deleted_at IS NULL
+		ORDER BY le.logged_at DESC
+		LIMIT 1
+	`, patientID).Scan(&actResult).Error
+	if err == nil && actResult.DescriptiveName != "" {
+		name := actResult.DescriptiveName
+		summary.LatestActivityName = &name
+		t := actResult.LoggedAt
+		summary.LatestActivityTime = &t
+	}
+
+	return &summary, nil
 }

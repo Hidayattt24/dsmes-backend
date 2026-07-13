@@ -22,3 +22,11 @@ func (s *dashboardService) GetAdminDashboard(ctx context.Context) (*AdminDashboa
 func (s *dashboardService) GetStaffDashboard(ctx context.Context, staffID string) (*StaffDashboardResponse, error) {
 	return s.repo.GetStaffStats(ctx, staffID)
 }
+
+func (s *dashboardService) GetTopArticles(ctx context.Context) ([]TopArticleResponse, error) {
+	return s.repo.GetTopArticles(ctx)
+}
+
+func (s *dashboardService) GetActivityChart(ctx context.Context) ([]ActivityChartResponse, error) {
+	return s.repo.GetActivityChart(ctx)
+}

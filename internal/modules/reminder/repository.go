@@ -130,10 +130,15 @@ func (r *reminderRepository) MarkNotificationsAsRead(ctx context.Context, patien
 
 func (r *reminderRepository) FindLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.DailyReminderLog, error) {
 	var logs []domain.DailyReminderLog
-	err := r.db.WithContext(ctx).
+	q := r.db.WithContext(ctx).
 		Joins("JOIN reminders ON reminders.id = daily_reminder_logs.reminder_id").
-		Where("reminders.patient_id = ? AND daily_reminder_logs.log_date = ? AND daily_reminder_logs.deleted_at IS NULL", patientID, dateStr).
-		Find(&logs).Error
+		Where("reminders.patient_id = ? AND daily_reminder_logs.deleted_at IS NULL", patientID)
+	if dateStr != "" {
+		q = q.Where("daily_reminder_logs.log_date = ?", dateStr)
+	} else {
+		q = q.Where("daily_reminder_logs.log_date >= CURRENT_DATE - INTERVAL '30 days'")
+	}
+	err := q.Order("daily_reminder_logs.log_date DESC").Find(&logs).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch daily reminder logs", err)
 	}

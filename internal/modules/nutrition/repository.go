@@ -70,10 +70,13 @@ func (r *nutritionRepository) CreateMealLog(ctx context.Context, log *domain.Mea
 
 func (r *nutritionRepository) FindMealsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.MealLog, error) {
 	var items []domain.MealLog
-	err := r.db.WithContext(ctx).
-		Preload("Food").
-		Where("patient_id = ? AND DATE(logged_at) = ? AND deleted_at IS NULL", patientID, dateStr).
-		Find(&items).Error
+	q := r.db.WithContext(ctx).Preload("Food").Where("patient_id = ? AND deleted_at IS NULL", patientID)
+	if dateStr != "" {
+		q = q.Where("DATE(logged_at) = ?", dateStr)
+	} else {
+		q = q.Where("logged_at >= NOW() - INTERVAL '30 days'")
+	}
+	err := q.Order("logged_at ASC").Find(&items).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch meal logs", err)
 	}

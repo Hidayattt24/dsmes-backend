@@ -52,6 +52,31 @@ func (r *dashboardRepository) GetAdminStats(ctx context.Context) (*AdminDashboar
 		return nil, errs.NewInternal("failed to count blood sugar logs", err)
 	}
 
+	var totalMealLogs int64
+	var totalActivityLogs int64
+	var totalMedicationLogs int64
+	_ = r.db.WithContext(ctx).Model(&domain.MealLog{}).Where("deleted_at IS NULL").Count(&totalMealLogs)
+	_ = r.db.WithContext(ctx).Model(&domain.RoutineLogEntry{}).Where("deleted_at IS NULL").Count(&totalActivityLogs)
+	_ = r.db.WithContext(ctx).Model(&domain.DailyReminderLog{}).Where("deleted_at IS NULL").Count(&totalMedicationLogs)
+
+	var avgBloodSugar float64
+	if err := r.db.WithContext(ctx).Model(&domain.BloodSugarLog{}).Where("deleted_at IS NULL").Select("COALESCE(AVG(glucose_value), 0)").Scan(&avgBloodSugar).Error; err != nil {
+		r.log.Warn("failed to fetch average blood sugar log stats", zap.Error(err))
+	}
+
+	var todaySugarLogs int64
+	var todayMealLogs int64
+	var todayCheckins int64
+	_ = r.db.WithContext(ctx).Model(&domain.BloodSugarLog{}).Where("DATE(measured_at) = CURRENT_DATE AND deleted_at IS NULL").Count(&todaySugarLogs)
+	_ = r.db.WithContext(ctx).Model(&domain.MealLog{}).Where("DATE(logged_at) = CURRENT_DATE AND deleted_at IS NULL").Count(&todayMealLogs)
+	_ = r.db.WithContext(ctx).Model(&domain.RoutineLogEntry{}).Where("DATE(logged_at) = CURRENT_DATE AND deleted_at IS NULL").Count(&todayCheckins)
+	todayRecords := todaySugarLogs + todayMealLogs + todayCheckins
+
+	var newRegistrations int64
+	if err := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("DATE(created_at) = CURRENT_DATE AND deleted_at IS NULL").Count(&newRegistrations).Error; err != nil {
+		r.log.Warn("failed to fetch today new registrations", zap.Error(err))
+	}
+
 	// Fetch registration trends (last 6 months)
 	var patientMonthly []MonthData
 	err := r.db.WithContext(ctx).Raw(`
@@ -98,6 +123,12 @@ func (r *dashboardRepository) GetAdminStats(ctx context.Context) (*AdminDashboar
 		TotalArticles:       totalArticles,
 		TotalQuizzes:        totalQuizzes,
 		TotalSugarLogs:      totalSugarLogs,
+		TotalMealLogs:       totalMealLogs,
+		TotalActivityLogs:   totalActivityLogs,
+		TotalMedicationLogs: totalMedicationLogs,
+		AverageBloodSugar:   avgBloodSugar,
+		TodayRecords:        todayRecords,
+		NewRegistrations:    newRegistrations,
 		PatientMonthly:      patientMonthly,
 		ArticleViewsMonthly: articleViewsMonthly,
 		SugarLogsMonthly:    sugarLogsMonthly,
@@ -247,4 +278,82 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 		PriorityPatients:       priorityPatients,
 		NonCompliantPatients:   nonCompliantPatients,
 	}, nil
+}
+
+func (r *dashboardRepository) GetTopArticles(ctx context.Context) ([]TopArticleResponse, error) {
+	var items []TopArticleResponse
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT a.id, a.title, c.name as category, COUNT(v.id) as read_count, a.banner_image_url as thumbnail_url
+		FROM articles a
+		LEFT JOIN article_categories c ON c.id = a.category_id
+		LEFT JOIN article_views v ON v.article_id = a.id AND v.deleted_at IS NULL
+		WHERE a.deleted_at IS NULL
+		GROUP BY a.id, c.name
+		ORDER BY read_count DESC
+		LIMIT 5
+	`).Scan(&items).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch top articles", err)
+	}
+	return items, nil
+}
+
+func (r *dashboardRepository) GetActivityChart(ctx context.Context) ([]ActivityChartResponse, error) {
+	type tempRes struct {
+		Day   string
+		Value int64
+	}
+	var raw []tempRes
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT TO_CHAR(d, 'Dy') as day, COALESCE(SUM(cnt), 0) as value
+		FROM (
+			SELECT generate_series(NOW() - INTERVAL '6 days', NOW(), '1 day')::date as d
+		) days
+		LEFT JOIN (
+			SELECT DATE(measured_at) as dt, COUNT(*) as cnt FROM blood_sugar_logs WHERE deleted_at IS NULL GROUP BY dt
+			UNION ALL
+			SELECT DATE(logged_at) as dt, COUNT(*) as cnt FROM meal_logs WHERE deleted_at IS NULL GROUP BY dt
+			UNION ALL
+			SELECT DATE(logged_at) as dt, COUNT(*) as cnt FROM routine_log_entries WHERE deleted_at IS NULL GROUP BY dt
+		) activity ON activity.dt = days.d
+		GROUP BY d
+		ORDER BY d ASC
+	`).Scan(&raw).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch activity chart", err)
+	}
+
+	dayMap := map[string]string{
+		"Mon": "Sen",
+		"Tue": "Sel",
+		"Wed": "Rab",
+		"Thu": "Kam",
+		"Fri": "Jum",
+		"Sat": "Sab",
+		"Sun": "Min",
+	}
+
+	items := make([]ActivityChartResponse, len(raw))
+	maxVal := int64(1)
+	for _, r := range raw {
+		if r.Value > maxVal {
+			maxVal = r.Value
+		}
+	}
+
+	for i, r := range raw {
+		dayIndo := dayMap[r.Day]
+		if dayIndo == "" {
+			dayIndo = r.Day
+		}
+		items[i] = ActivityChartResponse{
+			Day:           dayIndo,
+			Value:         r.Value,
+			HeightPercent: float64(r.Value) / float64(maxVal) * 100.0,
+		}
+		if items[i].HeightPercent < 10 {
+			items[i].HeightPercent = 10
+		}
+	}
+	return items, nil
 }
