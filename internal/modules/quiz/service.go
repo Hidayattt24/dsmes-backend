@@ -2,6 +2,7 @@ package quiz
 
 import (
 	"context"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -34,7 +35,7 @@ func (s *quizService) ListQuizzes(ctx context.Context, search string, status str
 	for i := range items {
 		count, _ := s.repo.CountAttempts(ctx, items[i].ID)
 		avg, _ := s.repo.GetAverageScore(ctx, items[i].ID)
-		resp[i] = ToQuizResponse(&items[i], count, avg)
+		resp[i] = ToQuizResponse(&items[i], len(items[i].Questions), count, avg)
 	}
 
 	return resp, total, nil
@@ -49,7 +50,7 @@ func (s *quizService) GetQuiz(ctx context.Context, id string, isAdminOrStaff boo
 	count, _ := s.repo.CountAttempts(ctx, q.ID)
 	avg, _ := s.repo.GetAverageScore(ctx, q.ID)
 
-	res := ToQuizDetailResponse(q, count, avg, isAdminOrStaff)
+	res := ToQuizDetailResponse(q, len(q.Questions), count, avg, isAdminOrStaff)
 	return &res, nil
 }
 
@@ -59,7 +60,7 @@ func (s *quizService) CreateQuiz(ctx context.Context, staffID string, req Create
 		LinkedArticleID: req.LinkedArticleID,
 		Difficulty:      req.Difficulty,
 		PassingScore:    req.PassingScore,
-		Status:          req.Status,
+		Status:          normalizeStatus(req.Status),
 		CreatedBy:       &staffID,
 	}
 
@@ -98,7 +99,7 @@ func (s *quizService) UpdateQuiz(ctx context.Context, id string, req CreateQuizR
 	quiz.LinkedArticleID = req.LinkedArticleID
 	quiz.Difficulty = req.Difficulty
 	quiz.PassingScore = req.PassingScore
-	quiz.Status = req.Status
+	quiz.Status = normalizeStatus(req.Status)
 
 	if err := s.repo.Update(ctx, quiz); err != nil {
 		return nil, err
@@ -142,12 +143,16 @@ func (s *quizService) ListParticipants(ctx context.Context, quizID string) ([]Pa
 	for i, a := range attempts {
 		pName := "-"
 		pAvatar := ""
-		assignedStaff := "-"
+		puskesmas := "-"
 		if a.Patient != nil {
 			pName = a.Patient.FullName
 			pAvatar = a.Patient.ProfilePhotoURL
 			if a.Patient.AssignedStaff != nil {
-				assignedStaff = a.Patient.AssignedStaff.FullName
+				// Use PositionTitle as puskesmas (e.g. "Puskesmas Kuta Alam")
+				puskesmas = a.Patient.AssignedStaff.PositionTitle
+				if strings.TrimSpace(puskesmas) == "" {
+					puskesmas = a.Patient.AssignedStaff.FullName
+				}
 			}
 		}
 
@@ -156,7 +161,7 @@ func (s *quizService) ListParticipants(ctx context.Context, quizID string) ([]Pa
 			PatientID:      a.PatientID,
 			PatientName:    pName,
 			PatientAvatar:  pAvatar,
-			AssignedStaff:  assignedStaff,
+			Puskesmas:      puskesmas,
 			CompletionDate: a.CompletedAt,
 			Score:          a.Score,
 			Passed:         a.Passed,
@@ -180,12 +185,15 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, quizID string, p
 
 	pName := "-"
 	pAvatar := ""
-	assignedStaff := "-"
+	puskesmas := "-"
 	if attempt.Patient != nil {
 		pName = attempt.Patient.FullName
 		pAvatar = attempt.Patient.ProfilePhotoURL
 		if attempt.Patient.AssignedStaff != nil {
-			assignedStaff = attempt.Patient.AssignedStaff.FullName
+			puskesmas = attempt.Patient.AssignedStaff.PositionTitle
+			if strings.TrimSpace(puskesmas) == "" {
+				puskesmas = attempt.Patient.AssignedStaff.FullName
+			}
 		}
 	}
 
@@ -194,7 +202,7 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, quizID string, p
 		PatientID:      attempt.PatientID,
 		PatientName:    pName,
 		PatientAvatar:  pAvatar,
-		AssignedStaff:  assignedStaff,
+		Puskesmas:      puskesmas,
 		CompletionDate: attempt.CompletedAt,
 		Score:          attempt.Score,
 		Passed:         attempt.Passed,
@@ -212,7 +220,7 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, quizID string, p
 			qText = ans.Question.QuestionText
 			explanation = ans.Question.Explanation
 
-			// Map answer texts
+			// Map answer letter to full text
 			switch ans.Question.CorrectOption {
 			case "A":
 				correctAnswerText = "A. " + ans.Question.OptionA

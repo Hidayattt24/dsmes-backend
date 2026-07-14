@@ -1,6 +1,7 @@
 package quiz
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
@@ -10,18 +11,18 @@ type QuestionRequest struct {
 	QuestionText  string `json:"question_text"  validate:"required"`
 	OptionA       string `json:"option_a"       validate:"required"`
 	OptionB       string `json:"option_b"       validate:"required"`
-	OptionC       string `json:"option_c"       validate:"required"`
-	OptionD       string `json:"option_d"       validate:"required"`
+	OptionC       string `json:"option_c"`
+	OptionD       string `json:"option_d"`
 	CorrectOption string `json:"correct_option" validate:"required,oneof=A B C D"`
-	Explanation    string `json:"explanation"`
+	Explanation   string `json:"explanation"`
 }
 
 type CreateQuizRequest struct {
 	Title           string            `json:"title"             validate:"required,min=5,max=200"`
 	LinkedArticleID string            `json:"linked_article_id" validate:"required,uuid4"`
 	Difficulty      string            `json:"difficulty"        validate:"required,oneof=Mudah Sedang Sulit"`
-	PassingScore    int               `json:"passing_score"     validate:"required,min=0,max=100"`
-	Status          string            `json:"status"            validate:"required,oneof=draft terbit"`
+	PassingScore    int               `json:"passing_score"     validate:"min=0,max=100"`
+	Status          string            `json:"status"            validate:"required,oneof=Draft Terbit draft terbit"`
 	Questions       []QuestionRequest `json:"questions"         validate:"required,min=1"`
 }
 
@@ -44,6 +45,7 @@ type QuizResponse struct {
 	Difficulty         string    `json:"difficulty"`
 	PassingScore       int       `json:"passing_score"`
 	Status             string    `json:"status"`
+	QuestionCount      int       `json:"question_count"`
 	ParticipantCount   int       `json:"participant_count"`
 	AverageScore       *int      `json:"average_score"`
 	CreatedBy          string    `json:"created_by"`
@@ -69,7 +71,7 @@ type ParticipantResponse struct {
 	PatientID      string    `json:"patient_id"`
 	PatientName    string    `json:"patient_name"`
 	PatientAvatar  string    `json:"patient_avatar,omitempty"`
-	AssignedStaff  string    `json:"assigned_staff"`
+	Puskesmas      string    `json:"puskesmas"`
 	CompletionDate time.Time `json:"completion_date"`
 	Score          int       `json:"score"`
 	Passed         bool      `json:"passed"`
@@ -92,14 +94,44 @@ type ParticipantDetailResponse struct {
 	QuestionAnalysis []QuestionAnalysisResponse `json:"question_analysis"`
 }
 
-// Format duration from seconds (e.g. 252s -> "4m 12s")
+// formatDuration converts duration in seconds to human-readable form e.g. "4m 12s"
 func formatDuration(seconds int) string {
 	m := seconds / 60
 	s := seconds % 60
-	return time.Duration(time.Duration(m)*time.Minute + time.Duration(s)*time.Second).String()
+	if m == 0 {
+		return fmt.Sprintf("%ds", s)
+	}
+	if s == 0 {
+		return fmt.Sprintf("%dm", m)
+	}
+	return fmt.Sprintf("%dm %ds", m, s)
 }
 
-func ToQuizResponse(q *domain.Quiz, participantCount int, avgScore *int) QuizResponse {
+// normalizeStatus converts frontend-sent status ("Terbit"/"Draft") to lowercase for storage.
+func normalizeStatus(status string) string {
+	switch status {
+	case "Terbit", "terbit":
+		return "terbit"
+	case "Draft", "draft":
+		return "draft"
+	default:
+		return status
+	}
+}
+
+// displayStatus converts stored lowercase status to frontend display case.
+func displayStatus(status string) string {
+	switch status {
+	case "terbit":
+		return "Terbit"
+	case "draft":
+		return "Draft"
+	default:
+		return status
+	}
+}
+
+func ToQuizResponse(q *domain.Quiz, questionCount int, participantCount int, avgScore *int) QuizResponse {
 	articleTitle := ""
 	if q.LinkedArticle != nil {
 		articleTitle = q.LinkedArticle.Title
@@ -117,7 +149,8 @@ func ToQuizResponse(q *domain.Quiz, participantCount int, avgScore *int) QuizRes
 		LinkedArticleTitle: articleTitle,
 		Difficulty:         q.Difficulty,
 		PassingScore:       q.PassingScore,
-		Status:             q.Status,
+		Status:             displayStatus(q.Status),
+		QuestionCount:      questionCount,
 		ParticipantCount:   participantCount,
 		AverageScore:       avgScore,
 		CreatedBy:          createdBy,
@@ -126,9 +159,9 @@ func ToQuizResponse(q *domain.Quiz, participantCount int, avgScore *int) QuizRes
 	}
 }
 
-func ToQuizDetailResponse(q *domain.Quiz, participantCount int, avgScore *int, isAdminOrStaff bool) QuizDetailResponse {
+func ToQuizDetailResponse(q *domain.Quiz, questionCount int, participantCount int, avgScore *int, isAdminOrStaff bool) QuizDetailResponse {
 	resp := QuizDetailResponse{
-		QuizResponse: ToQuizResponse(q, participantCount, avgScore),
+		QuizResponse: ToQuizResponse(q, questionCount, participantCount, avgScore),
 		Questions:    make([]QuestionResponse, len(q.Questions)),
 	}
 

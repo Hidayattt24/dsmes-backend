@@ -3,6 +3,7 @@ package quiz
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -31,8 +32,9 @@ func (r *quizRepository) FindAll(ctx context.Context, search string, status stri
 		q = q.Where("title ILIKE ?", searchPattern)
 	}
 
-	if status != "" && status != "Semua" {
-		q = q.Where("status = ?", status)
+	if status != "" && !strings.EqualFold(status, "Semua") {
+		// Normalize status to lowercase for DB comparison
+		q = q.Where("LOWER(status) = LOWER(?)", status)
 	}
 
 	if err := q.Count(&total).Error; err != nil {
@@ -41,6 +43,7 @@ func (r *quizRepository) FindAll(ctx context.Context, search string, status stri
 
 	offset := (page - 1) * limit
 	err := q.Preload("LinkedArticle").
+		Preload("Questions").
 		Offset(offset).Limit(limit).
 		Order("created_at DESC").
 		Find(&items).Error
@@ -114,13 +117,12 @@ func (r *quizRepository) GetStats(ctx context.Context) (*QuizStats, error) {
 	var publishedQuizzes int64
 	var draftQuizzes int64
 	var totalAttempts int64
-	var averageScore float64
 
 	if err := r.db.WithContext(ctx).Model(&domain.Quiz{}).Where("deleted_at IS NULL").Count(&totalQuizzes).Error; err != nil {
 		return nil, errs.NewInternal("failed to count quizzes", err)
 	}
 
-	if err := r.db.WithContext(ctx).Model(&domain.Quiz{}).Where("status = ? AND deleted_at IS NULL", "terbit").Count(&publishedQuizzes).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&domain.Quiz{}).Where("LOWER(status) = ? AND deleted_at IS NULL", "terbit").Count(&publishedQuizzes).Error; err != nil {
 		return nil, errs.NewInternal("failed to count published quizzes", err)
 	}
 
@@ -140,14 +142,13 @@ func (r *quizRepository) GetStats(ctx context.Context) (*QuizStats, error) {
 	if err != nil {
 		return nil, errs.NewInternal("failed to calculate average score", err)
 	}
-	averageScore = scoreResult.AvgScore
 
 	return &QuizStats{
 		TotalQuizzes:     totalQuizzes,
 		PublishedQuizzes: publishedQuizzes,
 		DraftQuizzes:     draftQuizzes,
 		TotalAttempts:    totalAttempts,
-		AverageScore:     int(averageScore),
+		AverageScore:     int(scoreResult.AvgScore),
 	}, nil
 }
 
