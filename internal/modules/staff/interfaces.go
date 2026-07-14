@@ -23,5 +23,6 @@ type StaffService interface {
 	UpdateStaff(ctx context.Context, id string, req UpdateStaffRequest) (*StaffResponse, error)
 	ToggleStatus(ctx context.Context, id string) (*StaffResponse, error)
 	UpdateMyProfile(ctx context.Context, staffID string, req UpdateProfileRequest) (*StaffResponse, error)
+	ChangePassword(ctx context.Context, staffID string, req ChangePasswordRequest) error
 	DeleteStaff(ctx context.Context, id string) error
 }

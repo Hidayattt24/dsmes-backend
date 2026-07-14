@@ -130,13 +130,29 @@ func (s *staffService) UpdateMyProfile(ctx context.Context, staffID string, req 
 		return nil, err
 	}
 
+	// Validate duplicate username if changed
+	if req.Username != staff.Username {
+		existing, err := s.repo.FindByUsername(ctx, req.Username)
+		if err == nil && existing.ID != staffID {
+			return nil, errs.NewConflict("username already exists")
+		}
+	}
+
+	// Validate duplicate email if changed
+	if req.Email != staff.Email {
+		existing, err := s.repo.FindByEmail(ctx, req.Email)
+		if err == nil && existing.ID != staffID {
+			return nil, errs.NewConflict("email already registered")
+		}
+	}
+
 	staff.FullName = req.FullName
+	staff.Username = req.Username
+	staff.Email = req.Email
 	staff.WhatsappNumber = req.WhatsappNumber
 	staff.PositionTitle = req.PositionTitle
 	staff.ShortBio = req.ShortBio
-	if req.ProfilePhotoURL != "" {
-		staff.ProfilePhotoURL = req.ProfilePhotoURL
-	}
+	staff.ProfilePhotoURL = req.ProfilePhotoURL
 
 	if err = s.repo.Update(ctx, staff); err != nil {
 		return nil, err
@@ -144,6 +160,27 @@ func (s *staffService) UpdateMyProfile(ctx context.Context, staffID string, req 
 
 	res := ToStaffResponse(staff)
 	return &res, nil
+}
+
+func (s *staffService) ChangePassword(ctx context.Context, staffID string, req ChangePasswordRequest) error {
+	staff, err := s.repo.FindByID(ctx, staffID)
+	if err != nil {
+		return err
+	}
+
+	// Verify current password
+	if err := bcrypt.CompareHashAndPassword([]byte(staff.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		return errs.NewUnauthorized("kata sandi saat ini salah")
+	}
+
+	// Hash new password
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return errs.NewInternal("failed to hash password", err)
+	}
+
+	staff.PasswordHash = string(hash)
+	return s.repo.Update(ctx, staff)
 }
 
 func (s *staffService) DeleteStaff(ctx context.Context, id string) error {

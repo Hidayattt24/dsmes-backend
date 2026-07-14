@@ -148,6 +148,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 
 		admin.Get("/me", staffHandler.GetMe)
 		admin.Put("/me", staffHandler.UpdateMe)
+		admin.Put("/me/password", staffHandler.ChangePassword)
 
 		// Patient Management
 		admin.Get("/patients/stats", patientHandler.GetStats)
@@ -200,6 +201,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	{
 		staff.Get("/me", staffHandler.GetMe)
 		staff.Put("/me", staffHandler.UpdateMe)
+		staff.Put("/me/password", staffHandler.ChangePassword)
 
 		// Patient Monitoring
 		staff.Get("/patients/stats", patientHandler.GetStatsStaff)

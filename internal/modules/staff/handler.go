@@ -211,6 +211,37 @@ func (h *StaffHandler) UpdateMe(c fiber.Ctx) error {
 	return response.Success(c, "profile updated", res)
 }
 
+// ChangePassword handles PUT /api/v1/admin/me/password
+// @Summary      Change current staff password
+// @Tags         staff
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  ChangePasswordRequest  true  "Change password payload"
+// @Success      200  {object}  map[string]any
+// @Router       /admin/me/password [put]
+func (h *StaffHandler) ChangePassword(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req ChangePasswordRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	err := h.svc.ChangePassword(c.Context(), claims.UserID, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "password updated successfully", nil)
+}
+
 // Delete handles DELETE /api/v1/admin/staff/:id
 // @Summary      Delete staff account (soft-delete)
 // @Tags         staff

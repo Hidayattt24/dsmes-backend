@@ -22,10 +22,17 @@ type UpdateStaffRequest struct {
 
 type UpdateProfileRequest struct {
 	FullName        string `json:"full_name"       validate:"required,min=3,max=150"`
+	Username        string `json:"username"        validate:"required,min=3,max=50"`
+	Email           string `json:"email"           validate:"required,email"`
 	WhatsappNumber  string `json:"whatsapp_number" validate:"required,numeric,min=10,max=20"`
 	PositionTitle   string `json:"position_title"`
 	ShortBio        string `json:"short_bio"`
 	ProfilePhotoURL string `json:"profile_photo_url"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	NewPassword     string `json:"new_password"     validate:"required,min=8"`
 }
 
 type StaffResponse struct {
