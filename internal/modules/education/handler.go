@@ -92,7 +92,7 @@ func (h *EducationHandler) ListPublished(c fiber.Ctx) error {
 func (h *EducationHandler) GetByID(c fiber.Ctx) error {
 	claims := middleware.ClaimsFromContext(c)
 	var patientID *string
-	if claims != nil && claims.Role == "patient" {
+	if claims != nil && claims.Role == "user" {
 		patientID = &claims.UserID
 	}
 
@@ -251,7 +251,7 @@ func (h *EducationHandler) Create(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return response.Created(c, "article created as draft", res)
+	return response.Created(c, "article created", res)
 }
 
 // Update handles PUT /api/v1/admin/education/articles/:id

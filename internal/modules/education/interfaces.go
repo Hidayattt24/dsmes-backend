@@ -9,6 +9,7 @@ import (
 type EducationRepository interface {
 	FindAllCategories(ctx context.Context) ([]domain.ArticleCategory, error)
 	FindCategoryByID(ctx context.Context, id string) (*domain.ArticleCategory, error)
+	FindOrCreateCategoryByName(ctx context.Context, name string) (*domain.ArticleCategory, error)
 
 	FindAllArticles(ctx context.Context, categoryID string, status *domain.ArticleStatus, page, limit int) ([]domain.Article, int64, error)
 	FindArticleByID(ctx context.Context, id string) (*domain.Article, error)

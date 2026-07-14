@@ -17,14 +17,16 @@ type SectionRequest struct {
 }
 
 type CreateArticleRequest struct {
-	Title                string           `json:"title"                  validate:"required,min=5,max=200"`
-	CategoryID           string           `json:"category_id"            validate:"required,uuid4"`
+	Title                string           `json:"title"                  validate:"required,max=200"`
+	CategoryID           string           `json:"category_id"            validate:"omitempty,uuid4"`
+	CategoryName         string           `json:"category_name"          validate:"required"`
 	EstimatedReadMinutes int              `json:"estimated_read_minutes" validate:"required,min=1"`
 	AuthorName           string           `json:"author_name"`
 	BannerImageURL       string           `json:"banner_image_url"`
 	Summary              string           `json:"summary"                validate:"required"`
 	Content              string           `json:"content"`
 	YoutubeLink          string           `json:"youtube_link"`
+	Status               string           `json:"status"                 validate:"omitempty,oneof=draft publikasi"`
 	Sections             []SectionRequest `json:"sections"`
 }
 
@@ -57,6 +59,7 @@ type ArticleListResponse struct {
 	CreatedAt            string               `json:"created_at"`
 	Content              string               `json:"content"`
 	YoutubeLink          string               `json:"youtube_link"`
+	ReadCount            int64                `json:"read_count"`
 }
 
 type ArticleDetailResponse struct {
@@ -101,6 +104,7 @@ func ToArticleListResponse(a *domain.Article) ArticleListResponse {
 		CreatedAt:            a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		Content:              a.Content,
 		YoutubeLink:          a.YoutubeLink,
+		ReadCount:            a.ReadCount,
 	}
 }
 

@@ -57,33 +57,53 @@ func (s *educationService) GetArticle(ctx context.Context, id string, patientID 
 		return nil, err
 	}
 
-	// Record pageview asynchronously
-	view := &domain.ArticleView{
-		ArticleID: id,
-		PatientID: patientID,
-		ViewedAt:  time.Now(),
+	// Record pageview asynchronously only if viewed by a patient
+	if patientID != nil {
+		view := &domain.ArticleView{
+			ArticleID: id,
+			PatientID: patientID,
+			ViewedAt:  time.Now(),
+		}
+		_ = s.repo.RecordView(ctx, view)
 	}
-	_ = s.repo.RecordView(ctx, view)
 
 	res := ToArticleDetailResponse(a)
 	return &res, nil
 }
 
 func (s *educationService) CreateArticle(ctx context.Context, staffID string, req CreateArticleRequest) (*ArticleDetailResponse, error) {
-	// Verify category exists
-	_, err := s.repo.FindCategoryByID(ctx, req.CategoryID)
-	if err != nil {
-		return nil, err
+	// Verify and resolve category
+	var categoryID string
+	var err error
+
+	if req.CategoryName != "" {
+		var category *domain.ArticleCategory
+		category, err = s.repo.FindOrCreateCategoryByName(ctx, req.CategoryName)
+		if err != nil {
+			return nil, err
+		}
+		categoryID = category.ID
+	} else {
+		_, err = s.repo.FindCategoryByID(ctx, req.CategoryID)
+		if err != nil {
+			return nil, err
+		}
+		categoryID = req.CategoryID
+	}
+
+	status := domain.StatusDraft
+	if req.Status != "" {
+		status = domain.ArticleStatus(req.Status)
 	}
 
 	article := &domain.Article{
 		Title:                req.Title,
-		CategoryID:           req.CategoryID,
+		CategoryID:           categoryID,
 		EstimatedReadMinutes: req.EstimatedReadMinutes,
 		AuthorName:           req.AuthorName,
 		BannerImageURL:       req.BannerImageURL,
 		Summary:              req.Summary,
-		Status:               domain.StatusDraft,
+		Status:               status,
 		CreatedBy:            &staffID,
 		Content:              req.Content,
 		YoutubeLink:          req.YoutubeLink,
@@ -118,7 +138,8 @@ func (s *educationService) CreateArticle(ctx context.Context, staffID string, re
 	}
 
 	// Refetch full article
-	refetched, err := s.repo.FindArticleByID(ctx, article.ID)
+	var refetched *domain.Article
+	refetched, err = s.repo.FindArticleByID(ctx, article.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,19 +154,35 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Cre
 		return nil, err
 	}
 
-	_, err = s.repo.FindCategoryByID(ctx, req.CategoryID)
-	if err != nil {
-		return nil, err
+	// Verify and resolve category
+	var categoryID string
+	if req.CategoryName != "" {
+		var category *domain.ArticleCategory
+		category, err = s.repo.FindOrCreateCategoryByName(ctx, req.CategoryName)
+		if err != nil {
+			return nil, err
+		}
+		categoryID = category.ID
+	} else {
+		_, err = s.repo.FindCategoryByID(ctx, req.CategoryID)
+		if err != nil {
+			return nil, err
+		}
+		categoryID = req.CategoryID
 	}
 
 	article.Title = req.Title
-	article.CategoryID = req.CategoryID
+	article.CategoryID = categoryID
 	article.EstimatedReadMinutes = req.EstimatedReadMinutes
 	article.AuthorName = req.AuthorName
 	article.BannerImageURL = req.BannerImageURL
 	article.Summary = req.Summary
 	article.Content = req.Content
 	article.YoutubeLink = req.YoutubeLink
+
+	if req.Status != "" {
+		article.Status = domain.ArticleStatus(req.Status)
+	}
 
 	if err = s.repo.UpdateArticle(ctx, article); err != nil {
 		return nil, err
@@ -176,7 +213,8 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Cre
 	}
 
 	// Refetch full
-	refetched, err := s.repo.FindArticleByID(ctx, id)
+	var refetched *domain.Article
+	refetched, err = s.repo.FindArticleByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}

@@ -41,6 +41,9 @@ type Article struct {
 	Content               string        `gorm:"type:text" json:"content"`
 	YoutubeLink           string        `gorm:"type:varchar(255)" json:"youtube_link"`
 
+	// Virtual fields (read-only)
+	ReadCount             int64         `gorm:"->"`
+
 	// Relations
 	Category        *ArticleCategory `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	ArticleSections []ArticleSection `gorm:"foreignKey:ArticleID;constraint:OnDelete:CASCADE" json:"sections,omitempty"`

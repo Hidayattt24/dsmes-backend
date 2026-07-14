@@ -41,6 +41,25 @@ func (r *educationRepository) FindCategoryByID(ctx context.Context, id string) (
 	}
 	return &c, nil
 }
+func (r *educationRepository) FindOrCreateCategoryByName(ctx context.Context, name string) (*domain.ArticleCategory, error) {
+	var c domain.ArticleCategory
+	err := r.db.WithContext(ctx).Where("name = ? AND deleted_at IS NULL", name).First(&c).Error
+	if err == nil {
+		return &c, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errs.NewInternal("failed to query category by name", err)
+	}
+
+	// Create new category
+	c = domain.ArticleCategory{
+		Name: name,
+	}
+	if err := r.db.WithContext(ctx).Create(&c).Error; err != nil {
+		return nil, errs.NewInternal("failed to create category dynamically", err)
+	}
+	return &c, nil
+}
 
 func (r *educationRepository) FindAllArticles(ctx context.Context, categoryID string, status *domain.ArticleStatus, page, limit int) ([]domain.Article, int64, error) {
 	var items []domain.Article
@@ -61,9 +80,11 @@ func (r *educationRepository) FindAllArticles(ctx context.Context, categoryID st
 	}
 
 	offset := (page - 1) * limit
-	err := q.Preload("Category").
+	err := q.Select("articles.*, COALESCE(views.count, 0) as read_count").
+		Joins("LEFT JOIN (SELECT article_id, COUNT(*) as count FROM article_views WHERE deleted_at IS NULL GROUP BY article_id) views ON views.article_id = articles.id").
+		Preload("Category").
 		Offset(offset).Limit(limit).
-		Order("created_at DESC").
+		Order("articles.created_at DESC").
 		Find(&items).Error
 	if err != nil {
 		return nil, 0, errs.NewInternal("failed to fetch articles", err)
@@ -75,6 +96,8 @@ func (r *educationRepository) FindAllArticles(ctx context.Context, categoryID st
 func (r *educationRepository) FindArticleByID(ctx context.Context, id string) (*domain.Article, error) {
 	var a domain.Article
 	err := r.db.WithContext(ctx).
+		Select("articles.*, COALESCE(views.count, 0) as read_count").
+		Joins("LEFT JOIN (SELECT article_id, COUNT(*) as count FROM article_views WHERE deleted_at IS NULL GROUP BY article_id) views ON views.article_id = articles.id").
 		Preload("Category").
 		Preload("ArticleSections", func(db *gorm.DB) *gorm.DB {
 			return db.Order("article_sections.section_order ASC")
@@ -82,7 +105,7 @@ func (r *educationRepository) FindArticleByID(ctx context.Context, id string) (*
 		Preload("ArticleSections.Steps", func(db *gorm.DB) *gorm.DB {
 			return db.Order("article_section_steps.step_order ASC")
 		}).
-		Where("id = ? AND deleted_at IS NULL", id).
+		Where("articles.id = ? AND articles.deleted_at IS NULL", id).
 		First(&a).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -219,7 +242,7 @@ func (r *educationRepository) GetStats(ctx context.Context) (*EducationStats, er
 		return nil, errs.NewInternal("failed to count articles", err)
 	}
 
-	if err := r.db.WithContext(ctx).Model(&domain.ArticleCategory{}).Where("deleted_at IS NULL").Count(&totalCategories).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&domain.Article{}).Where("deleted_at IS NULL").Distinct("category_id").Count(&totalCategories).Error; err != nil {
 		return nil, errs.NewInternal("failed to count categories", err)
 	}
 
@@ -227,7 +250,10 @@ func (r *educationRepository) GetStats(ctx context.Context) (*EducationStats, er
 		return nil, errs.NewInternal("failed to count published articles", err)
 	}
 
-	if err := r.db.WithContext(ctx).Model(&domain.ArticleView{}).Where("deleted_at IS NULL").Count(&totalReads).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&domain.ArticleView{}).
+		Joins("JOIN articles ON article_views.article_id = articles.id").
+		Where("articles.deleted_at IS NULL").
+		Count(&totalReads).Error; err != nil {
 		return nil, errs.NewInternal("failed to count article views", err)
 	}
 
