@@ -19,7 +19,7 @@ func NewStaffService(repo StaffRepository, log *zap.Logger) StaffService {
 	return &staffService{repo: repo, log: log}
 }
 
-func (s *staffService) ListStaff(ctx context.Context, role *domain.StaffRole, page, limit int) ([]StaffResponse, int64, error) {
+func (s *staffService) ListStaff(ctx context.Context, search, status string, role *domain.StaffRole, page, limit int) ([]StaffResponse, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -27,7 +27,7 @@ func (s *staffService) ListStaff(ctx context.Context, role *domain.StaffRole, pa
 		limit = 10
 	}
 
-	items, total, err := s.repo.FindAll(ctx, role, page, limit)
+	items, total, err := s.repo.FindAll(ctx, search, status, role, page, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -66,15 +66,16 @@ func (s *staffService) CreateStaff(ctx context.Context, req CreateStaffRequest) 
 	}
 
 	staff := &domain.StaffAccount{
-		FullName:       req.FullName,
-		Username:       req.Username,
-		Email:          req.Email,
-		PasswordHash:   string(hash),
-		WhatsappNumber: req.WhatsappNumber,
-		Role:           req.Role,
-		Status:         domain.StatusAktif,
-		PositionTitle:  req.PositionTitle,
-		ShortBio:       req.ShortBio,
+		FullName:        req.FullName,
+		Username:        req.Username,
+		Email:           req.Email,
+		PasswordHash:    string(hash),
+		WhatsappNumber:  req.WhatsappNumber,
+		Role:            req.Role,
+		Status:          domain.StatusAktif,
+		PositionTitle:   req.PositionTitle,
+		ShortBio:        req.ShortBio,
+		ProfilePhotoURL: req.ProfilePhotoURL,
 	}
 
 	if err = s.repo.Create(ctx, staff); err != nil {
@@ -91,10 +92,27 @@ func (s *staffService) UpdateStaff(ctx context.Context, id string, req UpdateSta
 		return nil, err
 	}
 
+	if req.Username != staff.Username {
+		existing, err := s.repo.FindByUsername(ctx, req.Username)
+		if err == nil && existing.ID != id {
+			return nil, errs.NewConflict("username already exists")
+		}
+	}
+
+	if req.Email != staff.Email {
+		existing, err := s.repo.FindByEmail(ctx, req.Email)
+		if err == nil && existing.ID != id {
+			return nil, errs.NewConflict("email already registered")
+		}
+	}
+
 	staff.FullName = req.FullName
+	staff.Username = req.Username
+	staff.Email = req.Email
 	staff.WhatsappNumber = req.WhatsappNumber
 	staff.PositionTitle = req.PositionTitle
 	staff.ShortBio = req.ShortBio
+	staff.ProfilePhotoURL = req.ProfilePhotoURL
 
 	if err = s.repo.Update(ctx, staff); err != nil {
 		return nil, err

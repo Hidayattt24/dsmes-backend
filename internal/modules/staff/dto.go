@@ -3,21 +3,25 @@ package staff
 import "github.com/dsmes/dsmes-backend/internal/domain"
 
 type CreateStaffRequest struct {
-	FullName       string           `json:"full_name"       validate:"required,min=3,max=150"`
-	Username       string           `json:"username"        validate:"required,min=3,max=50"`
-	Email          string           `json:"email"           validate:"required,email"`
-	Password       string           `json:"password"        validate:"required,min=6"`
-	WhatsappNumber string           `json:"whatsapp_number" validate:"required,numeric,min=10,max=20"`
-	Role           domain.StaffRole `json:"role"            validate:"required,oneof=admin staff"`
-	PositionTitle  string           `json:"position_title"`
-	ShortBio       string           `json:"short_bio"`
+	FullName        string           `json:"full_name"        validate:"required,min=3,max=150"`
+	Username        string           `json:"username"         validate:"required,min=3,max=50"`
+	Email           string           `json:"email"            validate:"required,email"`
+	Password        string           `json:"password"         validate:"required,min=6"`
+	WhatsappNumber  string           `json:"whatsapp_number"  validate:"required,numeric,min=10,max=20"`
+	Role            domain.StaffRole `json:"role"             validate:"required,oneof=admin staff"`
+	PositionTitle   string           `json:"position_title"`
+	ShortBio        string           `json:"short_bio"`
+	ProfilePhotoURL string           `json:"profile_photo_url"`
 }
 
 type UpdateStaffRequest struct {
-	FullName       string `json:"full_name"       validate:"required,min=3,max=150"`
-	WhatsappNumber string `json:"whatsapp_number" validate:"required,numeric,min=10,max=20"`
-	PositionTitle  string `json:"position_title"`
-	ShortBio       string `json:"short_bio"`
+	FullName        string `json:"full_name"        validate:"required,min=3,max=150"`
+	Username        string `json:"username"         validate:"required,min=3,max=50"`
+	Email           string `json:"email"            validate:"required,email"`
+	WhatsappNumber  string `json:"whatsapp_number"  validate:"required,numeric,min=10,max=20"`
+	PositionTitle   string `json:"position_title"`
+	ShortBio        string `json:"short_bio"`
+	ProfilePhotoURL string `json:"profile_photo_url"`
 }
 
 type UpdateProfileRequest struct {

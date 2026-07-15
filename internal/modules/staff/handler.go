@@ -41,6 +41,9 @@ func (h *StaffHandler) List(c fiber.Ctx) error {
 		r = &roleVal
 	}
 
+	search := c.Query("search")
+	status := c.Query("status")
+
 	page := 1
 	if pStr := c.Query("page"); pStr != "" {
 		if p, err := strconv.Atoi(pStr); err == nil {
@@ -54,7 +57,7 @@ func (h *StaffHandler) List(c fiber.Ctx) error {
 		}
 	}
 
-	items, total, err := h.svc.ListStaff(c.Context(), r, page, limit)
+	items, total, err := h.svc.ListStaff(c.Context(), search, status, r, page, limit)
 	if err != nil {
 		return err
 	}

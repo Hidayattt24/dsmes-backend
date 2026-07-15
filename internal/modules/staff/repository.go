@@ -20,11 +20,19 @@ func NewStaffRepository(db *gorm.DB, log *zap.Logger) StaffRepository {
 	return &staffRepository{db: db, log: log}
 }
 
-func (r *staffRepository) FindAll(ctx context.Context, role *domain.StaffRole, page, limit int) ([]domain.StaffAccount, int64, error) {
+func (r *staffRepository) FindAll(ctx context.Context, search, status string, role *domain.StaffRole, page, limit int) ([]domain.StaffAccount, int64, error) {
 	var items []domain.StaffAccount
 	var total int64
 
 	q := r.db.WithContext(ctx).Model(&domain.StaffAccount{}).Where("deleted_at IS NULL")
+
+	if search != "" {
+		q = q.Where("(LOWER(full_name) LIKE LOWER(?) OR LOWER(username) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?))", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+	}
+
+	if status != "" {
+		q = q.Where("LOWER(status) = LOWER(?)", status)
+	}
 
 	if role != nil && *role != "" {
 		q = q.Where("role = ?", *role)

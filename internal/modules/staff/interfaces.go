@@ -7,7 +7,7 @@ import (
 )
 
 type StaffRepository interface {
-	FindAll(ctx context.Context, role *domain.StaffRole, page, limit int) ([]domain.StaffAccount, int64, error)
+	FindAll(ctx context.Context, search, status string, role *domain.StaffRole, page, limit int) ([]domain.StaffAccount, int64, error)
 	FindByID(ctx context.Context, id string) (*domain.StaffAccount, error)
 	FindByEmail(ctx context.Context, email string) (*domain.StaffAccount, error)
 	FindByUsername(ctx context.Context, username string) (*domain.StaffAccount, error)
@@ -17,7 +17,7 @@ type StaffRepository interface {
 }
 
 type StaffService interface {
-	ListStaff(ctx context.Context, role *domain.StaffRole, page, limit int) ([]StaffResponse, int64, error)
+	ListStaff(ctx context.Context, search, status string, role *domain.StaffRole, page, limit int) ([]StaffResponse, int64, error)
 	GetStaff(ctx context.Context, id string) (*StaffResponse, error)
 	CreateStaff(ctx context.Context, req CreateStaffRequest) (*StaffResponse, error)
 	UpdateStaff(ctx context.Context, id string, req UpdateStaffRequest) (*StaffResponse, error)
