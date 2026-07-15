@@ -100,14 +100,36 @@ func (h *PatientHandler) List(c fiber.Ctx) error {
 
 // ListStaff handles GET /api/v1/staff/patients
 // @Summary      List assigned patients (Staff)
+// @Description  Returns paginated list of assigned patients with optional filters. Staff ID is auto-inferred from JWT claims.
 // @Tags         patient
 // @Security     BearerAuth
 // @Produce      json
-// @Param        search  query  string  false  "Search pattern (name/email)"
-// @Param        page    query  int     false  "Page number"
-// @Param        limit   query  int     false  "Limit"
-// @Success      200     {object}  map[string]any
+// @Param        search              query  string  false  "Search pattern (name/email)"
+// @Param        gender              query  string  false  "Gender filter (Laki-laki/Perempuan)"
+// @Param        status              query  string  false  "Account status filter (Aktif/Nonaktif)"
+// @Param        page                query  int     false  "Page number (default: 1)"
+// @Param        limit               query  int     false  "Items per page (default: 10)"
+// @Param        sort_by             query  string  false  "Sort field (name, newest, oldest, latest_record, highest_blood_sugar)"
+// @Param        sort_order          query  string  false  "Sort direction (asc/desc)"
+// @Param        blood_sugar_status  query  string  false  "Blood sugar status filter (normal, tinggi, rendah, sangat_tinggi)"
+// @Param        risk_level          query  string  false  "Risk level filter (rendah, sedang, tinggi, sangat_tinggi)"
+// @Param        compliance_min      query  int     false  "Minimum compliance percentage"
+// @Param        compliance_max      query  int     false  "Maximum compliance percentage"
+// @Param        age_min             query  int     false  "Minimum age in years"
+// @Param        age_max             query  int     false  "Maximum age in years"
+// @Success      200                 {object}  map[string]any
 // @Router       /staff/patients [get]
+func parseIntPtr(s string) *int {
+	if s == "" {
+		return nil
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return nil
+	}
+	return &v
+}
+
 func (h *PatientHandler) ListStaff(c fiber.Ctx) error {
 	claims := middleware.ClaimsFromContext(c)
 	if claims == nil {
@@ -126,17 +148,22 @@ func (h *PatientHandler) ListStaff(c fiber.Ctx) error {
 			limit = l
 		}
 	}
-	search := c.Query("search")
-	gender := c.Query("gender")
-	status := c.Query("status")
 
 	items, total, err := h.svc.ListPatients(c.Context(), PatientFilterQuery{
-		StaffID: claims.UserID,
-		Search:  search,
-		Gender:  gender,
-		Status:  status,
-		Page:    page,
-		Limit:   limit,
+		StaffID:          claims.UserID,
+		Search:           c.Query("search"),
+		Gender:           c.Query("gender"),
+		Status:           c.Query("status"),
+		SortBy:           c.Query("sort_by"),
+		SortOrder:        c.Query("sort_order"),
+		BloodSugarStatus: c.Query("blood_sugar_status"),
+		RiskLevel:        c.Query("risk_level"),
+		ComplianceMin:    parseIntPtr(c.Query("compliance_min")),
+		ComplianceMax:    parseIntPtr(c.Query("compliance_max")),
+		AgeMin:           parseIntPtr(c.Query("age_min")),
+		AgeMax:           parseIntPtr(c.Query("age_max")),
+		Page:             page,
+		Limit:            limit,
 	})
 	if err != nil {
 		return err

@@ -21,7 +21,7 @@ func NewQuizRepository(db *gorm.DB, log *zap.Logger) QuizRepository {
 	return &quizRepository{db: db, log: log}
 }
 
-func (r *quizRepository) FindAll(ctx context.Context, search string, status string, page, limit int) ([]domain.Quiz, int64, error) {
+func (r *quizRepository) FindAll(ctx context.Context, search, status, sortBy, sortOrder string, page, limit int) ([]domain.Quiz, int64, error) {
 	var items []domain.Quiz
 	var total int64
 
@@ -33,7 +33,6 @@ func (r *quizRepository) FindAll(ctx context.Context, search string, status stri
 	}
 
 	if status != "" && !strings.EqualFold(status, "Semua") {
-		// Normalize status to lowercase for DB comparison
 		q = q.Where("LOWER(status) = LOWER(?)", status)
 	}
 
@@ -41,11 +40,28 @@ func (r *quizRepository) FindAll(ctx context.Context, search string, status stri
 		return nil, 0, errs.NewInternal("failed to count quizzes", err)
 	}
 
+	orderClause := "created_at DESC"
+	switch sortBy {
+	case "title":
+		orderClause = "title ASC"
+		if strings.EqualFold(sortOrder, "desc") {
+			orderClause = "title DESC"
+		}
+	case "oldest":
+		orderClause = "created_at ASC"
+	case "newest":
+		orderClause = "created_at DESC"
+	default:
+		if strings.EqualFold(sortOrder, "asc") {
+			orderClause = "created_at ASC"
+		}
+	}
+
 	offset := (page - 1) * limit
 	err := q.Preload("LinkedArticle").
 		Preload("Questions").
 		Offset(offset).Limit(limit).
-		Order("created_at DESC").
+		Order(orderClause).
 		Find(&items).Error
 	if err != nil {
 		return nil, 0, errs.NewInternal("failed to fetch quizzes", err)

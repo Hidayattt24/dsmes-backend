@@ -37,8 +37,10 @@ func (h *QuizHandler) List(c fiber.Ctx) error {
 	}
 	search := c.Query("search")
 	status := c.Query("status")
+	sortBy := c.Query("sort_by")
+	sortOrder := c.Query("sort_order")
 
-	items, total, err := h.svc.ListQuizzes(c.Context(), search, status, page, limit)
+	items, total, err := h.svc.ListQuizzes(c.Context(), search, status, sortBy, sortOrder, page, limit)
 	if err != nil {
 		return err
 	}

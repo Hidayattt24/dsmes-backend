@@ -57,6 +57,10 @@ type StaffDashboardResponse struct {
 	GlucoseDistribution    GlucoseDistribution `json:"glucose_distribution"`
 	PriorityPatients       []PriorityPatient   `json:"priority_patients"`
 	NonCompliantPatients   []PriorityPatient   `json:"non_compliant_patients"`
+	TotalSugarLogs         int64               `json:"total_sugar_logs"`
+	TotalMealLogs          int64               `json:"total_meal_logs"`
+	TotalActivityLogs      int64               `json:"total_activity_logs"`
+	TotalMedicationLogs    int64               `json:"total_medication_logs"`
 }
 
 type TopArticleResponse struct {

@@ -293,6 +293,31 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 		}
 	}
 
+	// Fetch total log counts for monitoring stats
+	var totalSugarLogs int64
+	r.db.WithContext(ctx).Model(&domain.BloodSugarLog{}).
+		Joins("JOIN patients p ON p.id = blood_sugar_logs.patient_id").
+		Where("p.assigned_staff_id = ? AND blood_sugar_logs.deleted_at IS NULL AND p.deleted_at IS NULL", staffID).
+		Count(&totalSugarLogs)
+
+	var totalMealLogs int64
+	r.db.WithContext(ctx).Model(&domain.MealLog{}).
+		Joins("JOIN patients p ON p.id = meal_logs.patient_id").
+		Where("p.assigned_staff_id = ? AND meal_logs.deleted_at IS NULL AND p.deleted_at IS NULL", staffID).
+		Count(&totalMealLogs)
+
+	var totalActivityLogs int64
+	r.db.WithContext(ctx).Model(&domain.RoutineLogEntry{}).
+		Joins("JOIN patients p ON p.id = routine_log_entries.patient_id").
+		Where("p.assigned_staff_id = ? AND routine_log_entries.deleted_at IS NULL AND p.deleted_at IS NULL", staffID).
+		Count(&totalActivityLogs)
+
+	var totalMedicationLogs int64
+	r.db.WithContext(ctx).Model(&domain.DailyReminderLog{}).
+		Joins("JOIN patients p ON p.id = daily_reminder_logs.patient_id").
+		Where("p.assigned_staff_id = ? AND daily_reminder_logs.deleted_at IS NULL AND p.deleted_at IS NULL", staffID).
+		Count(&totalMedicationLogs)
+
 	return &StaffDashboardResponse{
 		TotalAssignedPatients:  totalAssignedPatients,
 		ActiveAssignedPatients: activeAssignedPatients,
@@ -302,6 +327,10 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 		GlucoseDistribution:    dist,
 		PriorityPatients:       priorityPatients,
 		NonCompliantPatients:   nonCompliantPatients,
+		TotalSugarLogs:         totalSugarLogs,
+		TotalMealLogs:          totalMealLogs,
+		TotalActivityLogs:      totalActivityLogs,
+		TotalMedicationLogs:    totalMedicationLogs,
 	}, nil
 }
 

@@ -58,10 +58,10 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	// 4. Seed default routines & times
 	defaultRoutines := []domain.Routine{
 		{
-			RoutineType:      domain.RoutineJalanPagi,
-			DescriptiveName:  "Jalan Pagi Sehat",
-			BaseFrequency:    "Harian",
-			IsActive:         true,
+			RoutineType:     domain.RoutineJalanPagi,
+			DescriptiveName: "Jalan Pagi Sehat",
+			BaseFrequency:   "Harian",
+			IsActive:        true,
 			RoutineTimes: []domain.RoutineTime{
 				{
 					TimeType:       domain.WaktuDefault,
@@ -72,10 +72,10 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 			},
 		},
 		{
-			RoutineType:      domain.RoutineMinumAir,
-			DescriptiveName:  "Minum Air Putih",
-			BaseFrequency:    "Setiap 4 jam",
-			IsActive:         true,
+			RoutineType:     domain.RoutineMinumAir,
+			DescriptiveName: "Minum Air Putih",
+			BaseFrequency:   "Setiap 4 jam",
+			IsActive:        true,
 			RoutineTimes: []domain.RoutineTime{
 				{
 					TimeType:       domain.WaktuDefault,
@@ -104,10 +104,10 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 			},
 		},
 		{
-			RoutineType:      domain.RoutineCekGula,
-			DescriptiveName:  "Cek Gula Darah Harian",
-			BaseFrequency:    "Harian",
-			IsActive:         true,
+			RoutineType:     domain.RoutineCekGula,
+			DescriptiveName: "Cek Gula Darah Harian",
+			BaseFrequency:   "Harian",
+			IsActive:        true,
 			RoutineTimes: []domain.RoutineTime{
 				{
 					TimeType:       domain.WaktuDefault,
@@ -175,10 +175,23 @@ func (s *patientService) ListPatients(ctx context.Context, filter PatientFilterQ
 	}
 
 	resp := make([]PatientResponse, len(items))
+	if len(items) == 0 {
+		return resp, total, nil
+	}
+
+	// Batch fetch summaries — O(1) queries instead of O(N)
+	patientIDs := make([]string, len(items))
+	for i := range items {
+		patientIDs[i] = items[i].ID
+	}
+	summaries, err := s.repo.GetPatientSummaries(ctx, patientIDs)
+	if err != nil {
+		s.log.Warn("patient: failed to batch fetch summaries", zap.Error(err))
+	}
+
 	for i := range items {
 		resp[i] = ToPatientResponse(&items[i])
-		summary, err := s.repo.GetPatientSummary(ctx, items[i].ID)
-		if err == nil && summary != nil {
+		if summary, ok := summaries[items[i].ID]; ok && summary != nil {
 			populateSummary(&resp[i], summary)
 		}
 	}
@@ -296,4 +309,3 @@ func (s *patientService) GetStats(ctx context.Context, staffID string) (*Patient
 func strPtr(s string) *string {
 	return &s
 }
-

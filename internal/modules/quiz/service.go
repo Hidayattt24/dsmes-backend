@@ -18,7 +18,7 @@ func NewQuizService(repo QuizRepository, log *zap.Logger) QuizService {
 	return &quizService{repo: repo, log: log}
 }
 
-func (s *quizService) ListQuizzes(ctx context.Context, search string, status string, page, limit int) ([]QuizResponse, int64, error) {
+func (s *quizService) ListQuizzes(ctx context.Context, search, status, sortBy, sortOrder string, page, limit int) ([]QuizResponse, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -26,7 +26,7 @@ func (s *quizService) ListQuizzes(ctx context.Context, search string, status str
 		limit = 10
 	}
 
-	items, total, err := s.repo.FindAll(ctx, search, status, page, limit)
+	items, total, err := s.repo.FindAll(ctx, search, status, sortBy, sortOrder, page, limit)
 	if err != nil {
 		return nil, 0, err
 	}

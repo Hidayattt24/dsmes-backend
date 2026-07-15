@@ -25,15 +25,15 @@ func (r *patientRepository) FindAll(ctx context.Context, filter PatientFilterQue
 	var items []domain.Patient
 	var total int64
 
-	q := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("deleted_at IS NULL")
+	q := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("patients.deleted_at IS NULL")
 
 	if filter.StaffID != "" {
-		q = q.Where("assigned_staff_id = ?", filter.StaffID)
+		q = q.Where("patients.assigned_staff_id = ?", filter.StaffID)
 	}
 
 	if filter.Search != "" {
 		searchPattern := "%" + filter.Search + "%"
-		q = q.Where("full_name ILIKE ? OR email ILIKE ?", searchPattern, searchPattern)
+		q = q.Where("patients.full_name ILIKE ? OR patients.email ILIKE ?", searchPattern, searchPattern)
 	}
 
 	if filter.Gender != "" && filter.Gender != "Semua" {
@@ -43,7 +43,7 @@ func (r *patientRepository) FindAll(ctx context.Context, filter PatientFilterQue
 		} else if filter.Gender == "Perempuan" || filter.Gender == "perempuan" {
 			genderVal = domain.GenderPerempuan
 		}
-		q = q.Where("gender = ?", genderVal)
+		q = q.Where("patients.gender = ?", genderVal)
 	}
 
 	if filter.Status != "" && filter.Status != "Semua" {
@@ -53,17 +53,98 @@ func (r *patientRepository) FindAll(ctx context.Context, filter PatientFilterQue
 		} else if filter.Status == "Nonaktif" || filter.Status == "nonaktif" {
 			statusVal = domain.StatusNonaktif
 		}
-		q = q.Where("status = ?", statusVal)
+		q = q.Where("patients.status = ?", statusVal)
+	}
+
+	if filter.AgeMin != nil {
+		q = q.Where("EXTRACT(YEAR FROM AGE(NOW(), patients.date_of_birth)) >= ?", *filter.AgeMin)
+	}
+	if filter.AgeMax != nil {
+		q = q.Where("EXTRACT(YEAR FROM AGE(NOW(), patients.date_of_birth)) <= ?", *filter.AgeMax)
+	}
+
+	if filter.ComplianceMin != nil {
+		q = q.Where("patients.compliance >= ?", *filter.ComplianceMin)
+	}
+	if filter.ComplianceMax != nil {
+		q = q.Where("patients.compliance <= ?", *filter.ComplianceMax)
+	}
+
+	// Track whether we already joined blood_sugar_logs to avoid duplicate JOINs
+	hasBSJoin := false
+
+	if filter.BloodSugarStatus != "" && filter.BloodSugarStatus != "Semua" {
+		bsStatus := filter.BloodSugarStatus
+		if bsStatus == "Tinggi" {
+			bsStatus = "tinggi"
+		} else if bsStatus == "Sangat Tinggi" || bsStatus == "sangat_tinggi" {
+			bsStatus = "sangat_tinggi"
+		} else if bsStatus == "Rendah" || bsStatus == "rendah" {
+			bsStatus = "rendah"
+		} else if bsStatus == "Normal" || bsStatus == "normal" {
+			bsStatus = "normal"
+		}
+		q = q.Joins("LEFT JOIN (SELECT DISTINCT ON (patient_id) patient_id, status FROM blood_sugar_logs WHERE deleted_at IS NULL ORDER BY patient_id, measured_at DESC) latest_bs ON latest_bs.patient_id = patients.id")
+		hasBSJoin = true
+		q = q.Where("latest_bs.status = ?", bsStatus)
+	}
+
+	if filter.RiskLevel != "" && filter.RiskLevel != "Semua" {
+		if !hasBSJoin {
+			q = q.Joins("LEFT JOIN (SELECT DISTINCT ON (patient_id) patient_id, status FROM blood_sugar_logs WHERE deleted_at IS NULL ORDER BY patient_id, measured_at DESC) latest_bs ON latest_bs.patient_id = patients.id")
+			hasBSJoin = true
+		}
+		riskSQL := `
+			CASE
+				WHEN latest_bs.status = 'sangat_tinggi' OR patients.compliance < 30 THEN 'sangat_tinggi'
+				WHEN latest_bs.status = 'tinggi' OR (patients.compliance >= 30 AND patients.compliance < 50) THEN 'tinggi'
+				WHEN latest_bs.status = 'rendah' OR (patients.compliance >= 50 AND patients.compliance < 70) THEN 'sedang'
+				ELSE 'rendah'
+			END
+		`
+		rl := filter.RiskLevel
+		if rl == "Sangat Tinggi" {
+			rl = "sangat_tinggi"
+		} else if rl == "Tinggi" {
+			rl = "tinggi"
+		} else if rl == "Sedang" {
+			rl = "sedang"
+		} else if rl == "Rendah" {
+			rl = "rendah"
+		}
+		q = q.Where(riskSQL+" = ?", rl)
 	}
 
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, errs.NewInternal("failed to count patients", err)
 	}
 
+	order := "DESC"
+	if filter.SortOrder == "asc" {
+		order = "ASC"
+	}
+
+	switch filter.SortBy {
+	case "name":
+		q = q.Order("patients.full_name " + order)
+	case "newest":
+		q = q.Order("patients.created_at DESC")
+	case "oldest":
+		q = q.Order("patients.created_at ASC")
+	case "latest_record":
+		q = q.Order("patients.last_active_at DESC NULLS LAST")
+	case "highest_blood_sugar":
+		if !hasBSJoin {
+			q = q.Joins("LEFT JOIN (SELECT DISTINCT ON (patient_id) patient_id, glucose_value FROM blood_sugar_logs WHERE deleted_at IS NULL ORDER BY patient_id, measured_at DESC) latest_bs ON latest_bs.patient_id = patients.id")
+		}
+		q = q.Order("latest_bs.glucose_value " + order + " NULLS LAST")
+	default:
+		q = q.Order("patients.created_at DESC")
+	}
+
 	offset := (filter.Page - 1) * filter.Limit
 	err := q.Preload("AssignedStaff").
 		Offset(offset).Limit(filter.Limit).
-		Order("created_at DESC").
 		Find(&items).Error
 	if err != nil {
 		return nil, 0, errs.NewInternal("failed to fetch patients", err)
@@ -269,4 +350,131 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 	}
 
 	return &summary, nil
+}
+
+func (r *patientRepository) GetPatientSummaries(ctx context.Context, patientIDs []string) (map[string]*PatientSummaryData, error) {
+	if len(patientIDs) == 0 {
+		return map[string]*PatientSummaryData{}, nil
+	}
+
+	result := make(map[string]*PatientSummaryData, len(patientIDs))
+	for _, id := range patientIDs {
+		result[id] = nil
+	}
+
+	// Batch fetch latest blood sugar for all patients
+	type BSResult struct {
+		PatientID    string
+		GlucoseValue int
+		MeasuredAt   time.Time
+		Status       string
+	}
+	var bsResults []BSResult
+	r.db.WithContext(ctx).Raw(`
+		SELECT DISTINCT ON (bs.patient_id) bs.patient_id, bs.glucose_value, bs.measured_at, bs.status
+		FROM blood_sugar_logs bs
+		WHERE bs.patient_id IN ? AND bs.deleted_at IS NULL
+		ORDER BY bs.patient_id, bs.measured_at DESC
+	`, patientIDs).Scan(&bsResults)
+
+	bsMap := make(map[string]BSResult, len(bsResults))
+	for _, bs := range bsResults {
+		bsMap[bs.PatientID] = bs
+	}
+
+	// Batch fetch average blood sugar
+	type AvgBSResult struct {
+		PatientID string
+		AvgValue  float64
+	}
+	var avgBSResults []AvgBSResult
+	r.db.WithContext(ctx).Raw(`
+		SELECT bs.patient_id, COALESCE(AVG(bs.glucose_value), 0) as avg_value
+		FROM blood_sugar_logs bs
+		WHERE bs.patient_id IN ? AND bs.deleted_at IS NULL
+		GROUP BY bs.patient_id
+	`, patientIDs).Scan(&avgBSResults)
+
+	avgBSMap := make(map[string]float64, len(avgBSResults))
+	for _, a := range avgBSResults {
+		avgBSMap[a.PatientID] = a.AvgValue
+	}
+
+	// Batch fetch latest meal
+	type MealResult struct {
+		PatientID string
+		Calories  float64
+		MealType  string
+	}
+	var mealResults []MealResult
+	r.db.WithContext(ctx).Raw(`
+		SELECT DISTINCT ON (ml.patient_id) ml.patient_id,
+			COALESCE(f.calories * ml.portion_multiplier, 0) as calories,
+			ml.meal_type
+		FROM meal_logs ml
+		LEFT JOIN foods f ON f.id = ml.food_id AND f.deleted_at IS NULL
+		WHERE ml.patient_id IN ? AND ml.deleted_at IS NULL
+		ORDER BY ml.patient_id, ml.logged_at DESC
+	`, patientIDs).Scan(&mealResults)
+
+	mealMap := make(map[string]MealResult, len(mealResults))
+	for _, m := range mealResults {
+		mealMap[m.PatientID] = m
+	}
+
+	// Batch fetch latest activity
+	type ActResult struct {
+		PatientID       string
+		DescriptiveName string
+		LoggedAt        time.Time
+	}
+	var actResults []ActResult
+	r.db.WithContext(ctx).Raw(`
+		SELECT DISTINCT ON (le.patient_id) le.patient_id,
+			r.descriptive_name, le.logged_at
+		FROM routine_log_entries le
+		JOIN routine_times rt ON rt.id = le.routine_time_id AND rt.deleted_at IS NULL
+		JOIN routines r ON r.id = rt.routine_id AND r.deleted_at IS NULL
+		WHERE le.patient_id IN ? AND le.status = 'Completed' AND le.deleted_at IS NULL
+		ORDER BY le.patient_id, le.logged_at DESC
+	`, patientIDs).Scan(&actResults)
+
+	actMap := make(map[string]ActResult, len(actResults))
+	for _, a := range actResults {
+		actMap[a.PatientID] = a
+	}
+
+	for _, pid := range patientIDs {
+		summary := &PatientSummaryData{}
+
+		if bs, ok := bsMap[pid]; ok {
+			val := bs.GlucoseValue
+			summary.LatestBloodSugar = &val
+			summary.LatestBloodSugarTime = &bs.MeasuredAt
+			statusStr := bs.Status
+			summary.LatestBloodSugarStatus = &statusStr
+		}
+
+		if avg, ok := avgBSMap[pid]; ok && avg > 0 {
+			summary.AverageBloodSugar = &avg
+		}
+
+		if m, ok := mealMap[pid]; ok {
+			summary.LatestMealCalories = &m.Calories
+			mType := m.MealType
+			summary.LatestMealType = &mType
+		}
+
+		if a, ok := actMap[pid]; ok && a.DescriptiveName != "" {
+			name := a.DescriptiveName
+			summary.LatestActivityName = &name
+			summary.LatestActivityTime = &a.LoggedAt
+		}
+
+		// Get weight and height for BMI (reuse patient data already fetched)
+		// BMI will be empty in batch — callers already have patient weight/height
+		result[pid] = summary
+	}
+
+	return result, nil
 }

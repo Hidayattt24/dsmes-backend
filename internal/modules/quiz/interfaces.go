@@ -7,7 +7,7 @@ import (
 )
 
 type QuizRepository interface {
-	FindAll(ctx context.Context, search string, status string, page, limit int) ([]domain.Quiz, int64, error)
+	FindAll(ctx context.Context, search, status, sortBy, sortOrder string, page, limit int) ([]domain.Quiz, int64, error)
 	FindByID(ctx context.Context, id string) (*domain.Quiz, error)
 	Create(ctx context.Context, q *domain.Quiz) error
 	Update(ctx context.Context, q *domain.Quiz) error
@@ -24,7 +24,7 @@ type QuizRepository interface {
 }
 
 type QuizService interface {
-	ListQuizzes(ctx context.Context, search string, status string, page, limit int) ([]QuizResponse, int64, error)
+	ListQuizzes(ctx context.Context, search, status, sortBy, sortOrder string, page, limit int) ([]QuizResponse, int64, error)
 	GetQuiz(ctx context.Context, id string, isAdminOrStaff bool) (*QuizDetailResponse, error)
 	CreateQuiz(ctx context.Context, staffID string, req CreateQuizRequest) (*QuizDetailResponse, error)
 	UpdateQuiz(ctx context.Context, id string, req CreateQuizRequest) (*QuizDetailResponse, error)
