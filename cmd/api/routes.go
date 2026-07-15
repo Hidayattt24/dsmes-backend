@@ -12,8 +12,8 @@
 package main
 
 import (
-	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/contrib/v3/swaggerui"
+	"github.com/gofiber/fiber/v3"
 
 	"github.com/dsmes/dsmes-backend/internal/container"
 	"github.com/dsmes/dsmes-backend/internal/middleware"
@@ -215,6 +215,8 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Dashboard statistics
 		staff.Get("/dashboard/blood-sugar", bsHandler.GetDashboard)
 		staff.Get("/dashboard/stats", dashboardHandler.GetStaff)
+		staff.Get("/dashboard/population-metrics", dashboardHandler.GetPopulationMetrics)
+		staff.Get("/dashboard/patient-trends", dashboardHandler.GetPatientTrends)
 
 		// Education articles list
 		staff.Get("/education/articles", eduHandler.ListPublished)

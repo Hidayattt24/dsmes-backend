@@ -28,30 +28,32 @@ type AdminDashboardResponse struct {
 }
 
 type GlucoseDistribution struct {
-	NormalCount      int64 `json:"normal_count"`
-	TinggiCount      int64 `json:"tinggi_count"`
+	NormalCount       int64 `json:"normal_count"`
+	TinggiCount       int64 `json:"tinggi_count"`
 	SangatTinggiCount int64 `json:"sangat_tinggi_count"`
-	RendahCount      int64 `json:"rendah_count"`
+	RendahCount       int64 `json:"rendah_count"`
 }
 
 type PriorityPatient struct {
-	ID               string    `json:"id"`
-	FullName         string    `json:"full_name"`
-	Nickname         string    `json:"nickname"`
-	Email            string    `json:"email"`
-	WhatsappNumber   string    `json:"whatsapp_number"`
-	DiabetesType     string    `json:"diabetes_type"`
-	Compliance       int       `json:"compliance"`
-	LastActiveAt     *time.Time `json:"last_active_at"`
-	PriorityReason   string    `json:"priority_reason"`
-	LatestGlucose    *int      `json:"latest_glucose,omitempty"`
-	LatestGlucoseStatus string `json:"latest_glucose_status,omitempty"`
+	ID                  string     `json:"id"`
+	FullName            string     `json:"full_name"`
+	Nickname            string     `json:"nickname"`
+	Email               string     `json:"email"`
+	WhatsappNumber      string     `json:"whatsapp_number"`
+	DiabetesType        string     `json:"diabetes_type"`
+	Compliance          int        `json:"compliance"`
+	LastActiveAt        *time.Time `json:"last_active_at"`
+	PriorityReason      string     `json:"priority_reason"`
+	LatestGlucose       *int       `json:"latest_glucose,omitempty"`
+	LatestGlucoseStatus string     `json:"latest_glucose_status,omitempty"`
 }
 
 type StaffDashboardResponse struct {
 	TotalAssignedPatients  int64               `json:"total_assigned_patients"`
 	ActiveAssignedPatients int64               `json:"active_assigned_patients"`
 	TotalAttempts          int64               `json:"total_attempts"`
+	AverageBloodSugar      float64             `json:"average_blood_sugar"`
+	StabilityPercentage    float64             `json:"stability_percentage"`
 	GlucoseDistribution    GlucoseDistribution `json:"glucose_distribution"`
 	PriorityPatients       []PriorityPatient   `json:"priority_patients"`
 	NonCompliantPatients   []PriorityPatient   `json:"non_compliant_patients"`
@@ -69,4 +71,39 @@ type ActivityChartResponse struct {
 	Day           string  `json:"day"`
 	Value         int64   `json:"value"`
 	HeightPercent float64 `json:"height_percent"`
+}
+
+type FoodIntakeItem struct {
+	Category   string `json:"category"`
+	Percentage int    `json:"percentage"`
+	Count      int64  `json:"count"`
+	Color      string `json:"color"`
+}
+
+type PhysicalActivityItem struct {
+	Level string `json:"level"`
+	Count int64  `json:"count"`
+}
+
+type AdherenceItem struct {
+	Label      string `json:"label"`
+	Percentage int    `json:"percentage"`
+	Count      int64  `json:"count"`
+	Color      string `json:"color"`
+}
+
+type PopulationMetricsResponse struct {
+	FoodIntake          []FoodIntakeItem       `json:"food_intake"`
+	PhysicalActivity    []PhysicalActivityItem `json:"physical_activity"`
+	MedicationAdherence []AdherenceItem        `json:"medication_adherence"`
+}
+
+type TrendPatient struct {
+	ID                 string  `json:"id"`
+	FullName           string  `json:"full_name"`
+	Nickname           string  `json:"nickname"`
+	AvgStart           float64 `json:"avg_start"`
+	AvgCurrent         float64 `json:"avg_current"`
+	Increase           float64 `json:"increase"`
+	PercentageIncrease float64 `json:"percentage_increase"`
 }

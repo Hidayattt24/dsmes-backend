@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -139,6 +140,7 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	var totalAssignedPatients int64
 	var activeAssignedPatients int64
 	var totalAttempts int64
+	var avgBloodSugar float64
 	var dist GlucoseDistribution
 
 	if err := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("assigned_staff_id = ? AND deleted_at IS NULL", staffID).Count(&totalAssignedPatients).Error; err != nil {
@@ -159,8 +161,16 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 		return nil, errs.NewInternal("failed to count quiz attempts for staff", err)
 	}
 
+	var glucoseStats struct {
+		AvgBloodSugar     float64
+		NormalCount       int64
+		TinggiCount       int64
+		SangatTinggiCount int64
+		RendahCount       int64
+	}
 	err = r.db.WithContext(ctx).Raw(`
 		SELECT 
+			COALESCE(AVG(b.glucose_value), 0) AS avg_blood_sugar,
 			COALESCE(COUNT(*) FILTER (WHERE b.status = 'normal'), 0) AS normal_count,
 			COALESCE(COUNT(*) FILTER (WHERE b.status = 'tinggi'), 0) AS tinggi_count,
 			COALESCE(COUNT(*) FILTER (WHERE b.status = 'sangat_tinggi'), 0) AS sangat_tinggi_count,
@@ -168,9 +178,22 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 		FROM blood_sugar_logs b
 		JOIN patients p ON p.id = b.patient_id
 		WHERE p.assigned_staff_id = ? AND b.deleted_at IS NULL AND p.deleted_at IS NULL
-	`, staffID).Scan(&dist).Error
+	`, staffID).Scan(&glucoseStats).Error
 	if err != nil {
-		return nil, errs.NewInternal("failed to fetch glucose distribution", err)
+		return nil, errs.NewInternal("failed to fetch glucose stats", err)
+	}
+	avgBloodSugar = glucoseStats.AvgBloodSugar
+	dist = GlucoseDistribution{
+		NormalCount:       glucoseStats.NormalCount,
+		TinggiCount:       glucoseStats.TinggiCount,
+		SangatTinggiCount: glucoseStats.SangatTinggiCount,
+		RendahCount:       glucoseStats.RendahCount,
+	}
+
+	totalGlucose := dist.NormalCount + dist.TinggiCount + dist.SangatTinggiCount + dist.RendahCount
+	var stabilityPct float64
+	if totalGlucose > 0 {
+		stabilityPct = float64(dist.NormalCount) / float64(totalGlucose) * 100.0
 	}
 
 	// Fetch priority patients (sangat_tinggi or rendah in last 7 days)
@@ -201,7 +224,7 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	if err == nil {
 		for _, p := range priorityPatientsRaw {
 			var activeTime *time.Time
-			if p.LastActiveAt.Valid {
+			if p.LastActiveAt != nil && p.LastActiveAt.Valid {
 				activeTime = &p.LastActiveAt.Time
 			}
 			val := p.GlucoseValue
@@ -245,14 +268,14 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	if err == nil {
 		for _, p := range nonCompliantRaw {
 			var activeTime *time.Time
-			if p.LastActiveAt.Valid {
+			if p.LastActiveAt != nil && p.LastActiveAt.Valid {
 				activeTime = &p.LastActiveAt.Time
 			}
 
 			reason := "Tingkat kepatuhan harian rendah (< 50%)"
-			if p.LastActiveAt.Valid && p.LastActiveAt.Time.Before(time.Now().AddDate(0, 0, -3)) {
+			if p.LastActiveAt != nil && p.LastActiveAt.Valid && p.LastActiveAt.Time.Before(time.Now().AddDate(0, 0, -3)) {
 				reason = "Tidak aktif melakukan pencatatan selama lebih dari 3 hari"
-			} else if !p.LastActiveAt.Valid {
+			} else if p.LastActiveAt == nil || !p.LastActiveAt.Valid {
 				reason = "Belum pernah melakukan pencatatan di aplikasi"
 			}
 
@@ -274,6 +297,8 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 		TotalAssignedPatients:  totalAssignedPatients,
 		ActiveAssignedPatients: activeAssignedPatients,
 		TotalAttempts:          totalAttempts,
+		AverageBloodSugar:      avgBloodSugar,
+		StabilityPercentage:    stabilityPct,
 		GlucoseDistribution:    dist,
 		PriorityPatients:       priorityPatients,
 		NonCompliantPatients:   nonCompliantPatients,
@@ -356,4 +381,211 @@ func (r *dashboardRepository) GetActivityChart(ctx context.Context) ([]ActivityC
 		}
 	}
 	return items, nil
+}
+
+func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID string, rangeDays int) (*PopulationMetricsResponse, error) {
+	type foodRow struct {
+		MealType string
+		Count    int64
+	}
+	var foodRows []foodRow
+	sqlFood := fmt.Sprintf(`
+		SELECT ml.meal_type, COUNT(*) AS count
+		FROM meal_logs ml
+		JOIN patients p ON p.id = ml.patient_id
+		WHERE p.assigned_staff_id = ? AND ml.deleted_at IS NULL AND p.deleted_at IS NULL
+		AND ml.logged_at >= NOW() - INTERVAL '%d days'
+		GROUP BY ml.meal_type
+		ORDER BY ml.meal_type
+	`, rangeDays)
+	if err := r.db.WithContext(ctx).Raw(sqlFood, staffID).Scan(&foodRows).Error; err != nil {
+		return nil, errs.NewInternal("failed to fetch food intake distribution", err)
+	}
+
+	colorMap := map[string]string{
+		"sarapan":     "#00695C",
+		"makan_siang": "#10B981",
+		"makan_malam": "#F59E0B",
+		"camilan":     "#EF4444",
+	}
+	labelMap := map[string]string{
+		"sarapan":     "Sarapan",
+		"makan_siang": "Makan Siang",
+		"makan_malam": "Makan Malam",
+		"camilan":     "Cemilan",
+	}
+
+	var totalFood int64
+	for _, f := range foodRows {
+		totalFood += f.Count
+	}
+
+	foodIntake := make([]FoodIntakeItem, 0, len(foodRows))
+	for _, f := range foodRows {
+		pct := 0
+		if totalFood > 0 {
+			pct = int(float64(f.Count) / float64(totalFood) * 100.0)
+		}
+		label := labelMap[f.MealType]
+		if label == "" {
+			label = f.MealType
+		}
+		color := colorMap[f.MealType]
+		if color == "" {
+			color = "#718096"
+		}
+		foodIntake = append(foodIntake, FoodIntakeItem{
+			Category:   label,
+			Percentage: pct,
+			Count:      f.Count,
+			Color:      color,
+		})
+	}
+
+	type activityRow struct {
+		Level string
+		Count int64
+	}
+	var activityRows []activityRow
+	sqlActivity := fmt.Sprintf(`
+		SELECT COALESCE(NULLIF(p.physical_activity_level, ''), 'Tidak Diketahui') AS level, COUNT(DISTINCT p.id) AS count
+		FROM patients p
+		JOIN routine_log_entries rle ON rle.patient_id = p.id
+		WHERE p.assigned_staff_id = ? AND p.deleted_at IS NULL AND rle.deleted_at IS NULL
+		AND rle.logged_at >= NOW() - INTERVAL '%d days'
+		GROUP BY p.physical_activity_level
+		ORDER BY count DESC
+	`, rangeDays)
+	if err := r.db.WithContext(ctx).Raw(sqlActivity, staffID).Scan(&activityRows).Error; err != nil {
+		return nil, errs.NewInternal("failed to fetch physical activity distribution", err)
+	}
+
+	physicalActivity := make([]PhysicalActivityItem, 0, len(activityRows))
+	for _, a := range activityRows {
+		physicalActivity = append(physicalActivity, PhysicalActivityItem{
+			Level: a.Level,
+			Count: a.Count,
+		})
+	}
+
+	type adhRow struct {
+		Status string
+		Count  int64
+	}
+	var adhRows []adhRow
+	sqlAdh := fmt.Sprintf(`
+		SELECT drl.status, COUNT(*) AS count
+		FROM daily_reminder_logs drl
+		JOIN reminders r ON r.id = drl.reminder_id
+		JOIN patients p ON p.id = r.patient_id
+		WHERE p.assigned_staff_id = ? AND drl.deleted_at IS NULL AND p.deleted_at IS NULL
+		AND drl.log_date >= CURRENT_DATE - INTERVAL '%d days'
+		GROUP BY drl.status
+		ORDER BY drl.status
+	`, rangeDays)
+	if err := r.db.WithContext(ctx).Raw(sqlAdh, staffID).Scan(&adhRows).Error; err != nil {
+		return nil, errs.NewInternal("failed to fetch medication adherence", err)
+	}
+
+	var totalAdh int64
+	for _, a := range adhRows {
+		totalAdh += a.Count
+	}
+
+	adhColorMap := map[string]string{
+		"selesai":  "#00695C",
+		"terlewat": "#EF4444",
+		"pending":  "#F59E0B",
+	}
+	adhLabelMap := map[string]string{
+		"selesai":  "Patuh",
+		"terlewat": "Tidak Patuh",
+		"pending":  "Kadang-kadang",
+	}
+
+	adherence := make([]AdherenceItem, 0, len(adhRows))
+	for _, a := range adhRows {
+		pct := 0
+		if totalAdh > 0 {
+			pct = int(float64(a.Count) / float64(totalAdh) * 100.0)
+		}
+		label := adhLabelMap[a.Status]
+		if label == "" {
+			label = a.Status
+		}
+		color := adhColorMap[a.Status]
+		if color == "" {
+			color = "#718096"
+		}
+		adherence = append(adherence, AdherenceItem{
+			Label:      label,
+			Percentage: pct,
+			Count:      a.Count,
+			Color:      color,
+		})
+	}
+
+	return &PopulationMetricsResponse{
+		FoodIntake:          foodIntake,
+		PhysicalActivity:    physicalActivity,
+		MedicationAdherence: adherence,
+	}, nil
+}
+
+func (r *dashboardRepository) GetPatientTrends(ctx context.Context, staffID string, rangeDays int) ([]TrendPatient, error) {
+	type trendRow struct {
+		ID          string
+		FullName    string
+		Nickname    string
+		AvgPrevious float64
+		AvgCurrent  float64
+	}
+
+	var rows []trendRow
+	halfDays := rangeDays / 2
+
+	sql := fmt.Sprintf(`
+		SELECT
+			p.id,
+			p.full_name,
+			COALESCE(p.nickname, '') AS nickname,
+			COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days' AND b.measured_at < NOW() - INTERVAL '%d days'), 0) AS avg_previous,
+			COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days'), 0) AS avg_current
+		FROM patients p
+		JOIN blood_sugar_logs b ON b.patient_id = p.id
+		WHERE p.assigned_staff_id = ? AND b.deleted_at IS NULL AND p.deleted_at IS NULL
+		AND b.measured_at >= NOW() - INTERVAL '%d days'
+		GROUP BY p.id, p.full_name, p.nickname
+		HAVING
+			COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days'), 0) >
+			COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days' AND b.measured_at < NOW() - INTERVAL '%d days'), 0)
+			AND COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days' AND b.measured_at < NOW() - INTERVAL '%d days'), 0) > 0
+		ORDER BY (COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days'), 0) - COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days' AND b.measured_at < NOW() - INTERVAL '%d days'), 0)) DESC
+		LIMIT 10
+	`,
+		rangeDays, halfDays, halfDays, rangeDays, halfDays, rangeDays, halfDays, rangeDays, halfDays, halfDays, rangeDays, halfDays)
+	err := r.db.WithContext(ctx).Raw(sql, staffID).Scan(&rows).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch patient trends", err)
+	}
+
+	trends := make([]TrendPatient, len(rows))
+	for i, r := range rows {
+		inc := r.AvgCurrent - r.AvgPrevious
+		pct := 0.0
+		if r.AvgPrevious > 0 {
+			pct = inc / r.AvgPrevious * 100.0
+		}
+		trends[i] = TrendPatient{
+			ID:                 r.ID,
+			FullName:           r.FullName,
+			Nickname:           r.Nickname,
+			AvgStart:           r.AvgPrevious,
+			AvgCurrent:         r.AvgCurrent,
+			Increase:           inc,
+			PercentageIncrease: pct,
+		}
+	}
+
+	return trends, nil
 }

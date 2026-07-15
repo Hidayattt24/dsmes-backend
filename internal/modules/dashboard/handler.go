@@ -1,6 +1,8 @@
 package dashboard
 
 import (
+	"strconv"
+
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 
@@ -68,4 +70,60 @@ func (h *DashboardHandler) GetActivityChart(c fiber.Ctx) error {
 		return err
 	}
 	return response.Success(c, "activity chart retrieved", res)
+}
+
+// GetPopulationMetrics handles GET /api/v1/staff/dashboard/population-metrics
+// @Summary      Get population health metrics (Staff)
+// @Description  Returns aggregated food intake, physical activity, and medication adherence for assigned patients. Accepts ?range=7,30,90
+// @Tags         dashboard
+// @Security     BearerAuth
+// @Produce      json
+// @Param        range query int false "Day range (7, 30, 90)" default(7)
+// @Success      200  {object}  map[string]any
+// @Router       /staff/dashboard/population-metrics [get]
+func (h *DashboardHandler) GetPopulationMetrics(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	rangeStr := c.Query("range", "7")
+	rangeDays, err := strconv.Atoi(rangeStr)
+	if err != nil || rangeDays < 1 || rangeDays > 365 {
+		rangeDays = 7
+	}
+
+	res, err := h.svc.GetPopulationMetrics(c.Context(), claims.UserID, rangeDays)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "population metrics retrieved", res)
+}
+
+// GetPatientTrends handles GET /api/v1/staff/dashboard/patient-trends
+// @Summary      Get patients with worsening health trends (Staff)
+// @Description  Identifies patients whose average blood sugar is rising based on historical records within the specified range. Accepts ?range=7,30,90
+// @Tags         dashboard
+// @Security     BearerAuth
+// @Produce      json
+// @Param        range query int false "Day range (7, 30, 90)" default(7)
+// @Success      200  {object}  map[string]any
+// @Router       /staff/dashboard/patient-trends [get]
+func (h *DashboardHandler) GetPatientTrends(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	rangeStr := c.Query("range", "7")
+	rangeDays, err := strconv.Atoi(rangeStr)
+	if err != nil || rangeDays < 1 || rangeDays > 365 {
+		rangeDays = 7
+	}
+
+	res, err := h.svc.GetPatientTrends(c.Context(), claims.UserID, rangeDays)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient trends retrieved", res)
 }

@@ -30,3 +30,11 @@ func (s *dashboardService) GetTopArticles(ctx context.Context) ([]TopArticleResp
 func (s *dashboardService) GetActivityChart(ctx context.Context) ([]ActivityChartResponse, error) {
 	return s.repo.GetActivityChart(ctx)
 }
+
+func (s *dashboardService) GetPopulationMetrics(ctx context.Context, staffID string, rangeDays int) (*PopulationMetricsResponse, error) {
+	return s.repo.GetPopulationMetrics(ctx, staffID, rangeDays)
+}
+
+func (s *dashboardService) GetPatientTrends(ctx context.Context, staffID string, rangeDays int) ([]TrendPatient, error) {
+	return s.repo.GetPatientTrends(ctx, staffID, rangeDays)
+}

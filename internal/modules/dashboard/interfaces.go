@@ -7,6 +7,8 @@ type DashboardRepository interface {
 	GetStaffStats(ctx context.Context, staffID string) (*StaffDashboardResponse, error)
 	GetTopArticles(ctx context.Context) ([]TopArticleResponse, error)
 	GetActivityChart(ctx context.Context) ([]ActivityChartResponse, error)
+	GetPopulationMetrics(ctx context.Context, staffID string, rangeDays int) (*PopulationMetricsResponse, error)
+	GetPatientTrends(ctx context.Context, staffID string, rangeDays int) ([]TrendPatient, error)
 }
 
 type DashboardService interface {
@@ -14,4 +16,6 @@ type DashboardService interface {
 	GetStaffDashboard(ctx context.Context, staffID string) (*StaffDashboardResponse, error)
 	GetTopArticles(ctx context.Context) ([]TopArticleResponse, error)
 	GetActivityChart(ctx context.Context) ([]ActivityChartResponse, error)
+	GetPopulationMetrics(ctx context.Context, staffID string, rangeDays int) (*PopulationMetricsResponse, error)
+	GetPatientTrends(ctx context.Context, staffID string, rangeDays int) ([]TrendPatient, error)
 }
