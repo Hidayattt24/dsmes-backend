@@ -7,17 +7,35 @@ import (
 )
 
 type RegisterPatientRequest struct {
-	Email          string           `json:"email"           validate:"required,email"`
-	Password       string           `json:"password"        validate:"required,min=6"`
-	FullName       string           `json:"full_name"       validate:"required,min=3,max=150"`
-	Nickname       string           `json:"nickname"`
-	WhatsappNumber string           `json:"whatsapp_number" validate:"required,numeric,min=10,max=20"`
-	Gender         domain.Gender    `json:"gender"          validate:"required,oneof=laki_laki perempuan"`
-	DateOfBirth    string           `json:"date_of_birth"   validate:"required"` // format: "YYYY-MM-DD"
-	HeightCm       float64          `json:"height_cm"       validate:"required,gt=0"`
-	WeightKg       float64          `json:"weight_kg"       validate:"required,gt=0"`
-	BloodType      domain.BloodType `json:"blood_type"      validate:"required,oneof=A B AB O tidak_tahu"`
+	Email                 string  `json:"email"                  validate:"required,email"`
+	Password              string  `json:"password"               validate:"required,min=8"`
+	FullName              string  `json:"full_name"              validate:"required,min=3,max=150"`
+	Nickname              string  `json:"nickname"`
+	WhatsappNumber        string  `json:"whatsapp_number"`
+	PhoneNumber           string  `json:"phone_number"`
+	Gender                string  `json:"gender"                 validate:"required"`
+	DateOfBirth           string  `json:"date_of_birth"          validate:"required"` // format: "YYYY-MM-DD"
+	HeightCm              float64 `json:"height_cm"              validate:"required,gt=0"`
+	WeightKg              float64 `json:"weight_kg"              validate:"required,gt=0"`
+	BloodType             string  `json:"blood_type"             validate:"required"`
+	ActivityLevel         string  `json:"activity_level"`
+	PhysicalActivityLevel string  `json:"physical_activity_level"`
 }
+
+func (r *RegisterPatientRequest) GetPhone() string {
+	if r.PhoneNumber != "" {
+		return r.PhoneNumber
+	}
+	return r.WhatsappNumber
+}
+
+func (r *RegisterPatientRequest) GetActivity() string {
+	if r.ActivityLevel != "" {
+		return r.ActivityLevel
+	}
+	return r.PhysicalActivityLevel
+}
+
 
 type UpdatePatientProfileRequest struct {
 	FullName              string  `json:"full_name"       validate:"required,min=3,max=150"`
@@ -200,7 +218,14 @@ type PatientStats struct {
 	AverageAge     int   `json:"average_age"`
 }
 
-// ParseDOB parses date of birth string "YYYY-MM-DD"
+// ParseDOB parses date of birth string ("YYYY-MM-DD" or ISO 8601)
 func ParseDOB(dateStr string) (time.Time, error) {
-	return time.Parse("2006-01-02", dateStr)
+	if len(dateStr) >= 10 {
+		dateStrOnly := dateStr[:10]
+		if t, err := time.Parse("2006-01-02", dateStrOnly); err == nil {
+			return t, nil
+		}
+	}
+	return time.Parse(time.RFC3339, dateStr)
 }
+

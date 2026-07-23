@@ -20,8 +20,10 @@ func RegisterRoutes(router fiber.Router, c *container.Container) {
 
 	// Public auth routes — no JWT middleware
 	auth := router.Group("/auth")
+	auth.Post("/login", h.PatientLogin)
 	auth.Post("/staff/login", h.StaffLogin)
 	auth.Post("/patient/login", h.PatientLogin)
+
 	auth.Post("/forgot-password", h.ForgotPassword)
 	auth.Post("/verify-otp", h.VerifyOTP)
 	auth.Post("/reset-password", h.ResetPassword)

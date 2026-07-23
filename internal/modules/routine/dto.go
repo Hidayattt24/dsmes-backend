@@ -18,6 +18,8 @@ type RoutineResponse struct {
 	ID              string                `json:"id"`
 	RoutineType     domain.RoutineType    `json:"routine_type"`
 	DescriptiveName string                `json:"descriptive_name"`
+	IconName        string                `json:"icon_name"`
+	ScheduleText    string                `json:"schedule_text"`
 	BaseFrequency   string                `json:"base_frequency"`
 	IsActive        bool                  `json:"is_active"`
 	RoutineTimes    []RoutineTimeResponse `json:"routine_times"`
@@ -31,10 +33,24 @@ type RoutineTimeResponse struct {
 	ReminderActive bool               `json:"reminder_active"`
 }
 
+type RoutineSetupItem struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	IconName     string   `json:"icon_name"`
+	ScheduleText string   `json:"schedule_text"`
+	IsPredefined bool     `json:"is_predefined"`
+	CustomTimes  []string `json:"custom_times"`
+}
+
+type BulkSetupRoutinesRequest struct {
+	UseReminder bool               `json:"use_reminder"`
+	Routines    []RoutineSetupItem `json:"routines"`
+}
+
 type RoutineLogResponse struct {
-	ID            string                 `json:"id"`
-	RoutineTimeID string                 `json:"routine_time_id"`
-	LoggedAt      string                 `json:"logged_at"`
+	ID            string                  `json:"id"`
+	RoutineTimeID string                  `json:"routine_time_id"`
+	LoggedAt      string                  `json:"logged_at"`
 	Status        domain.RoutineLogStatus `json:"status"`
 }
 
@@ -58,6 +74,8 @@ func ToRoutineResponse(r *domain.Routine) RoutineResponse {
 		ID:              r.ID,
 		RoutineType:     r.RoutineType,
 		DescriptiveName: r.DescriptiveName,
+		IconName:        r.IconName,
+		ScheduleText:    r.ScheduleText,
 		BaseFrequency:   r.BaseFrequency,
 		IsActive:        r.IsActive,
 		RoutineTimes:    times,

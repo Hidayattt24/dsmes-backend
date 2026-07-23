@@ -58,3 +58,42 @@ func ToFoodResponse(f *domain.Food) FoodResponse {
 		FatG:                f.FatG,
 	}
 }
+
+type CalorieCalculationRequest struct {
+	Gender        string  `json:"gender"          validate:"required"`
+	DateOfBirth   string  `json:"date_of_birth"`
+	Age           int     `json:"age"`
+	HeightCm      float64 `json:"height_cm"`
+	Height        float64 `json:"height"`
+	WeightKg      float64 `json:"weight_kg"`
+	Weight        float64 `json:"weight"`
+	ActivityLevel string  `json:"activity_level" validate:"required"`
+	BloodType     string  `json:"blood_type"`
+}
+
+func (r *CalorieCalculationRequest) Normalize() {
+	if r.HeightCm <= 0 && r.Height > 0 {
+		r.HeightCm = r.Height
+	}
+	if r.WeightKg <= 0 && r.Weight > 0 {
+		r.WeightKg = r.Weight
+	}
+}
+
+type RecommendedCalories struct {
+	WeightLoss  int `json:"weightLoss"`
+	Maintenance int `json:"maintenance"`
+	WeightGain  int `json:"weightGain"`
+}
+
+type CalorieCalculationResponse struct {
+	Age                 int                 `json:"age"`
+	Gender              string              `json:"gender"`
+	Height              float64             `json:"height"`
+	Weight              float64             `json:"weight"`
+	BMR                 int                 `json:"bmr"`
+	ActivityMultiplier  float64             `json:"activityMultiplier"`
+	TDEE                int                 `json:"tdee"`
+	RecommendedCalories RecommendedCalories `json:"recommendedCalories"`
+}
+

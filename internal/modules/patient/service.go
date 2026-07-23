@@ -2,26 +2,32 @@ package patient
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
+	"github.com/dsmes/dsmes-backend/internal/modules/auth"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
+	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
 )
 
 type patientService struct {
-	repo  PatientRepository
-	email email.EmailService
-	log   *zap.Logger
+	repo     PatientRepository
+	authRepo auth.AuthRepository
+	jwt      *jwtpkg.Manager
+	email    email.EmailService
+	log      *zap.Logger
 }
 
-func NewPatientService(repo PatientRepository, email email.EmailService, log *zap.Logger) PatientService {
-	return &patientService{repo: repo, email: email, log: log}
+func NewPatientService(repo PatientRepository, authRepo auth.AuthRepository, jwt *jwtpkg.Manager, email email.EmailService, log *zap.Logger) PatientService {
+	return &patientService{repo: repo, authRepo: authRepo, jwt: jwt, email: email, log: log}
 }
 
-func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatientRequest) (*PatientDetailResponse, error) {
+func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatientRequest) (*auth.LoginResponse, error) {
 	// 1. Unique Check
 	_, err := s.repo.FindByEmail(ctx, req.Email)
 	if err == nil {
@@ -37,23 +43,42 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	// 3. Parse DOB
 	dob, err := ParseDOB(req.DateOfBirth)
 	if err != nil {
-		return nil, errs.NewBadRequest("invalid date of birth format (must be YYYY-MM-DD)", err)
+		return nil, errs.NewBadRequest("invalid date of birth format (must be YYYY-MM-DD or ISO string)", err)
+	}
+
+	// 4. Normalize Gender & BloodType & Activity
+	gender := domain.GenderLakiLaki
+	if strings.EqualFold(req.Gender, "perempuan") || strings.EqualFold(req.Gender, "female") {
+		gender = domain.GenderPerempuan
+	}
+
+	bloodType := domain.BloodType(req.BloodType)
+	cleanBlood := strings.ToLower(strings.TrimSpace(req.BloodType))
+	if cleanBlood == "tidak tahu" || cleanBlood == "tidak_tahu" {
+		bloodType = domain.BloodTypeTidakTahu
+	}
+
+	activityLevel := req.GetActivity()
+	if activityLevel == "" {
+		activityLevel = "Ringan"
 	}
 
 	patient := &domain.Patient{
-		Email:              req.Email,
-		PasswordHash:       string(hash),
-		FullName:           req.FullName,
-		Nickname:           req.Nickname,
-		WhatsappNumber:     req.WhatsappNumber,
-		Gender:             req.Gender,
-		DateOfBirth:        dob,
-		HeightCm:           req.HeightCm,
-		WeightKg:           req.WeightKg,
-		BloodType:          req.BloodType,
-		DailyCalorieTarget: 2000, // Default target
-		Status:             domain.StatusAktif,
+		Email:                 req.Email,
+		PasswordHash:          string(hash),
+		FullName:              req.FullName,
+		Nickname:              req.Nickname,
+		WhatsappNumber:        req.GetPhone(),
+		Gender:                gender,
+		DateOfBirth:           dob,
+		HeightCm:              req.HeightCm,
+		WeightKg:              req.WeightKg,
+		BloodType:             bloodType,
+		PhysicalActivityLevel: activityLevel,
+		DailyCalorieTarget:    2000, // Default target
+		Status:                domain.StatusAktif,
 	}
+
 
 	// 4. Seed default routines & times
 	defaultRoutines := []domain.Routine{
@@ -131,13 +156,38 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	go func() {
 		bgCtx := context.Background()
 		if err := s.email.SendWelcomeEmail(bgCtx, patient.Email, patient.FullName); err != nil {
-			s.log.Error("patient: failed to send welcome email", zap.String("email", patient.Email), zap.Error(err))
+			s.log.Warn("patient: welcome email delivery skipped or restricted by Resend test mode", zap.String("email", patient.Email), zap.Error(err))
 		}
 	}()
 
-	res := ToPatientDetailResponse(patient)
-	return &res, nil
+
+	// Generate JWT tokens for instant mobile login
+	tokens, err := s.jwt.GenerateTokenPair(patient.ID, patient.Email, "user")
+	if err != nil {
+		return nil, errs.NewInternal("failed to generate tokens on register", err)
+	}
+
+	session := &auth.AuthSession{
+		OwnerType:    auth.OwnerTypePatient,
+		OwnerID:      patient.ID,
+		RefreshToken: tokens.RefreshToken,
+		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
+	}
+	if err = s.authRepo.CreateSession(ctx, session); err != nil {
+		s.log.Warn("patient: failed to persist session on register", zap.Error(err), zap.String("patient_id", patient.ID))
+	}
+
+	return &auth.LoginResponse{
+		User: auth.AuthUserResponse{
+			ID:       patient.ID,
+			FullName: patient.FullName,
+			Email:    patient.Email,
+			Role:     "user",
+		},
+		Tokens: *tokens,
+	}, nil
 }
+
 
 func populateSummary(res *PatientResponse, summary *PatientSummaryData) {
 	if summary == nil {

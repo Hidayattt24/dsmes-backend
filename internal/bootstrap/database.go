@@ -20,7 +20,9 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/dsmes/dsmes-backend/internal/config"
+	"github.com/dsmes/dsmes-backend/internal/domain"
 )
+
 
 // NewDatabase opens a GORM connection to PostgreSQL and configures the
 // underlying database/sql connection pool.
@@ -76,8 +78,16 @@ func NewDatabase(cfg *config.Config, log *zap.Logger) (*gorm.DB, error) {
 		zap.Int("maxOpenConns", cfg.DB.MaxOpenConns),
 	)
 
+	// Ensure routine table schema changes (icon_name, schedule_text, routine_type) are automigrated
+	_ = db.Exec("ALTER TABLE routines ALTER COLUMN routine_type TYPE VARCHAR(50) USING routine_type::text;").Error
+	if err := db.AutoMigrate(&domain.Routine{}, &domain.RoutineTime{}); err != nil {
+		log.Warn("routine table auto-migration notice", zap.Error(err))
+	}
+
+
 	return db, nil
 }
+
 
 // CloseDatabase closes the underlying sql.DB connection pool.
 // Called during graceful shutdown.

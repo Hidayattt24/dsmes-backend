@@ -39,10 +39,13 @@ type Routine struct {
 	BaseModel
 
 	PatientID       string      `gorm:"type:uuid;not null" json:"patient_id"`
-	RoutineType     RoutineType `gorm:"type:routine_type_enum;not null" json:"routine_type"`
+	RoutineType     RoutineType `gorm:"type:varchar(50);not null" json:"routine_type"`
 	DescriptiveName string      `gorm:"type:varchar(150)" json:"descriptive_name"`
-	BaseFrequency   string      `gorm:"type:varchar(50);not null" json:"base_frequency"`
+	IconName        string      `gorm:"type:varchar(50)" json:"icon_name"`
+	ScheduleText    string      `gorm:"type:varchar(255)" json:"schedule_text"`
+	BaseFrequency   string      `gorm:"type:varchar(50);not null;default:'Daily'" json:"base_frequency"`
 	IsActive        bool        `gorm:"not null;default:true" json:"is_active"`
+
 
 	// Relations
 	Patient      *Patient      `gorm:"foreignKey:PatientID" json:"patient,omitempty"`

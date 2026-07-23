@@ -12,12 +12,15 @@ type RoutineRepository interface {
 	UpdateTime(ctx context.Context, t *domain.RoutineTime) error
 	CreateLog(ctx context.Context, log *domain.RoutineLogEntry) error
 	FindLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.RoutineLogEntry, error)
+	ReplacePatientRoutines(ctx context.Context, patientID string, routines []domain.Routine) error
 }
 
 type RoutineService interface {
 	ListRoutines(ctx context.Context, patientID string) ([]RoutineResponse, error)
 	ConfigureRoutineTime(ctx context.Context, patientID string, routineTimeID string, req UpdateRoutineTimeRequest) (*RoutineTimeResponse, error)
+	BulkSetupRoutines(ctx context.Context, patientID string, req BulkSetupRoutinesRequest) ([]RoutineResponse, error)
 	LogRoutine(ctx context.Context, patientID string, req LogRoutineRequest) (*RoutineLogResponse, error)
 	GetOnboardingStatus(ctx context.Context, patientID string) (*OnboardingStatusResponse, error)
 	GetPatientActivityLogs(ctx context.Context, patientID string, dateStr string) ([]ActivityLogResponse, error)
 }
+

@@ -65,9 +65,11 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	staffHandler := staff.NewStaffHandler(staffSvc, c.Logger)
 
 	// 2. Patient
+	authRepo := auth.NewAuthRepository(c.DB, c.Logger)
 	patientRepo := patient.NewPatientRepository(c.DB, c.Logger)
-	patientSvc := patient.NewPatientService(patientRepo, c.Email, c.Logger)
+	patientSvc := patient.NewPatientService(patientRepo, authRepo, c.JWT, c.Email, c.Logger)
 	patientHandler := patient.NewPatientHandler(patientSvc, c.Logger)
+
 
 	// 3. Routine
 	routineRepo := routine.NewRoutineRepository(c.DB, c.Logger)
@@ -125,6 +127,8 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	// ── Public routes (no JWT) ────────────────────────────────────────────────
 	auth.RegisterRoutes(v1, c)
 	v1.Post("/auth/register", patientHandler.Register)
+	v1.Post("/nutrition/calculate-calories", nutritionHandler.CalculateCalories)
+
 
 	// ── Protected: Admin Group (JWT + RequireRole("admin")) ───────────────────
 	admin := v1.Group("/admin",
@@ -242,8 +246,10 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Routines habit logging
 		patientGroup.Get("/routines", routineHandler.List)
 		patientGroup.Put("/routines/:routineTimeId", routineHandler.Configure)
+		patientGroup.Post("/routines/setup", routineHandler.BulkSetup)
 		patientGroup.Post("/routines/log", routineHandler.Log)
 		patientGroup.Get("/routines/status", routineHandler.Status)
+
 
 		// Blood sugar records
 		patientGroup.Post("/blood-sugar", bsHandler.Log)
@@ -283,19 +289,13 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	}
 
 	// ── Authenticated Shared Group (any authenticated role) ───────────────────
-	shared := v1.Group("", middleware.JWT(c.Config))
-	{
-		// Food database search
-		shared.Get("/foods", nutritionHandler.Search)
+	jwtAuth := middleware.JWT(c.Config)
+	v1.Get("/foods", jwtAuth, nutritionHandler.Search)
+	v1.Get("/faqs", jwtAuth, settingsHandler.GetFAQs)
+	v1.Get("/education/categories", jwtAuth, eduHandler.ListCategories)
+	v1.Get("/education/articles", jwtAuth, eduHandler.ListPublished)
+	v1.Get("/education/articles/:id", jwtAuth, eduHandler.GetByID)
 
-		// Helpdesk FAQs
-		shared.Get("/faqs", settingsHandler.GetFAQs)
-
-		// General education articles view
-		shared.Get("/education/categories", eduHandler.ListCategories)
-		shared.Get("/education/articles", eduHandler.ListPublished)
-		shared.Get("/education/articles/:id", eduHandler.GetByID)
-	}
 
 	// ── Internal / Cron Group ─────────────────────────────────────────────────
 	internal := v1.Group("/internal")

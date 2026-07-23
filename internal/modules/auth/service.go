@@ -120,6 +120,10 @@ func (s *authService) Logout(ctx context.Context, refreshToken string) error {
 
 func (s *authService) ForgotPassword(ctx context.Context, req ForgotPasswordRequest) error {
 	ownerType := OwnerType(req.OwnerType)
+	if ownerType == "" {
+		ownerType = OwnerTypePatient
+	}
+
 
 	var ownerID string
 	if ownerType == OwnerTypeStaff {

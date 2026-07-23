@@ -59,6 +59,60 @@ func (s *routineService) ConfigureRoutineTime(ctx context.Context, patientID str
 	}, nil
 }
 
+func (s *routineService) BulkSetupRoutines(ctx context.Context, patientID string, req BulkSetupRoutinesRequest) ([]RoutineResponse, error) {
+	var domainRoutines []domain.Routine
+
+	for _, item := range req.Routines {
+		var rType domain.RoutineType
+		switch strings.ToLower(item.ID) {
+		case "morning", "jalan_pagi":
+			rType = domain.RoutineJalanPagi
+		case "water", "minum_air":
+			rType = domain.RoutineMinumAir
+		case "blood_sugar", "cek_gula":
+			rType = domain.RoutineCekGula
+		default:
+			rType = domain.RoutineType(item.ID)
+		}
+		if rType == "" {
+			rType = domain.RoutineType("Custom")
+		}
+
+
+		var routineTimes []domain.RoutineTime
+		for _, tStr := range item.CustomTimes {
+			timeVal := tStr
+			if len(timeVal) == 5 {
+				timeVal += ":00"
+			}
+			routineTimes = append(routineTimes, domain.RoutineTime{
+				TimeType:       domain.WaktuKustom,
+				ScheduledTime:  &timeVal,
+				Status:         domain.WaktuSet,
+				ReminderActive: req.UseReminder,
+			})
+		}
+
+		domainRoutines = append(domainRoutines, domain.Routine{
+			PatientID:       patientID,
+			RoutineType:     rType,
+			DescriptiveName: item.Name,
+			IconName:        item.IconName,
+			ScheduleText:    item.ScheduleText,
+			BaseFrequency:   "Daily",
+			IsActive:        true,
+			RoutineTimes:    routineTimes,
+		})
+	}
+
+	if err := s.repo.ReplacePatientRoutines(ctx, patientID, domainRoutines); err != nil {
+		return nil, err
+	}
+
+	return s.ListRoutines(ctx, patientID)
+}
+
+
 func (s *routineService) LogRoutine(ctx context.Context, patientID string, req LogRoutineRequest) (*RoutineLogResponse, error) {
 	// Verify routine time exists
 	_, err := s.repo.FindTimeByID(ctx, req.RoutineTimeID)

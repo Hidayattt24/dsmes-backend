@@ -72,6 +72,34 @@ func (h *RoutineHandler) Configure(c fiber.Ctx) error {
 	return response.Success(c, "routine time configured", res)
 }
 
+// BulkSetup handles POST /api/v1/patient/routines/setup
+// @Summary      Setup daily routines in bulk
+// @Tags         routine
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  BulkSetupRoutinesRequest  true  "Bulk setup payload"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/routines/setup [post]
+func (h *RoutineHandler) BulkSetup(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req BulkSetupRoutinesRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	res, err := h.svc.BulkSetupRoutines(c.Context(), claims.UserID, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "daily routines configured successfully", res)
+}
+
+
 // Log handles POST /api/v1/patient/routines/log
 // @Summary      Log routine execution
 // @Tags         routine

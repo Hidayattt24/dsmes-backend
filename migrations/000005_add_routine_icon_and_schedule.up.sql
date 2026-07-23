@@ -1,0 +1,4 @@
+ALTER TABLE routines ADD COLUMN IF NOT EXISTS icon_name VARCHAR(50);
+ALTER TABLE routines ADD COLUMN IF NOT EXISTS schedule_text VARCHAR(255);
+ALTER TABLE routines ALTER COLUMN routine_type TYPE VARCHAR(50) USING routine_type::text;
+
