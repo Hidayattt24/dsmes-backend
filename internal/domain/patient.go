@@ -25,7 +25,7 @@ const (
 type Patient struct {
 	BaseModel
 
-	Email               string        `gorm:"type:varchar(150);uniqueIndex;not null" json:"email"`
+	Email               string        `gorm:"type:varchar(150);uniqueIndex:idx_patients_email;not null" json:"email"`
 	PasswordHash        string        `gorm:"type:varchar(255);not null" json:"-"`
 	FullName            string        `gorm:"type:varchar(150);not null" json:"full_name"`
 	Nickname            string        `gorm:"type:varchar(50)" json:"nickname"`

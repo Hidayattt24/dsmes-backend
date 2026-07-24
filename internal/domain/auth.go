@@ -36,8 +36,8 @@ type StaffAccount struct {
 	BaseModel
 
 	FullName        string        `gorm:"type:varchar(150);not null" json:"full_name"`
-	Username        string        `gorm:"type:varchar(50);uniqueIndex;not null" json:"username"`
-	Email           string        `gorm:"type:varchar(150);uniqueIndex;not null" json:"email"`
+	Username        string        `gorm:"type:varchar(50);uniqueIndex:idx_staff_accounts_username;not null" json:"username"`
+	Email           string        `gorm:"type:varchar(150);uniqueIndex:idx_staff_accounts_email;not null" json:"email"`
 	PasswordHash    string        `gorm:"type:varchar(255);not null" json:"-"`
 	WhatsappNumber  string        `gorm:"type:varchar(20)" json:"whatsapp_number"`
 	Role            StaffRole     `gorm:"type:staff_role_enum;not null" json:"role"`
