@@ -22,6 +22,7 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/modules/checkin"
 	"github.com/dsmes/dsmes-backend/internal/modules/dashboard"
 	"github.com/dsmes/dsmes-backend/internal/modules/education"
+	"github.com/dsmes/dsmes-backend/internal/modules/education_progress"
 	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
 	"github.com/dsmes/dsmes-backend/internal/modules/patient"
 	"github.com/dsmes/dsmes-backend/internal/modules/quiz"
@@ -70,7 +71,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	patientSvc := patient.NewPatientService(patientRepo, authRepo, c.JWT, c.Email, c.Logger)
 	patientHandler := patient.NewPatientHandler(patientSvc, c.Logger)
 
-
 	// 3. Routine
 	routineRepo := routine.NewRoutineRepository(c.DB, c.Logger)
 	routineSvc := routine.NewRoutineService(routineRepo, c.Logger)
@@ -101,7 +101,12 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	eduSvc := education.NewEducationService(eduRepo, c.Logger)
 	eduHandler := education.NewEducationHandler(eduSvc, c.Logger)
 
-	// 9. Summary
+	// 9. Education Progress
+	eduProgressRepo := education_progress.NewEducationProgressRepository(c.DB, c.Logger)
+	eduProgressSvc := education_progress.NewEducationProgressService(eduProgressRepo, eduRepo, c.Logger)
+	eduProgressHandler := education_progress.NewEducationProgressHandler(eduProgressSvc, c.Logger)
+
+	// 10. Summary
 	summaryRepo := summary.NewSummaryRepository(c.DB, c.Logger)
 	summarySvc := summary.NewSummaryService(summaryRepo, c.Logger)
 	summaryHandler := summary.NewSummaryHandler(summarySvc, c.Logger)
@@ -128,7 +133,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	auth.RegisterRoutes(v1, c)
 	v1.Post("/auth/register", patientHandler.Register)
 	v1.Post("/nutrition/calculate-calories", nutritionHandler.CalculateCalories)
-
 
 	// ── Protected: Admin Group (JWT + RequireRole("admin")) ───────────────────
 	admin := v1.Group("/admin",
@@ -184,6 +188,12 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Put("/education/articles/:id", eduHandler.Update)
 		admin.Patch("/education/articles/:id/publish", eduHandler.Publish)
 		admin.Delete("/education/articles/:id", eduHandler.Delete)
+
+		// Education Progress Tracking
+		admin.Get("/education/:id/progress", eduProgressHandler.GetArticleProgress)
+		admin.Get("/education/:id/progress/analytics", eduProgressHandler.GetArticleAnalytics)
+		admin.Post("/education/:id/progress/read-article", eduProgressHandler.MarkArticleReadAdmin)
+		admin.Post("/education/:id/progress/watch-video", eduProgressHandler.MarkVideoWatchedAdmin)
 
 		// Quiz / Questionnaire Management
 		admin.Get("/quiz/stats", quizHandler.GetStats)
@@ -259,7 +269,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Post("/routines/log", routineHandler.Log)
 		patientGroup.Get("/routines/status", routineHandler.Status)
 
-
 		// Blood sugar records
 		patientGroup.Post("/blood-sugar", bsHandler.Log)
 		patientGroup.Get("/blood-sugar", bsHandler.GetHistory)
@@ -289,6 +298,11 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Post("/education/:id/save", eduHandler.Save)
 		patientGroup.Get("/education/saved", eduHandler.ListSaved)
 
+		// Education Progress (Mobile-ready API)
+		patientGroup.Get("/education/:id/progress", eduProgressHandler.GetPatientProgress)
+		patientGroup.Post("/education/:id/read-article", eduProgressHandler.MarkArticleRead)
+		patientGroup.Post("/education/:id/watch-video", eduProgressHandler.MarkVideoWatched)
+
 		// Weekly analytical summary cards
 		patientGroup.Get("/summary/weekly", summaryHandler.GetLatest)
 
@@ -304,7 +318,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	v1.Get("/education/categories", jwtAuth, eduHandler.ListCategories)
 	v1.Get("/education/articles", jwtAuth, eduHandler.ListPublished)
 	v1.Get("/education/articles/:id", jwtAuth, eduHandler.GetByID)
-
 
 	// ── Internal / Cron Group ─────────────────────────────────────────────────
 	internal := v1.Group("/internal")

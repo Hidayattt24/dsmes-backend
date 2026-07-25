@@ -233,10 +233,13 @@ func (s *educationService) CompleteArticle(ctx context.Context, patientID string
 		return err
 	}
 
+	now := time.Now()
 	completion := &domain.UserArticleCompletion{
-		PatientID:   patientID,
-		ArticleID:   id,
-		CompletedAt: time.Now(),
+		PatientID:     patientID,
+		ArticleID:     id,
+		ArticleRead:   true,
+		ArticleReadAt: &now,
+		CompletedAt:   &now,
 	}
 
 	return s.repo.MarkCompleted(ctx, completion)

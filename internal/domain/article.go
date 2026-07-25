@@ -30,19 +30,19 @@ func (ArticleCategory) TableName() string { return "article_categories" }
 type Article struct {
 	BaseModel
 
-	Title                 string        `gorm:"type:varchar(200);not null" json:"title"`
-	CategoryID            string        `gorm:"type:uuid;not null" json:"category_id"`
-	EstimatedReadMinutes  int           `json:"estimated_read_minutes"`
-	AuthorName            string        `gorm:"type:varchar(150)" json:"author_name"`
-	BannerImageURL        string        `gorm:"type:text" json:"banner_image_url"`
-	Summary               string        `gorm:"type:text" json:"summary"`
-	Status                ArticleStatus `gorm:"type:article_status_enum;not null;default:draft" json:"status"`
-	CreatedBy             *string       `gorm:"type:uuid" json:"created_by"`
-	Content               string        `gorm:"type:text" json:"content"`
-	YoutubeLink           string        `gorm:"type:varchar(255)" json:"youtube_link"`
+	Title                string        `gorm:"type:varchar(200);not null" json:"title"`
+	CategoryID           string        `gorm:"type:uuid;not null" json:"category_id"`
+	EstimatedReadMinutes int           `json:"estimated_read_minutes"`
+	AuthorName           string        `gorm:"type:varchar(150)" json:"author_name"`
+	BannerImageURL       string        `gorm:"type:text" json:"banner_image_url"`
+	Summary              string        `gorm:"type:text" json:"summary"`
+	Status               ArticleStatus `gorm:"type:article_status_enum;not null;default:draft" json:"status"`
+	CreatedBy            *string       `gorm:"type:uuid" json:"created_by"`
+	Content              string        `gorm:"type:text" json:"content"`
+	YoutubeLink          string        `gorm:"type:varchar(255)" json:"youtube_link"`
 
 	// Virtual fields (read-only)
-	ReadCount             int64         `gorm:"->"`
+	ReadCount int64 `gorm:"->"`
 
 	// Relations
 	Category        *ArticleCategory `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
@@ -79,13 +79,28 @@ type ArticleSectionStep struct {
 
 func (ArticleSectionStep) TableName() string { return "article_section_steps" }
 
-// UserArticleCompletion tracks which articles a patient completed reading.
+// UserArticleCompletion tracks which educational content a patient has
+// read or watched. Completion uses OR logic: if either article_read OR
+// youtube_watched is true, completed_at is set.
+//
+// New fields added in migration 000006:
+//   - article_read, article_read_at — tracks article reading
+//   - youtube_watched, youtube_watched_at — tracks YouTube video watching
+//   - completed_at remains as the overall completion timestamp
 type UserArticleCompletion struct {
 	BaseModel
 
-	PatientID   string    `gorm:"type:uuid;not null;uniqueIndex:idx_patient_article_completion" json:"patient_id"`
-	ArticleID   string    `gorm:"type:uuid;not null;uniqueIndex:idx_patient_article_completion" json:"article_id"`
-	CompletedAt time.Time `gorm:"not null;default:now()" json:"completed_at"`
+	PatientID   string     `gorm:"type:uuid;not null;uniqueIndex:idx_patient_article_completion" json:"patient_id"`
+	ArticleID   string     `gorm:"type:uuid;not null;uniqueIndex:idx_patient_article_completion" json:"article_id"`
+	CompletedAt *time.Time `json:"completed_at"`
+
+	// Article read tracking
+	ArticleRead   bool       `gorm:"not null;default:false" json:"article_read"`
+	ArticleReadAt *time.Time `json:"article_read_at"`
+
+	// YouTube video watch tracking
+	YouTubeWatched   bool       `gorm:"not null;default:false" json:"youtube_watched"`
+	YouTubeWatchedAt *time.Time `json:"youtube_watched_at"`
 }
 
 func (UserArticleCompletion) TableName() string { return "user_article_completions" }
