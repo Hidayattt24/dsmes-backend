@@ -105,7 +105,17 @@ func NewDatabase(cfg *config.Config, log *zap.Logger) (*gorm.DB, error) {
 	_ = db.Exec("CREATE INDEX IF NOT EXISTS idx_patient_measurements_patient_id ON patient_measurements(patient_id)").Error
 	_ = db.Exec("CREATE INDEX IF NOT EXISTS idx_patient_measurements_measured_at ON patient_measurements(measured_at)").Error
 
-	if err := db.AutoMigrate(&domain.Routine{}, &domain.RoutineTime{}, &domain.PatientMeasurement{}); err != nil {
+	_ = db.Exec("DO $$ BEGIN CREATE TYPE questionnaire_type_enum AS ENUM ('PRE_TEST', 'POST_TEST'); EXCEPTION WHEN duplicate_object THEN null; END $$;").Error
+
+	if err := db.AutoMigrate(
+		&domain.Routine{},
+		&domain.RoutineTime{},
+		&domain.PatientMeasurement{},
+		&domain.Questionnaire{},
+		&domain.QuestionCategory{},
+		&domain.Question{},
+		&domain.QuestionOption{},
+	); err != nil {
 		log.Warn("table auto-migration notice", zap.Error(err))
 	}
 

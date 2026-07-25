@@ -45,7 +45,7 @@ func (r *dashboardRepository) GetAdminStats(ctx context.Context) (*AdminDashboar
 		return nil, errs.NewInternal("failed to count articles", err)
 	}
 
-	if err := r.db.WithContext(ctx).Model(&domain.Quiz{}).Where("deleted_at IS NULL").Count(&totalQuizzes).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&domain.Questionnaire{}).Where("deleted_at IS NULL").Count(&totalQuizzes).Error; err != nil {
 		return nil, errs.NewInternal("failed to count quizzes", err)
 	}
 

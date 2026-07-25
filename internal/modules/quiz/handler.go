@@ -21,7 +21,6 @@ func NewQuizHandler(svc QuizService, log *zap.Logger) *QuizHandler {
 	return &QuizHandler{svc: svc, log: log}
 }
 
-// List handles GET /api/v1/admin/quiz or /api/v1/staff/quiz
 func (h *QuizHandler) List(c fiber.Ctx) error {
 	page := 1
 	if pStr := c.Query("page"); pStr != "" {
@@ -35,12 +34,14 @@ func (h *QuizHandler) List(c fiber.Ctx) error {
 			limit = l
 		}
 	}
+
 	search := c.Query("search")
+	qType := c.Query("type")
 	status := c.Query("status")
 	sortBy := c.Query("sort_by")
 	sortOrder := c.Query("sort_order")
 
-	items, total, err := h.svc.ListQuizzes(c.Context(), search, status, sortBy, sortOrder, page, limit)
+	items, total, err := h.svc.ListQuestionnaires(c.Context(), search, qType, status, sortBy, sortOrder, page, limit)
 	if err != nil {
 		return err
 	}
@@ -50,7 +51,7 @@ func (h *QuizHandler) List(c fiber.Ctx) error {
 		totalPages++
 	}
 
-	return response.SuccessWithMeta(c, "quizzes retrieved", items, &response.Meta{
+	return response.SuccessWithMeta(c, "questionnaires retrieved", items, &response.Meta{
 		Page:       page,
 		PerPage:    limit,
 		Total:      total,
@@ -58,27 +59,60 @@ func (h *QuizHandler) List(c fiber.Ctx) error {
 	})
 }
 
-// GetByID handles GET /api/v1/admin/quiz/:id or /api/v1/staff/quiz/:id
 func (h *QuizHandler) GetByID(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return errs.NewBadRequest("questionnaire ID is required")
+	}
+
 	claims := middleware.ClaimsFromContext(c)
 	isAdminOrStaff := claims != nil && (claims.Role == "admin" || claims.Role == "staff")
 
-	id := c.Params("id")
-	res, err := h.svc.GetQuiz(c.Context(), id, isAdminOrStaff)
+	item, err := h.svc.GetQuestionnaire(c.Context(), id, isAdminOrStaff)
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "quiz details retrieved", res)
+
+	return response.Success(c, "questionnaire detail retrieved", item)
 }
 
-// Create handles POST /api/v1/admin/quiz
+func (h *QuizHandler) GetActivePreTest(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	isAdminOrStaff := claims != nil && (claims.Role == "admin" || claims.Role == "staff")
+
+	item, err := h.svc.GetActivePreTest(c.Context(), isAdminOrStaff)
+	if err != nil {
+		return err
+	}
+
+	return response.Success(c, "active Pre-Test retrieved", item)
+}
+
+func (h *QuizHandler) GetPostTestByEducation(c fiber.Ctx) error {
+	educationID := c.Query("education_id")
+	if educationID == "" {
+		return errs.NewBadRequest("education_id parameter is required")
+	}
+
+	claims := middleware.ClaimsFromContext(c)
+	isAdminOrStaff := claims != nil && (claims.Role == "admin" || claims.Role == "staff")
+
+	item, err := h.svc.GetPostTestByEducation(c.Context(), educationID, isAdminOrStaff)
+	if err != nil {
+		return err
+	}
+
+	return response.Success(c, "Post-Test retrieved", item)
+}
+
 func (h *QuizHandler) Create(c fiber.Ctx) error {
 	claims := middleware.ClaimsFromContext(c)
-	if claims == nil {
-		return fiber.ErrUnauthorized
+	staffID := ""
+	if claims != nil {
+		staffID = claims.UserID
 	}
 
-	var req CreateQuizRequest
+	var req CreateQuestionnaireRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return errs.NewBadRequest("invalid request body")
 	}
@@ -87,17 +121,21 @@ func (h *QuizHandler) Create(c fiber.Ctx) error {
 		return response.ValidationError(c, fieldErrs)
 	}
 
-	res, err := h.svc.CreateQuiz(c.Context(), claims.UserID, req)
+	res, err := h.svc.CreateQuestionnaire(c.Context(), staffID, req)
 	if err != nil {
 		return err
 	}
-	return response.Created(c, "quiz created successfully", res)
+
+	return response.Created(c, "questionnaire created successfully", res)
 }
 
-// Update handles PUT /api/v1/admin/quiz/:id
 func (h *QuizHandler) Update(c fiber.Ctx) error {
 	id := c.Params("id")
-	var req CreateQuizRequest
+	if id == "" {
+		return errs.NewBadRequest("questionnaire ID is required")
+	}
+
+	var req CreateQuestionnaireRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return errs.NewBadRequest("invalid request body")
 	}
@@ -106,48 +144,88 @@ func (h *QuizHandler) Update(c fiber.Ctx) error {
 		return response.ValidationError(c, fieldErrs)
 	}
 
-	res, err := h.svc.UpdateQuiz(c.Context(), id, req)
+	res, err := h.svc.UpdateQuestionnaire(c.Context(), id, req)
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "quiz updated successfully", res)
+
+	return response.Success(c, "questionnaire updated successfully", res)
 }
 
-// Delete handles DELETE /api/v1/admin/quiz/:id
 func (h *QuizHandler) Delete(c fiber.Ctx) error {
 	id := c.Params("id")
-	if err := h.svc.DeleteQuiz(c.Context(), id); err != nil {
+	if id == "" {
+		return errs.NewBadRequest("questionnaire ID is required")
+	}
+
+	if err := h.svc.DeleteQuestionnaire(c.Context(), id); err != nil {
 		return err
 	}
-	return response.NoContent(c)
+
+	return response.Success(c, "questionnaire deleted successfully", nil)
 }
 
-// GetStats handles GET /api/v1/admin/quiz/stats or /api/v1/staff/quiz/stats
 func (h *QuizHandler) GetStats(c fiber.Ctx) error {
-	res, err := h.svc.GetStats(c.Context())
+	stats, err := h.svc.GetStats(c.Context())
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "quiz statistics retrieved", res)
+	return response.Success(c, "questionnaire stats retrieved", stats)
 }
 
-// ListParticipants handles GET /api/v1/admin/quiz/:id/participants or /api/v1/staff/quiz/:id/participants
+func (h *QuizHandler) Submit(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil || claims.UserID == "" {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	id := c.Params("id")
+	if id == "" {
+		return errs.NewBadRequest("questionnaire ID is required")
+	}
+
+	var req SubmitQuestionnaireRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.SubmitQuestionnaire(c.Context(), claims.UserID, id, req)
+	if err != nil {
+		return err
+	}
+
+	return response.Success(c, "questionnaire submitted successfully", res)
+}
+
 func (h *QuizHandler) ListParticipants(c fiber.Ctx) error {
 	id := c.Params("id")
-	res, err := h.svc.ListParticipants(c.Context(), id)
+	if id == "" {
+		return errs.NewBadRequest("questionnaire ID is required")
+	}
+
+	participants, err := h.svc.ListParticipants(c.Context(), id)
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "quiz participants retrieved", res)
+
+	return response.Success(c, "questionnaire participants retrieved", participants)
 }
 
-// GetParticipantDetail handles GET /api/v1/admin/quiz/:id/participant/:participant_id or /api/v1/staff/quiz/:id/participant/:participant_id
 func (h *QuizHandler) GetParticipantDetail(c fiber.Ctx) error {
 	id := c.Params("id")
 	participantID := c.Params("participant_id")
-	res, err := h.svc.GetParticipantDetail(c.Context(), id, participantID)
+	if id == "" || participantID == "" {
+		return errs.NewBadRequest("questionnaire ID and participant ID are required")
+	}
+
+	detail, err := h.svc.GetParticipantDetail(c.Context(), id, participantID)
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "participant details retrieved", res)
+
+	return response.Success(c, "participant detail retrieved", detail)
 }

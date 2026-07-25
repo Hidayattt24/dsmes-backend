@@ -3,7 +3,6 @@ package quiz
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -21,159 +20,204 @@ func NewQuizRepository(db *gorm.DB, log *zap.Logger) QuizRepository {
 	return &quizRepository{db: db, log: log}
 }
 
-func (r *quizRepository) FindAll(ctx context.Context, search, status, sortBy, sortOrder string, page, limit int) ([]domain.Quiz, int64, error) {
-	var items []domain.Quiz
+func (r *quizRepository) FindAll(ctx context.Context, search, qType, status, sortBy, sortOrder string, page, limit int) ([]domain.Questionnaire, int64, error) {
+	var items []domain.Questionnaire
 	var total int64
 
-	q := r.db.WithContext(ctx).Model(&domain.Quiz{}).Where("deleted_at IS NULL")
+	q := r.db.WithContext(ctx).Model(&domain.Questionnaire{}).Where("questionnaires.deleted_at IS NULL")
 
 	if search != "" {
-		searchPattern := "%" + search + "%"
-		q = q.Where("title ILIKE ?", searchPattern)
+		pattern := "%" + search + "%"
+		q = q.Where("questionnaires.title ILIKE ? OR questionnaires.description ILIKE ?", pattern, pattern)
 	}
 
-	if status != "" && !strings.EqualFold(status, "Semua") {
-		q = q.Where("LOWER(status) = LOWER(?)", status)
+	if qType != "" && qType != "Semua" {
+		q = q.Where("questionnaires.type = ?", qType)
+	}
+
+	if status != "" && status != "Semua" {
+		q = q.Where("LOWER(questionnaires.status) = ?", normalizeStatus(status))
 	}
 
 	if err := q.Count(&total).Error; err != nil {
-		return nil, 0, errs.NewInternal("failed to count quizzes", err)
+		return nil, 0, errs.NewInternal("failed to count questionnaires", err)
 	}
 
-	orderClause := "created_at DESC"
+	order := "DESC"
+	if sortOrder == "asc" {
+		order = "ASC"
+	}
+
 	switch sortBy {
-	case "title":
-		orderClause = "title ASC"
-		if strings.EqualFold(sortOrder, "desc") {
-			orderClause = "title DESC"
-		}
+	case "title", "name":
+		q = q.Order("questionnaires.title " + order)
 	case "oldest":
-		orderClause = "created_at ASC"
-	case "newest":
-		orderClause = "created_at DESC"
+		q = q.Order("questionnaires.created_at ASC")
 	default:
-		if strings.EqualFold(sortOrder, "asc") {
-			orderClause = "created_at ASC"
-		}
+		q = q.Order("questionnaires.created_at " + order)
 	}
 
 	offset := (page - 1) * limit
-	err := q.Preload("LinkedArticle").
-		Preload("Questions").
+	err := q.Preload("Education").
+		Preload("Categories.Questions.Options").
 		Offset(offset).Limit(limit).
-		Order(orderClause).
 		Find(&items).Error
 	if err != nil {
-		return nil, 0, errs.NewInternal("failed to fetch quizzes", err)
+		return nil, 0, errs.NewInternal("failed to fetch questionnaires", err)
 	}
 
 	return items, total, nil
 }
 
-func (r *quizRepository) FindByID(ctx context.Context, id string) (*domain.Quiz, error) {
-	var q domain.Quiz
+func (r *quizRepository) FindByID(ctx context.Context, id string) (*domain.Questionnaire, error) {
+	var item domain.Questionnaire
 	err := r.db.WithContext(ctx).
-		Preload("LinkedArticle").
-		Preload("Questions").
+		Preload("Education").
+		Preload("Categories", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions.Options", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
 		Where("id = ? AND deleted_at IS NULL", id).
-		First(&q).Error
+		First(&item).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errs.NewNotFound("quiz not found")
+			return nil, errs.NewNotFound("questionnaire not found")
 		}
-		return nil, errs.NewInternal("failed to fetch quiz", err)
+		return nil, errs.NewInternal("failed to fetch questionnaire", err)
 	}
-	return &q, nil
+	return &item, nil
 }
 
-func (r *quizRepository) Create(ctx context.Context, q *domain.Quiz) error {
-	if err := r.db.WithContext(ctx).Create(q).Error; err != nil {
-		return errs.NewInternal("failed to create quiz", err)
+func (r *quizRepository) GetActivePreTest(ctx context.Context) (*domain.Questionnaire, error) {
+	var item domain.Questionnaire
+	err := r.db.WithContext(ctx).
+		Preload("Categories", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions.Options", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Where("type = ? AND LOWER(status) IN ('aktif', 'terbit') AND deleted_at IS NULL", domain.TypePreTest).
+		Order("created_at DESC").
+		First(&item).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("active Pre-Test not found")
+		}
+		return nil, errs.NewInternal("failed to fetch active Pre-Test", err)
 	}
-	return nil
+	return &item, nil
 }
 
-func (r *quizRepository) Update(ctx context.Context, q *domain.Quiz) error {
-	result := r.db.WithContext(ctx).Save(q)
-	if result.Error != nil {
-		return errs.NewInternal("failed to update quiz", result.Error)
+func (r *quizRepository) GetPostTestByEducation(ctx context.Context, educationID string) (*domain.Questionnaire, error) {
+	var item domain.Questionnaire
+	err := r.db.WithContext(ctx).
+		Preload("Education").
+		Preload("Categories", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions.Options", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Where("type = ? AND education_id = ? AND LOWER(status) IN ('aktif', 'terbit') AND deleted_at IS NULL", domain.TypePostTest, educationID).
+		Order("created_at DESC").
+		First(&item).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("Post-Test for this education material not found")
+		}
+		return nil, errs.NewInternal("failed to fetch Post-Test", err)
 	}
-	return nil
+	return &item, nil
 }
 
-func (r *quizRepository) Delete(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Model(&domain.Quiz{}).Where("id = ?", id).Update("deleted_at", gorm.Expr("NOW()"))
-	if result.Error != nil {
-		return errs.NewInternal("failed to soft delete quiz", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return errs.NewNotFound("quiz not found")
-	}
-	return nil
-}
-
-func (r *quizRepository) ReplaceQuestions(ctx context.Context, quizID string, questions []domain.QuizQuestion) error {
+func (r *quizRepository) Create(ctx context.Context, q *domain.Questionnaire) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Clean existing questions
-		tx.Where("quiz_id = ?", quizID).Delete(&domain.QuizQuestion{})
-
-		// Create new questions
-		for _, q := range questions {
-			q.QuizID = quizID
-			if err := tx.Create(&q).Error; err != nil {
-				return err
-			}
+		if err := tx.Create(q).Error; err != nil {
+			return errs.NewInternal("failed to create questionnaire", err)
 		}
 		return nil
 	})
 }
 
+func (r *quizRepository) Update(ctx context.Context, q *domain.Questionnaire) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Remove existing categories and questions under this questionnaire
+		var existingCatIDs []string
+		tx.Model(&domain.QuestionCategory{}).Where("questionnaire_id = ?", q.ID).Pluck("id", &existingCatIDs)
+
+		if len(existingCatIDs) > 0 {
+			var existingQuestIDs []string
+			tx.Model(&domain.Question{}).Where("category_id IN ?", existingCatIDs).Pluck("id", &existingQuestIDs)
+			if len(existingQuestIDs) > 0 {
+				_ = tx.Where("question_id IN ?", existingQuestIDs).Delete(&domain.QuestionOption{}).Error
+				_ = tx.Where("id IN ?", existingQuestIDs).Delete(&domain.Question{}).Error
+			}
+			_ = tx.Where("id IN ?", existingCatIDs).Delete(&domain.QuestionCategory{}).Error
+		}
+
+		// Save updated questionnaire record
+		if err := tx.Save(q).Error; err != nil {
+			return errs.NewInternal("failed to update questionnaire", err)
+		}
+
+		return nil
+	})
+}
+
+func (r *quizRepository) Delete(ctx context.Context, id string) error {
+	if err := r.db.WithContext(ctx).Delete(&domain.Questionnaire{}, "id = ?", id).Error; err != nil {
+		return errs.NewInternal("failed to delete questionnaire", err)
+	}
+	return nil
+}
+
 func (r *quizRepository) GetStats(ctx context.Context) (*QuizStats, error) {
-	var totalQuizzes int64
-	var publishedQuizzes int64
-	var draftQuizzes int64
-	var totalAttempts int64
+	var total, published, draft, attempts int64
+	var avgScore int
 
-	if err := r.db.WithContext(ctx).Model(&domain.Quiz{}).Where("deleted_at IS NULL").Count(&totalQuizzes).Error; err != nil {
-		return nil, errs.NewInternal("failed to count quizzes", err)
-	}
+	_ = r.db.WithContext(ctx).Model(&domain.Questionnaire{}).Where("deleted_at IS NULL").Count(&total)
+	_ = r.db.WithContext(ctx).Model(&domain.Questionnaire{}).Where("LOWER(status) IN ('aktif', 'terbit') AND deleted_at IS NULL").Count(&published)
+	_ = r.db.WithContext(ctx).Model(&domain.Questionnaire{}).Where("LOWER(status) = 'draft' AND deleted_at IS NULL").Count(&draft)
+	_ = r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).Where("deleted_at IS NULL").Count(&attempts)
 
-	if err := r.db.WithContext(ctx).Model(&domain.Quiz{}).Where("LOWER(status) = ? AND deleted_at IS NULL", "terbit").Count(&publishedQuizzes).Error; err != nil {
-		return nil, errs.NewInternal("failed to count published quizzes", err)
-	}
-
-	draftQuizzes = totalQuizzes - publishedQuizzes
-
-	if err := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).Where("deleted_at IS NULL").Count(&totalAttempts).Error; err != nil {
-		return nil, errs.NewInternal("failed to count attempts", err)
-	}
-
-	var scoreResult struct {
-		AvgScore float64
-	}
-	err := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
+	_ = r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
 		Where("deleted_at IS NULL").
-		Select("COALESCE(AVG(score), 0) as avg_score").
-		Scan(&scoreResult).Error
-	if err != nil {
-		return nil, errs.NewInternal("failed to calculate average score", err)
-	}
+		Select("COALESCE(ROUND(AVG(score)), 0)").
+		Scan(&avgScore)
 
 	return &QuizStats{
-		TotalQuizzes:     totalQuizzes,
-		PublishedQuizzes: publishedQuizzes,
-		DraftQuizzes:     draftQuizzes,
-		TotalAttempts:    totalAttempts,
-		AverageScore:     int(scoreResult.AvgScore),
+		TotalQuizzes:     total,
+		PublishedQuizzes: published,
+		DraftQuizzes:     draft,
+		TotalAttempts:    attempts,
+		AverageScore:     avgScore,
 	}, nil
 }
 
-func (r *quizRepository) FindAttemptsByQuizID(ctx context.Context, quizID string) ([]domain.QuizAttempt, error) {
+func (r *quizRepository) SaveAttempt(ctx context.Context, attempt *domain.QuizAttempt) error {
+	if err := r.db.WithContext(ctx).Create(attempt).Error; err != nil {
+		return errs.NewInternal("failed to save attempt", err)
+	}
+	return nil
+}
+
+func (r *quizRepository) FindAttemptsByQuestionnaireID(ctx context.Context, questionnaireID string) ([]domain.QuizAttempt, error) {
 	var attempts []domain.QuizAttempt
 	err := r.db.WithContext(ctx).
 		Preload("Patient").
-		Preload("Patient.AssignedStaff").
-		Where("quiz_id = ? AND deleted_at IS NULL", quizID).
+		Where("quiz_id = ? AND deleted_at IS NULL", questionnaireID).
 		Order("completed_at DESC").
 		Find(&attempts).Error
 	if err != nil {
@@ -182,54 +226,39 @@ func (r *quizRepository) FindAttemptsByQuizID(ctx context.Context, quizID string
 	return attempts, nil
 }
 
-func (r *quizRepository) FindAttemptByID(ctx context.Context, quizID string, participantID string) (*domain.QuizAttempt, error) {
+func (r *quizRepository) FindAttemptByID(ctx context.Context, questionnaireID string, participantID string) (*domain.QuizAttempt, error) {
 	var attempt domain.QuizAttempt
 	err := r.db.WithContext(ctx).
 		Preload("Patient").
-		Preload("Patient.AssignedStaff").
-		Preload("Answers").
-		Preload("Answers.Question").
-		Where("quiz_id = ? AND patient_id = ? AND deleted_at IS NULL", quizID, participantID).
+		Preload("Answers.Question.Options").
+		Where("quiz_id = ? AND patient_id = ? AND deleted_at IS NULL", questionnaireID, participantID).
+		Order("completed_at DESC").
 		First(&attempt).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errs.NewNotFound("quiz attempt not found")
+			return nil, errs.NewNotFound("participant attempt not found")
 		}
-		return nil, errs.NewInternal("failed to fetch attempt details", err)
+		return nil, errs.NewInternal("failed to fetch participant attempt", err)
 	}
 	return &attempt, nil
 }
 
-func (r *quizRepository) CountAttempts(ctx context.Context, quizID string) (int, error) {
+func (r *quizRepository) CountAttempts(ctx context.Context, questionnaireID string) (int, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
-		Where("quiz_id = ? AND deleted_at IS NULL", quizID).
+		Where("quiz_id = ? AND deleted_at IS NULL", questionnaireID).
 		Count(&count).Error
-	if err != nil {
-		return 0, errs.NewInternal("failed to count attempts for quiz", err)
-	}
-	return int(count), nil
+	return int(count), err
 }
 
-func (r *quizRepository) GetAverageScore(ctx context.Context, quizID string) (*int, error) {
-	var count int64
-	if err := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).Where("quiz_id = ? AND deleted_at IS NULL", quizID).Count(&count).Error; err != nil {
+func (r *quizRepository) GetAverageScore(ctx context.Context, questionnaireID string) (*int, error) {
+	var avg int
+	err := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
+		Where("quiz_id = ? AND deleted_at IS NULL", questionnaireID).
+		Select("COALESCE(ROUND(AVG(score)), 0)").
+		Scan(&avg).Error
+	if err != nil {
 		return nil, err
 	}
-	if count == 0 {
-		return nil, nil
-	}
-
-	var scoreResult struct {
-		AvgScore float64
-	}
-	err := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
-		Where("quiz_id = ? AND deleted_at IS NULL", quizID).
-		Select("AVG(score) as avg_score").
-		Scan(&scoreResult).Error
-	if err != nil {
-		return nil, errs.NewInternal("failed to calculate average score for quiz", err)
-	}
-	res := int(scoreResult.AvgScore)
-	return &res, nil
+	return &avg, nil
 }

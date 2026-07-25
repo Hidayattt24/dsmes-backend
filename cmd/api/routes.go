@@ -198,6 +198,8 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Quiz / Questionnaire Management
 		admin.Get("/quiz/stats", quizHandler.GetStats)
 		admin.Get("/quiz", quizHandler.List)
+		admin.Get("/quiz/pre-test", quizHandler.GetActivePreTest)
+		admin.Get("/quiz/post-test", quizHandler.GetPostTestByEducation)
 		admin.Get("/quiz/:id", quizHandler.GetByID)
 		admin.Post("/quiz", quizHandler.Create)
 		admin.Put("/quiz/:id", quizHandler.Update)
@@ -309,6 +311,12 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Support Ticket submission
 		patientGroup.Post("/support/tickets", settingsHandler.SubmitTicket)
 		patientGroup.Get("/support/tickets", settingsHandler.GetMyTickets)
+
+		// Questionnaire (Pre-Test / Post-Test) for Patient Mobile
+		patientGroup.Get("/questionnaires/pre-test", quizHandler.GetActivePreTest)
+		patientGroup.Get("/questionnaires/post-test", quizHandler.GetPostTestByEducation)
+		patientGroup.Get("/questionnaires/:id", quizHandler.GetByID)
+		patientGroup.Post("/questionnaires/:id/submit", quizHandler.Submit)
 	}
 
 	// ── Authenticated Shared Group (any authenticated role) ───────────────────
