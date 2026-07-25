@@ -286,12 +286,26 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 		Where("patient_id = ? AND deleted_at IS NULL", patientID).
 		Order("measured_at DESC").
 		First(&latestBS).Error
-	if err == nil {
+	if err == nil && latestBS.GlucoseValue > 0 {
 		val := latestBS.GlucoseValue
 		summary.LatestBloodSugar = &val
 		summary.LatestBloodSugarTime = &latestBS.MeasuredAt
 		statusStr := string(latestBS.Status)
 		summary.LatestBloodSugarStatus = &statusStr
+	} else {
+		// Fallback to patient_measurements table
+		var latestM domain.PatientMeasurement
+		mErr := r.db.WithContext(ctx).
+			Where("patient_id = ? AND blood_sugar IS NOT NULL AND blood_sugar > 0 AND deleted_at IS NULL", patientID).
+			Order("measured_at DESC, created_at DESC").
+			First(&latestM).Error
+		if mErr == nil && latestM.BloodSugar != nil && *latestM.BloodSugar > 0 {
+			val := *latestM.BloodSugar
+			summary.LatestBloodSugar = &val
+			summary.LatestBloodSugarTime = &latestM.MeasuredAt
+			st := string(domain.CalculateGlucoseStatus(val, domain.TimeSewaktu))
+			summary.LatestBloodSugarStatus = &st
+		}
 	}
 
 	var avgBS float64
@@ -301,6 +315,15 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 		Scan(&avgBS).Error
 	if err == nil && avgBS > 0 {
 		summary.AverageBloodSugar = &avgBS
+	} else {
+		var avgM float64
+		_ = r.db.WithContext(ctx).Model(&domain.PatientMeasurement{}).
+			Where("patient_id = ? AND blood_sugar IS NOT NULL AND blood_sugar > 0 AND deleted_at IS NULL", patientID).
+			Select("COALESCE(AVG(blood_sugar), 0)").
+			Scan(&avgM).Error
+		if avgM > 0 {
+			summary.AverageBloodSugar = &avgM
+		}
 	}
 
 	// 1b. Get latest meal calories and type
@@ -325,7 +348,7 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 	r.db.WithContext(ctx).Raw(`
 		SELECT COALESCE(SUM(COALESCE(f.calories, 0) * COALESCE(ml.portion_multiplier, 1)), 0)
 		FROM meal_logs ml
-		LEFT JOIN food_items f ON f.id = ml.food_id
+		LEFT JOIN foods f ON f.id = ml.food_id
 		WHERE ml.patient_id = ? AND ml.logged_at >= CURRENT_DATE AND ml.deleted_at IS NULL
 	`, patientID).Scan(&todayCals)
 	summary.TodayConsumedCalories = &todayCals
@@ -382,6 +405,7 @@ func (r *patientRepository) GetPatientSummaries(ctx context.Context, patientIDs 
 	}
 
 	// Batch fetch latest blood sugar for all patients
+	// Prioritizes blood_sugar_logs; falls back to patient_measurements.blood_sugar if none
 	type BSResult struct {
 		PatientID    string
 		GlucoseValue int
@@ -390,29 +414,49 @@ func (r *patientRepository) GetPatientSummaries(ctx context.Context, patientIDs 
 	}
 	var bsResults []BSResult
 	r.db.WithContext(ctx).Raw(`
-		SELECT DISTINCT ON (bs.patient_id) bs.patient_id, bs.glucose_value, bs.measured_at, bs.status
-		FROM blood_sugar_logs bs
-		WHERE bs.patient_id IN ? AND bs.deleted_at IS NULL
-		ORDER BY bs.patient_id, bs.measured_at DESC
-	`, patientIDs).Scan(&bsResults)
+		SELECT DISTINCT ON (patient_id) patient_id, glucose_value, measured_at, status
+		FROM (
+			SELECT bs.patient_id, bs.glucose_value, bs.measured_at, bs.status::text
+			FROM blood_sugar_logs bs
+			WHERE bs.patient_id IN ? AND bs.deleted_at IS NULL
+			UNION ALL
+			SELECT pm.patient_id, pm.blood_sugar AS glucose_value, pm.measured_at,
+				CASE
+					WHEN pm.blood_sugar < 70 THEN 'rendah'
+					WHEN pm.blood_sugar >= 200 THEN 'sangat_tinggi'
+					WHEN pm.blood_sugar >= 140 THEN 'tinggi'
+					ELSE 'normal'
+				END AS status
+			FROM patient_measurements pm
+			WHERE pm.patient_id IN ? AND pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 AND pm.deleted_at IS NULL
+		) combined
+		ORDER BY patient_id, measured_at DESC
+	`, patientIDs, patientIDs).Scan(&bsResults)
 
 	bsMap := make(map[string]BSResult, len(bsResults))
 	for _, bs := range bsResults {
 		bsMap[bs.PatientID] = bs
 	}
 
-	// Batch fetch average blood sugar
+	// Batch fetch average blood sugar (includes patient_measurements as fallback)
 	type AvgBSResult struct {
 		PatientID string
 		AvgValue  float64
 	}
 	var avgBSResults []AvgBSResult
 	r.db.WithContext(ctx).Raw(`
-		SELECT bs.patient_id, COALESCE(AVG(bs.glucose_value), 0) as avg_value
-		FROM blood_sugar_logs bs
-		WHERE bs.patient_id IN ? AND bs.deleted_at IS NULL
-		GROUP BY bs.patient_id
-	`, patientIDs).Scan(&avgBSResults)
+		SELECT patient_id, COALESCE(AVG(glucose_value), 0) as avg_value
+		FROM (
+			SELECT bs.patient_id, bs.glucose_value
+			FROM blood_sugar_logs bs
+			WHERE bs.patient_id IN ? AND bs.deleted_at IS NULL
+			UNION ALL
+			SELECT pm.patient_id, pm.blood_sugar AS glucose_value
+			FROM patient_measurements pm
+			WHERE pm.patient_id IN ? AND pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 AND pm.deleted_at IS NULL
+		) combined
+		GROUP BY patient_id
+	`, patientIDs, patientIDs).Scan(&avgBSResults)
 
 	avgBSMap := make(map[string]float64, len(avgBSResults))
 	for _, a := range avgBSResults {
@@ -472,7 +516,7 @@ func (r *patientRepository) GetPatientSummaries(ctx context.Context, patientIDs 
 	r.db.WithContext(ctx).Raw(`
 		SELECT ml.patient_id, COALESCE(SUM(COALESCE(f.calories, 0) * COALESCE(ml.portion_multiplier, 1)), 0) as total_cal
 		FROM meal_logs ml
-		LEFT JOIN food_items f ON f.id = ml.food_id
+		LEFT JOIN foods f ON f.id = ml.food_id
 		WHERE ml.patient_id IN ? AND ml.logged_at >= CURRENT_DATE AND ml.deleted_at IS NULL
 		GROUP BY ml.patient_id
 	`, patientIDs).Scan(&todayCalResults)
@@ -530,14 +574,16 @@ func (r *patientRepository) GetPatientActivityAnalytics(ctx context.Context, pat
 	bsQuery := r.db.WithContext(ctx).Table("blood_sugar_logs").Where("patient_id = ? AND deleted_at IS NULL", patientID)
 	mealQuery := r.db.WithContext(ctx).Table("meal_logs").Where("patient_id = ? AND deleted_at IS NULL", patientID)
 	actQuery := r.db.WithContext(ctx).Table("routine_log_entries").Where("patient_id = ? AND status = 'Completed' AND deleted_at IS NULL", patientID)
-	medQuery := r.db.WithContext(ctx).Table("daily_reminder_logs").Where("patient_id = ? AND status = 'completed' AND deleted_at IS NULL", patientID)
+	medQuery := r.db.WithContext(ctx).Table("daily_reminder_logs d").
+		Joins("JOIN reminders r ON r.id = d.reminder_id AND r.deleted_at IS NULL").
+		Where("r.patient_id = ? AND d.status = 'selesai' AND d.deleted_at IS NULL", patientID)
 
 	if days > 0 {
 		cutoff := time.Now().AddDate(0, 0, -days)
 		bsQuery = bsQuery.Where("measured_at >= ?", cutoff)
 		mealQuery = mealQuery.Where("logged_at >= ?", cutoff)
 		actQuery = actQuery.Where("logged_at >= ?", cutoff)
-		medQuery = medQuery.Where("logged_date >= ?", cutoff)
+		medQuery = medQuery.Where("d.log_date >= ?", cutoff)
 	}
 
 	if err := bsQuery.Count(&bsCount).Error; err != nil {
@@ -652,7 +698,7 @@ func (r *patientRepository) GetPatientDailyLogsAggregate(ctx context.Context, pa
 			SUM(COALESCE(f.calories, 0) * COALESCE(ml.portion_multiplier, 1)) as total_cal,
 			COUNT(*) as count
 		FROM meal_logs ml
-		LEFT JOIN food_items f ON f.id = ml.food_id
+		LEFT JOIN foods f ON f.id = ml.food_id
 		WHERE ml.patient_id = ? AND ml.logged_at >= ? AND ml.logged_at <= ? AND ml.deleted_at IS NULL
 		GROUP BY date_str
 	`, patientID, startDate, endDate).Scan(&mealGroups)
@@ -673,7 +719,7 @@ func (r *patientRepository) GetPatientDailyLogsAggregate(ctx context.Context, pa
 	var actGroups []ActGroup
 	r.db.WithContext(ctx).Raw(`
 		SELECT TO_CHAR(le.logged_at, 'YYYY-MM-DD') as date_str,
-			SUM(COALESCE(r.target_duration_minutes, 30)) as total_minutes
+			COUNT(*) * 30 as total_minutes
 		FROM routine_log_entries le
 		JOIN routine_times rt ON rt.id = le.routine_time_id AND rt.deleted_at IS NULL
 		JOIN routines r ON r.id = rt.routine_id AND r.deleted_at IS NULL
@@ -695,9 +741,10 @@ func (r *patientRepository) GetPatientDailyLogsAggregate(ctx context.Context, pa
 	}
 	var medGroups []MedGroup
 	r.db.WithContext(ctx).Raw(`
-		SELECT TO_CHAR(logged_date, 'YYYY-MM-DD') as date_str, COUNT(*) as completed_count
-		FROM daily_reminder_logs
-		WHERE patient_id = ? AND logged_date >= ? AND logged_date <= ? AND status = 'completed' AND deleted_at IS NULL
+		SELECT TO_CHAR(d.log_date, 'YYYY-MM-DD') as date_str, COUNT(*) as completed_count
+		FROM daily_reminder_logs d
+		JOIN reminders r ON r.id = d.reminder_id AND r.deleted_at IS NULL
+		WHERE r.patient_id = ? AND d.log_date >= ? AND d.log_date <= ? AND d.status = 'selesai' AND d.deleted_at IS NULL
 		GROUP BY date_str
 	`, patientID, startDate, endDate).Scan(&medGroups)
 
@@ -719,4 +766,77 @@ func (r *patientRepository) GetPatientDailyLogsAggregate(ctx context.Context, pa
 	}
 
 	return result, nil
+}
+
+func (r *patientRepository) CreateMeasurement(ctx context.Context, m *domain.PatientMeasurement) error {
+	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
+		return errs.NewInternal("failed to create measurement record", err)
+	}
+
+	// Update patient summary fields (weight_kg, height_cm, daily_calorie_target) with latest measurement
+	updates := map[string]interface{}{}
+	if m.WeightKg != nil && *m.WeightKg > 0 {
+		updates["weight_kg"] = *m.WeightKg
+	}
+	if m.HeightCm != nil && *m.HeightCm > 0 {
+		updates["height_cm"] = *m.HeightCm
+	}
+	if m.DailyCalorieTarget != nil && *m.DailyCalorieTarget > 0 {
+		updates["daily_calorie_target"] = *m.DailyCalorieTarget
+	}
+
+	if len(updates) > 0 {
+		_ = r.db.WithContext(ctx).Model(&domain.Patient{}).Where("id = ?", m.PatientID).Updates(updates).Error
+	}
+
+	return nil
+}
+
+func (r *patientRepository) GetPatientMeasurements(ctx context.Context, patientID string) ([]domain.PatientMeasurement, error) {
+	var items []domain.PatientMeasurement
+	err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Order("measured_at DESC, created_at DESC").
+		Find(&items).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch patient measurements history", err)
+	}
+	return items, nil
+}
+
+func (r *patientRepository) GetLatestMeasurement(ctx context.Context, patientID string) (*domain.PatientMeasurement, error) {
+	var item domain.PatientMeasurement
+	err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Order("measured_at DESC, created_at DESC").
+		First(&item).Error
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (r *patientRepository) FindMeasurementByID(ctx context.Context, measurementID string) (*domain.PatientMeasurement, error) {
+	var item domain.PatientMeasurement
+	err := r.db.WithContext(ctx).
+		Where("id = ? AND deleted_at IS NULL", measurementID).
+		First(&item).Error
+	if err != nil {
+		return nil, errs.NewNotFound("measurement record not found", err)
+	}
+	return &item, nil
+}
+
+func (r *patientRepository) UpdateMeasurement(ctx context.Context, m *domain.PatientMeasurement) error {
+	if err := r.db.WithContext(ctx).Save(m).Error; err != nil {
+		return errs.NewInternal("failed to update measurement record", err)
+	}
+	return nil
+}
+
+func (r *patientRepository) CreateBloodSugarLog(ctx context.Context, bsLog *domain.BloodSugarLog) error {
+	if err := r.db.WithContext(ctx).Create(bsLog).Error; err != nil {
+		return errs.NewInternal("failed to create blood sugar log entry", err)
+	}
+	return nil
 }

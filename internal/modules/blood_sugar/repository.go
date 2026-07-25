@@ -42,6 +42,34 @@ func (r *bloodSugarRepository) FindAllByPatientID(ctx context.Context, patientID
 		return nil, 0, errs.NewInternal("failed to fetch blood sugar logs", err)
 	}
 
+	if len(items) == 0 {
+		var measurements []domain.PatientMeasurement
+		mErr := r.db.WithContext(ctx).
+			Where("patient_id = ? AND blood_sugar IS NOT NULL AND blood_sugar > 0 AND deleted_at IS NULL", patientID).
+			Order("measured_at DESC, created_at DESC").
+			Find(&measurements).Error
+		if mErr == nil && len(measurements) > 0 {
+			for _, m := range measurements {
+				if m.BloodSugar != nil && *m.BloodSugar > 0 {
+					status := domain.CalculateGlucoseStatus(*m.BloodSugar, domain.TimeSewaktu)
+					items = append(items, domain.BloodSugarLog{
+						BaseModel: domain.BaseModel{
+							ID:        m.ID,
+							CreatedAt: m.CreatedAt,
+							UpdatedAt: m.UpdatedAt,
+						},
+						PatientID:           m.PatientID,
+						GlucoseValue:        *m.BloodSugar,
+						MeasurementTimeType: domain.TimeSewaktu,
+						MeasuredAt:          m.MeasuredAt,
+						Status:              status,
+					})
+				}
+			}
+			total = int64(len(items))
+		}
+	}
+
 	return items, total, nil
 }
 

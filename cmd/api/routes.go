@@ -158,11 +158,15 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Get("/patients/stats", patientHandler.GetStats)
 		admin.Get("/patients", patientHandler.List)
 		admin.Get("/patients/:id", patientHandler.GetByID)
+		admin.Put("/patients/:id", patientHandler.UpdatePatientByAdmin)
 		admin.Patch("/patients/:id/status", patientHandler.ToggleStatus)
 		admin.Patch("/patients/:id/assign", patientHandler.AssignStaff)
 		admin.Delete("/patients/:id", patientHandler.Delete)
 
-		// Patient Logs views
+		// Patient Health Measurements & Logs views
+		admin.Get("/patients/:id/measurements", patientHandler.GetPatientMeasurements)
+		admin.Post("/patients/:id/measurements", patientHandler.CreateMeasurement)
+		admin.Put("/patients/:id/measurements/:measurementId", patientHandler.UpdateMeasurement)
 		admin.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
 		admin.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
 		admin.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
@@ -210,6 +214,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		staff.Get("/patients/stats", patientHandler.GetStatsStaff)
 		staff.Get("/patients", patientHandler.ListStaff)
 		staff.Get("/patients/:id", patientHandler.GetByID)
+		staff.Get("/patients/:id/measurements", patientHandler.GetPatientMeasurements)
 		staff.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
 		staff.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
 		staff.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
@@ -242,6 +247,10 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	{
 		patientGroup.Get("/me", patientHandler.GetMe)
 		patientGroup.Put("/me", patientHandler.UpdateMe)
+
+		// Health Measurements
+		patientGroup.Get("/measurements", patientHandler.GetPatientMeasurements)
+		patientGroup.Post("/measurements", patientHandler.CreateMeasurement)
 
 		// Routines habit logging
 		patientGroup.Get("/routines", routineHandler.List)

@@ -73,13 +73,36 @@ func (h *PatientHandler) List(c fiber.Ctx) error {
 	search := c.Query("search")
 	gender := c.Query("gender")
 	status := c.Query("status")
+	sortBy := c.Query("sort_by")
+	sortOrder := c.Query("sort_order")
+	bloodSugarStatus := c.Query("blood_sugar_status")
+	riskLevel := c.Query("risk_level")
+
+	complianceMin := (*int)(nil)
+	complianceMax := (*int)(nil)
+	if cmStr := c.Query("compliance_min"); cmStr != "" {
+		if cm, err := strconv.Atoi(cmStr); err == nil {
+			complianceMin = &cm
+		}
+	}
+	if cmxStr := c.Query("compliance_max"); cmxStr != "" {
+		if cmx, err := strconv.Atoi(cmxStr); err == nil {
+			complianceMax = &cmx
+		}
+	}
 
 	items, total, err := h.svc.ListPatients(c.Context(), PatientFilterQuery{
-		Search: search,
-		Gender: gender,
-		Status: status,
-		Page:   page,
-		Limit:  limit,
+		Search:           search,
+		Gender:           gender,
+		Status:           status,
+		SortBy:           sortBy,
+		SortOrder:        sortOrder,
+		BloodSugarStatus: bloodSugarStatus,
+		RiskLevel:        riskLevel,
+		ComplianceMin:    complianceMin,
+		ComplianceMax:    complianceMax,
+		Page:             page,
+		Limit:            limit,
 	})
 	if err != nil {
 		return err
@@ -197,6 +220,87 @@ func (h *PatientHandler) GetByID(c fiber.Ctx) error {
 		return err
 	}
 	return response.Success(c, "patient details retrieved", res)
+}
+
+// UpdatePatientByAdmin handles PUT /api/v1/admin/patients/:id
+func (h *PatientHandler) UpdatePatientByAdmin(c fiber.Ctx) error {
+	id := c.Params("id")
+	var req UpdatePatientRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid payload", err)
+	}
+
+	res, err := h.svc.UpdatePatientByAdmin(c.Context(), id, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient profile updated by admin", res)
+}
+
+// CreateMeasurement handles POST /api/v1/admin/patients/:id/measurements or POST /api/v1/patient/measurements
+func (h *PatientHandler) CreateMeasurement(c fiber.Ctx) error {
+	patientID := c.Params("id")
+	claims := middleware.ClaimsFromContext(c)
+
+	recByID := ""
+	recByName := "Admin"
+	recByRole := "admin"
+
+	if claims != nil {
+		recByID = claims.UserID
+		recByRole = claims.Role
+		if claims.Role == "patient" && patientID == "" {
+			patientID = claims.UserID
+			recByName = "Pasien"
+		} else if claims.Role == "admin" {
+			recByName = "Admin"
+		}
+	}
+
+	var req CreateMeasurementRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid payload", err)
+	}
+
+	res, err := h.svc.CreateMeasurement(c.Context(), patientID, req, recByID, recByName, recByRole)
+	if err != nil {
+		return err
+	}
+	return response.Created(c, "health measurement record created", res)
+}
+
+// GetPatientMeasurements handles GET /api/v1/admin/patients/:id/measurements or /api/v1/staff/patients/:id/measurements
+func (h *PatientHandler) GetPatientMeasurements(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		claims := middleware.ClaimsFromContext(c)
+		if claims != nil {
+			id = claims.UserID
+		}
+	}
+
+	res, err := h.svc.GetPatientMeasurements(c.Context(), id)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient measurements history retrieved", res)
+}
+
+// UpdateMeasurement handles PUT /api/v1/admin/patients/:id/measurements/:measurementId
+func (h *PatientHandler) UpdateMeasurement(c fiber.Ctx) error {
+	patientID := c.Params("id")
+	measurementID := c.Params("measurementId")
+
+	var req UpdateMeasurementRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid payload", err)
+	}
+
+	res, err := h.svc.UpdateMeasurement(c.Context(), patientID, measurementID, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "measurement record updated", res)
 }
 
 // GetPatientActivityAnalytics handles GET /api/v1/admin/patients/:id/activity-analytics
