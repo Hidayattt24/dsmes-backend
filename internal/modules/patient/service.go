@@ -2,26 +2,34 @@ package patient
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
+	"github.com/dsmes/dsmes-backend/internal/modules/auth"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
+	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
 )
 
 type patientService struct {
-	repo  PatientRepository
-	email email.EmailService
-	log   *zap.Logger
+	repo     PatientRepository
+	authRepo auth.AuthRepository
+	jwt      *jwtpkg.Manager
+	email    email.EmailService
+	log      *zap.Logger
 }
 
-func NewPatientService(repo PatientRepository, email email.EmailService, log *zap.Logger) PatientService {
-	return &patientService{repo: repo, email: email, log: log}
+func NewPatientService(repo PatientRepository, authRepo auth.AuthRepository, jwt *jwtpkg.Manager, email email.EmailService, log *zap.Logger) PatientService {
+	return &patientService{repo: repo, authRepo: authRepo, jwt: jwt, email: email, log: log}
 }
 
-func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatientRequest) (*PatientDetailResponse, error) {
+func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatientRequest) (*auth.LoginResponse, error) {
 	// 1. Unique Check
 	_, err := s.repo.FindByEmail(ctx, req.Email)
 	if err == nil {
@@ -37,22 +45,45 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	// 3. Parse DOB
 	dob, err := ParseDOB(req.DateOfBirth)
 	if err != nil {
-		return nil, errs.NewBadRequest("invalid date of birth format (must be YYYY-MM-DD)", err)
+		return nil, errs.NewBadRequest("invalid date of birth format (must be YYYY-MM-DD or ISO string)", err)
+	}
+
+	// 4. Normalize Gender & BloodType & Activity
+	gender := domain.GenderLakiLaki
+	if strings.EqualFold(req.Gender, "perempuan") || strings.EqualFold(req.Gender, "female") {
+		gender = domain.GenderPerempuan
+	}
+
+	bloodType := domain.BloodType(req.BloodType)
+	cleanBlood := strings.ToLower(strings.TrimSpace(req.BloodType))
+	if cleanBlood == "tidak tahu" || cleanBlood == "tidak_tahu" {
+		bloodType = domain.BloodTypeTidakTahu
+	}
+
+	activityLevel := req.GetActivity()
+	if activityLevel == "" {
+		activityLevel = "Ringan"
+	}
+
+	age := 0
+	if !dob.IsZero() {
+		age = time.Now().Year() - dob.Year()
 	}
 
 	patient := &domain.Patient{
-		Email:              req.Email,
-		PasswordHash:       string(hash),
-		FullName:           req.FullName,
-		Nickname:           req.Nickname,
-		WhatsappNumber:     req.WhatsappNumber,
-		Gender:             req.Gender,
-		DateOfBirth:        dob,
-		HeightCm:           req.HeightCm,
-		WeightKg:           req.WeightKg,
-		BloodType:          req.BloodType,
-		DailyCalorieTarget: 2000, // Default target
-		Status:             domain.StatusAktif,
+		Email:                 req.Email,
+		PasswordHash:          string(hash),
+		FullName:              req.FullName,
+		Nickname:              req.Nickname,
+		WhatsappNumber:        req.GetPhone(),
+		Gender:                gender,
+		DateOfBirth:           dob,
+		HeightCm:              req.HeightCm,
+		WeightKg:              req.WeightKg,
+		BloodType:             bloodType,
+		PhysicalActivityLevel: activityLevel,
+		DailyCalorieTarget:    CalculateDSMESCalorieTarget(string(gender), req.WeightKg, req.HeightCm, age),
+		Status:                domain.StatusAktif,
 	}
 
 	// 4. Seed default routines & times
@@ -131,12 +162,120 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	go func() {
 		bgCtx := context.Background()
 		if err := s.email.SendWelcomeEmail(bgCtx, patient.Email, patient.FullName); err != nil {
-			s.log.Error("patient: failed to send welcome email", zap.String("email", patient.Email), zap.Error(err))
+			s.log.Warn("patient: welcome email delivery skipped or restricted by Resend test mode", zap.String("email", patient.Email), zap.Error(err))
 		}
 	}()
 
-	res := ToPatientDetailResponse(patient)
-	return &res, nil
+	// Generate JWT tokens for instant mobile login
+	tokens, err := s.jwt.GenerateTokenPair(patient.ID, patient.Email, "user")
+	if err != nil {
+		return nil, errs.NewInternal("failed to generate tokens on register", err)
+	}
+
+	session := &auth.AuthSession{
+		OwnerType:    auth.OwnerTypePatient,
+		OwnerID:      patient.ID,
+		RefreshToken: tokens.RefreshToken,
+		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
+	}
+	if err = s.authRepo.CreateSession(ctx, session); err != nil {
+		s.log.Warn("patient: failed to persist session on register", zap.Error(err), zap.String("patient_id", patient.ID))
+	}
+
+	// Seed initial baseline measurement record in DB so baseline track record is PERMANENT
+	var bmiVal *float64
+	if req.WeightKg > 0 && req.HeightCm > 0 {
+		hM := req.HeightCm / 100.0
+		val := math.Round((req.WeightKg/(hM*hM))*10) / 10
+		bmiVal = &val
+	}
+	initCalTarget := patient.DailyCalorieTarget
+
+	initMeasurement := &domain.PatientMeasurement{
+		PatientID:          patient.ID,
+		WeightKg:           &req.WeightKg,
+		HeightCm:           &req.HeightCm,
+		BMI:                bmiVal,
+		DailyCalorieTarget: &initCalTarget,
+		Notes:              "Pengukuran Awal (Registrasi Akun Pasien)",
+		RecordedByID:       &patient.ID,
+		RecordedByName:     "Sistem (Registrasi Awal)",
+		RecordedByRole:     "admin",
+		MeasuredAt:         patient.CreatedAt,
+	}
+	_ = s.repo.CreateMeasurement(ctx, initMeasurement)
+
+	return &auth.LoginResponse{
+		User: auth.AuthUserResponse{
+			ID:       patient.ID,
+			FullName: patient.FullName,
+			Email:    patient.Email,
+			Role:     "user",
+		},
+		Tokens: *tokens,
+	}, nil
+}
+
+func CalculateCalorieStatus(target int, consumed float64) *CalorieStatusInfo {
+	if target <= 0 {
+		target = 2000
+	}
+
+	achievement := (consumed / float64(target)) * 100.0
+	achievement = math.Round(achievement*10) / 10
+
+	diff := consumed - float64(target)
+	diff = math.Round(diff)
+
+	diffStr := ""
+	if diff > 0 {
+		diffStr = fmt.Sprintf("+%d kcal", int(diff))
+	} else if diff < 0 {
+		diffStr = fmt.Sprintf("%d kcal", int(diff))
+	} else {
+		diffStr = "0 kcal"
+	}
+
+	status := "Target Tercapai"
+	code := "excellent"
+	desc := "Asupan kalori harian sesuai dengan target rekomendasi."
+
+	if achievement >= 95.0 && achievement <= 105.0 {
+		status = "Target Tercapai"
+		code = "excellent"
+		desc = "Asupan kalori harian sesuai dengan target rekomendasi."
+	} else if achievement >= 80.0 && achievement < 95.0 {
+		status = "Sedikit di Bawah Target"
+		code = "slightly_below"
+		desc = "Pasien mengonsumsi sedikit lebih sedikit kalori dari target."
+	} else if achievement >= 60.0 && achievement < 80.0 {
+		status = "di Bawah Target"
+		code = "below"
+		desc = "Asupan kalori signifikan di bawah rekomendasi."
+	} else if achievement < 60.0 {
+		status = "Asupan Sangat Rendah"
+		code = "very_low"
+		desc = "Pasien mengonsumsi kalori sangat rendah dari target."
+	} else if achievement > 105.0 && achievement <= 120.0 {
+		status = "di Atas Target"
+		code = "above"
+		desc = "Asupan kalori pasien melebihi target rekomendasi."
+	} else if achievement > 120.0 {
+		status = "Asupan Sangat Tinggi"
+		code = "excessive"
+		desc = "Asupan kalori pasien jauh melebihi target rekomendasi."
+	}
+
+	return &CalorieStatusInfo{
+		TargetCalories:        target,
+		ConsumedCalories:      math.Round(consumed),
+		AchievementPercentage: achievement,
+		CalorieDifference:     diff,
+		CalorieDifferenceStr:  diffStr,
+		CalorieStatus:         status,
+		CalorieStatusCode:     code,
+		CalorieDescription:    desc,
+	}
 }
 
 func populateSummary(res *PatientResponse, summary *PatientSummaryData) {
@@ -159,6 +298,12 @@ func populateSummary(res *PatientResponse, summary *PatientSummaryData) {
 		tStr := summary.LatestActivityTime.Format("2006-01-02T15:04:05Z07:00")
 		res.LatestActivityTime = &tStr
 	}
+
+	consumed := 0.0
+	if summary.TodayConsumedCalories != nil {
+		consumed = *summary.TodayConsumedCalories
+	}
+	res.CalorieStatus = CalculateCalorieStatus(res.DailyCalorieTarget, consumed)
 }
 
 func (s *patientService) ListPatients(ctx context.Context, filter PatientFilterQuery) ([]PatientResponse, int64, error) {
@@ -191,6 +336,9 @@ func (s *patientService) ListPatients(ctx context.Context, filter PatientFilterQ
 
 	for i := range items {
 		resp[i] = ToPatientResponse(&items[i])
+		score, label, _ := s.CalculateDynamicCompliance(ctx, items[i].ID, items[i].DailyCalorieTarget, items[i].CreatedAt)
+		resp[i].Compliance = score
+		resp[i].ComplianceLabel = label
 		if summary, ok := summaries[items[i].ID]; ok && summary != nil {
 			populateSummary(&resp[i], summary)
 		}
@@ -206,12 +354,170 @@ func (s *patientService) GetPatient(ctx context.Context, id string) (*PatientDet
 	}
 	res := ToPatientDetailResponse(patient)
 
+	score, label, breakdown := s.CalculateDynamicCompliance(ctx, patient.ID, patient.DailyCalorieTarget, patient.CreatedAt)
+	res.Compliance = score
+	res.ComplianceLabel = label
+	res.ComplianceBreakdown = breakdown
+
 	summary, err := s.repo.GetPatientSummary(ctx, id)
 	if err == nil && summary != nil {
 		populateSummary(&res.PatientResponse, summary)
 	}
 
+	measurements, err := s.GetPatientMeasurements(ctx, id)
+	if err == nil {
+		res.Measurements = measurements
+		if len(measurements) > 0 {
+			res.LatestMeasurement = &measurements[0]
+			if measurements[0].WeightKg != nil && *measurements[0].WeightKg > 0 {
+				res.WeightKg = *measurements[0].WeightKg
+				res.LatestWeight = measurements[0].WeightKg
+			}
+			if measurements[0].HeightCm != nil && *measurements[0].HeightCm > 0 {
+				res.HeightCm = *measurements[0].HeightCm
+			}
+			if measurements[0].BMI != nil && *measurements[0].BMI > 0 {
+				res.BMI = measurements[0].BMI
+			}
+			if measurements[0].WaistCircumferenceCm != nil && *measurements[0].WaistCircumferenceCm > 0 {
+				res.WaistCircumferenceCm = measurements[0].WaistCircumferenceCm
+			}
+		}
+	}
+
 	return &res, nil
+}
+
+func (s *patientService) GetPatientActivityAnalytics(ctx context.Context, patientID string, days int) (*PatientActivityAnalyticsResponse, error) {
+	return s.repo.GetPatientActivityAnalytics(ctx, patientID, days)
+}
+
+func (s *patientService) CalculateDynamicCompliance(ctx context.Context, patientID string, dailyTarget int, createdAt time.Time) (int, string, *ComplianceBreakdown) {
+	now := time.Now()
+	endDate := now
+	startDate := now.AddDate(0, 0, -6)
+
+	if dailyTarget <= 0 {
+		dailyTarget = 2000
+	}
+
+	daysSinceReg := int(now.Sub(createdAt).Hours()/24) + 1
+	evalWindow := 7
+	if daysSinceReg < evalWindow {
+		evalWindow = daysSinceReg
+	}
+	if evalWindow < 1 {
+		evalWindow = 1
+	}
+
+	dailyAggs, err := s.repo.GetPatientDailyLogsAggregate(ctx, patientID, startDate, endDate)
+	if err != nil {
+		s.log.Warn("patient: failed to fetch daily logs aggregate for compliance", zap.Error(err))
+		dailyAggs = make(map[string]*DailyLogsAggregate)
+	}
+
+	var sumBS, sumFood, sumAct, sumMed float64
+
+	for i := 0; i < evalWindow; i++ {
+		d := now.AddDate(0, 0, -i).Format("2006-01-02")
+		agg, ok := dailyAggs[d]
+		if !ok || agg == nil {
+			agg = &DailyLogsAggregate{}
+		}
+
+		// 1. Blood Sugar (25 pts max)
+		bsScore := 0.0
+		if agg.BloodSugarCount > 0 {
+			bsScore = 25.0
+		}
+
+		// 2. Food & Calories (25 pts max)
+		foodScore := 0.0
+		if agg.MealCount > 0 {
+			ratio := agg.TotalMealCalories / float64(dailyTarget)
+			if ratio >= 0.85 && ratio <= 1.15 {
+				foodScore = 25.0
+			} else if (ratio >= 0.70 && ratio < 0.85) || (ratio > 1.15 && ratio <= 1.30) {
+				foodScore = 17.5
+			} else if (ratio >= 0.50 && ratio < 0.70) || (ratio > 1.30 && ratio <= 1.50) {
+				foodScore = 10.0
+			} else if ratio > 0 {
+				foodScore = 5.0
+			}
+		}
+
+		// 3. Activity (25 pts max, 30 min target)
+		actScore := 0.0
+		if agg.TotalActivityMinutes > 0 {
+			actRatio := float64(agg.TotalActivityMinutes) / 30.0
+			if actRatio > 1.0 {
+				actRatio = 1.0
+			}
+			actScore = actRatio * 25.0
+		}
+
+		// 4. Medication (25 pts max)
+		medScore := 0.0
+		if agg.MedicationScheduledCount > 0 {
+			medRatio := float64(agg.MedicationCompletedCount) / float64(agg.MedicationScheduledCount)
+			if medRatio > 1.0 {
+				medRatio = 1.0
+			}
+			medScore = medRatio * 25.0
+		} else {
+			// No medication reminders configured — redistribute 25 pts equally among active 3 pillars (+8.333 each)
+			if bsScore > 0 {
+				bsScore += 8.333
+			}
+			if foodScore > 0 {
+				foodScore += (foodScore / 25.0) * 8.333
+			}
+			if actScore > 0 {
+				actScore += (actScore / 25.0) * 8.333
+			}
+		}
+
+		sumBS += bsScore
+		sumFood += foodScore
+		sumAct += actScore
+		sumMed += medScore
+	}
+
+	w := float64(evalWindow)
+	avgBS := math.Round((sumBS/w)*10) / 10
+	avgFood := math.Round((sumFood/w)*10) / 10
+	avgAct := math.Round((sumAct/w)*10) / 10
+	avgMed := math.Round((sumMed/w)*10) / 10
+
+	totalAvg := int(math.Round((sumBS + sumFood + sumAct + sumMed) / w))
+	if totalAvg > 100 {
+		totalAvg = 100
+	}
+	if totalAvg < 0 {
+		totalAvg = 0
+	}
+
+	label := "Kurang"
+	if totalAvg >= 90 {
+		label = "Sangat Patuh"
+	} else if totalAvg >= 75 {
+		label = "Patuh"
+	} else if totalAvg >= 60 {
+		label = "Cukup"
+	} else if totalAvg >= 40 {
+		label = "Kurang"
+	} else {
+		label = "Tidak Patuh"
+	}
+
+	breakdown := &ComplianceBreakdown{
+		BloodSugarScore: avgBS,
+		FoodScore:       avgFood,
+		ActivityScore:   avgAct,
+		MedicationScore: avgMed,
+	}
+
+	return totalAvg, label, breakdown
 }
 
 func (s *patientService) UpdateProfile(ctx context.Context, patientID string, req UpdatePatientProfileRequest) (*PatientResponse, error) {
@@ -305,7 +611,364 @@ func (s *patientService) GetStats(ctx context.Context, staffID string) (*Patient
 	return s.repo.GetStats(ctx, staffID)
 }
 
+func ToPatientMeasurementResponse(m *domain.PatientMeasurement) PatientMeasurementResponse {
+	recID := ""
+	if m.RecordedByID != nil {
+		recID = *m.RecordedByID
+	}
+	return PatientMeasurementResponse{
+		ID:                     m.ID,
+		PatientID:              m.PatientID,
+		WeightKg:               m.WeightKg,
+		HeightCm:               m.HeightCm,
+		BMI:                    m.BMI,
+		BloodPressureSystolic:  m.BloodPressureSystolic,
+		BloodPressureDiastolic: m.BloodPressureDiastolic,
+		BloodSugar:             m.BloodSugar,
+		WaistCircumferenceCm:   m.WaistCircumferenceCm,
+		DailyCalorieTarget:     m.DailyCalorieTarget,
+		Notes:                  m.Notes,
+		RecordedByID:           &recID,
+		RecordedByName:         m.RecordedByName,
+		RecordedByRole:         m.RecordedByRole,
+		MeasuredAt:             m.MeasuredAt.Format(time.RFC3339),
+		CreatedAt:              m.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func (s *patientService) CreateMeasurement(ctx context.Context, patientID string, req CreateMeasurementRequest, recordedByID, recordedByName, recordedByRole string) (*PatientMeasurementResponse, error) {
+	patient, err := s.repo.FindByID(ctx, patientID)
+	if err != nil {
+		return nil, err
+	}
+
+	measuredAt := time.Now()
+	if req.MeasuredAt != nil && *req.MeasuredAt != "" {
+		if t, err := time.Parse(time.RFC3339, *req.MeasuredAt); err == nil {
+			measuredAt = t
+		} else if t, err := time.Parse("2006-01-02T15:04", *req.MeasuredAt); err == nil {
+			measuredAt = t
+		} else if t, err := time.Parse("2006-01-02", *req.MeasuredAt); err == nil {
+			measuredAt = t
+		}
+	}
+
+	var bmi *float64
+	weight := req.WeightKg
+	if weight == nil || *weight <= 0 {
+		w := patient.WeightKg
+		weight = &w
+	}
+	height := req.HeightCm
+	if height == nil || *height <= 0 {
+		h := patient.HeightCm
+		height = &h
+	}
+	if weight != nil && *weight > 0 && height != nil && *height > 0 {
+		hM := *height / 100.0
+		val := math.Round((*weight/(hM*hM))*10) / 10
+		bmi = &val
+	}
+
+	calTarget := req.DailyCalorieTarget
+	if calTarget == nil || *calTarget <= 0 {
+		c := patient.DailyCalorieTarget
+		calTarget = &c
+	}
+
+	if calTarget != nil && *calTarget > 0 {
+		patient.DailyCalorieTarget = *calTarget
+	}
+	if req.WeightKg != nil && *req.WeightKg > 0 {
+		patient.WeightKg = *req.WeightKg
+	}
+	if req.HeightCm != nil && *req.HeightCm > 0 {
+		patient.HeightCm = *req.HeightCm
+	}
+	if req.PhysicalActivityLevel != "" {
+		patient.PhysicalActivityLevel = req.PhysicalActivityLevel
+	}
+	if req.BloodType != "" {
+		patient.BloodType = domain.BloodType(req.BloodType)
+	}
+	_ = s.repo.Update(ctx, patient)
+
+	recRole := recordedByRole
+	if recRole == "" {
+		recRole = "admin"
+	}
+	recName := recordedByName
+	if recName == "" {
+		recName = "Admin"
+	}
+
+	m := &domain.PatientMeasurement{
+		PatientID:              patient.ID,
+		WeightKg:               req.WeightKg,
+		HeightCm:               req.HeightCm,
+		BMI:                    bmi,
+		BloodPressureSystolic:  req.BloodPressureSystolic,
+		BloodPressureDiastolic: req.BloodPressureDiastolic,
+		BloodSugar:             req.BloodSugar,
+		WaistCircumferenceCm:   req.WaistCircumferenceCm,
+		DailyCalorieTarget:     calTarget,
+		Notes:                  req.Notes,
+		RecordedByID:           &recordedByID,
+		RecordedByName:         recName,
+		RecordedByRole:         recRole,
+		MeasuredAt:             measuredAt,
+	}
+
+	if err := s.repo.CreateMeasurement(ctx, m); err != nil {
+		return nil, err
+	}
+
+	// Synchronize with global blood_sugar_logs so latest blood sugar & trends update automatically everywhere
+	if req.BloodSugar != nil && *req.BloodSugar > 0 {
+		bsTimeType := req.BloodSugarTimeType
+		if bsTimeType == "" {
+			bsTimeType = domain.TimeSewaktu
+		}
+		status := domain.CalculateGlucoseStatus(*req.BloodSugar, bsTimeType)
+		bsLog := &domain.BloodSugarLog{
+			PatientID:           patient.ID,
+			GlucoseValue:        *req.BloodSugar,
+			MeasurementTimeType: bsTimeType,
+			MeasuredAt:          measuredAt,
+			Status:              status,
+		}
+		if err := s.repo.CreateBloodSugarLog(ctx, bsLog); err != nil {
+			s.log.Warn("patient: failed to sync blood sugar log", zap.Error(err), zap.String("patient_id", patient.ID))
+		}
+	}
+
+	resp := ToPatientMeasurementResponse(m)
+	return &resp, nil
+}
+
+func (s *patientService) GetPatientMeasurements(ctx context.Context, patientID string) ([]PatientMeasurementResponse, error) {
+	items, err := s.repo.GetPatientMeasurements(ctx, patientID)
+	if err != nil {
+		return nil, err
+	}
+	resp := make([]PatientMeasurementResponse, len(items))
+	for i := range items {
+		resp[i] = ToPatientMeasurementResponse(&items[i])
+	}
+
+	// Always ensure the initial baseline registration record (Pengukuran Awal / Minggu 0)
+	// is included at the end of the history timeline so account creation track record is NEVER lost!
+	patient, pErr := s.repo.FindByID(ctx, patientID)
+	if pErr == nil && patient != nil {
+		hasBaseline := false
+		for _, item := range resp {
+			if strings.HasPrefix(item.ID, "baseline-") || item.Notes == "Pengukuran Awal (Registrasi Akun Pasien)" {
+				hasBaseline = true
+				break
+			}
+		}
+
+		if !hasBaseline {
+			initWeight := patient.WeightKg
+			initHeight := patient.HeightCm
+			initCalTarget := patient.DailyCalorieTarget
+
+			if len(items) > 0 {
+				oldest := items[len(items)-1]
+				if oldest.WeightKg != nil && *oldest.WeightKg > 0 {
+					initWeight = *oldest.WeightKg
+				}
+				if oldest.HeightCm != nil && *oldest.HeightCm > 0 {
+					initHeight = *oldest.HeightCm
+				}
+				if oldest.DailyCalorieTarget != nil && *oldest.DailyCalorieTarget > 0 {
+					initCalTarget = *oldest.DailyCalorieTarget
+				}
+			}
+
+			var bmi *float64
+			if initWeight > 0 && initHeight > 0 {
+				hM := initHeight / 100.0
+				val := math.Round((initWeight/(hM*hM))*10) / 10
+				bmi = &val
+			}
+			recID := patient.ID
+
+			baseline := PatientMeasurementResponse{
+				ID:                 "baseline-" + patient.ID,
+				PatientID:          patient.ID,
+				WeightKg:           &initWeight,
+				HeightCm:           &initHeight,
+				BMI:                bmi,
+				DailyCalorieTarget: &initCalTarget,
+				Notes:              "Pengukuran Awal (Registrasi Akun Pasien)",
+				RecordedByID:       &recID,
+				RecordedByName:     "Sistem (Registrasi Awal)",
+				RecordedByRole:     "admin",
+				MeasuredAt:         patient.CreatedAt.Format(time.RFC3339),
+				CreatedAt:          patient.CreatedAt.Format(time.RFC3339),
+			}
+			resp = append(resp, baseline)
+		}
+	}
+
+	return resp, nil
+}
+
+func (s *patientService) UpdateMeasurement(ctx context.Context, patientID, measurementID string, req UpdateMeasurementRequest) (*PatientMeasurementResponse, error) {
+	m, err := s.repo.FindMeasurementByID(ctx, measurementID)
+	if err != nil {
+		return nil, err
+	}
+	if m.PatientID != patientID {
+		return nil, errs.NewForbidden("measurement record does not belong to this patient")
+	}
+
+	if req.WeightKg != nil {
+		m.WeightKg = req.WeightKg
+	}
+	if req.HeightCm != nil {
+		m.HeightCm = req.HeightCm
+	}
+	if req.BloodPressureSystolic != nil {
+		m.BloodPressureSystolic = req.BloodPressureSystolic
+	}
+	if req.BloodPressureDiastolic != nil {
+		m.BloodPressureDiastolic = req.BloodPressureDiastolic
+	}
+	if req.BloodSugar != nil {
+		m.BloodSugar = req.BloodSugar
+	}
+	if req.WaistCircumferenceCm != nil {
+		m.WaistCircumferenceCm = req.WaistCircumferenceCm
+	}
+	if req.DailyCalorieTarget != nil {
+		m.DailyCalorieTarget = req.DailyCalorieTarget
+	}
+	if req.Notes != "" {
+		m.Notes = req.Notes
+	}
+
+	if m.WeightKg != nil && *m.WeightKg > 0 && m.HeightCm != nil && *m.HeightCm > 0 {
+		hM := *m.HeightCm / 100.0
+		val := math.Round((*m.WeightKg/(hM*hM))*10) / 10
+		m.BMI = &val
+	}
+
+	if err := s.repo.UpdateMeasurement(ctx, m); err != nil {
+		return nil, err
+	}
+
+	resp := ToPatientMeasurementResponse(m)
+	return &resp, nil
+}
+
+func (s *patientService) UpdatePatientByAdmin(ctx context.Context, patientID string, req UpdatePatientRequest) (*PatientDetailResponse, error) {
+	patient, err := s.repo.FindByID(ctx, patientID)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.FullName != "" {
+		patient.FullName = req.FullName
+	}
+	if req.WhatsappNumber != "" {
+		patient.WhatsappNumber = req.WhatsappNumber
+	}
+	if req.Gender != "" {
+		patient.Gender = domain.Gender(req.Gender)
+	}
+	if req.DateOfBirth != "" {
+		if dob, err := ParseDOB(req.DateOfBirth); err == nil {
+			patient.DateOfBirth = dob
+		}
+	}
+	if req.Address != "" {
+		patient.Address = req.Address
+	}
+	if req.DiabetesType != "" {
+		patient.DiabetesType = req.DiabetesType
+	}
+	if req.BPJS != "" {
+		patient.BPJS = req.BPJS
+	}
+	if req.NIK != "" {
+		patient.NIK = req.NIK
+	}
+	if req.EmergencyName != "" {
+		patient.EmergencyName = req.EmergencyName
+	}
+	if req.EmergencyRelation != "" {
+		patient.EmergencyRelation = req.EmergencyRelation
+	}
+	if req.EmergencyPhone != "" {
+		patient.EmergencyPhone = req.EmergencyPhone
+	}
+	if req.HeightCm != nil && *req.HeightCm > 0 {
+		patient.HeightCm = *req.HeightCm
+	}
+	if req.WeightKg != nil && *req.WeightKg > 0 {
+		patient.WeightKg = *req.WeightKg
+	}
+	if req.DailyCalorieTarget != nil && *req.DailyCalorieTarget > 0 {
+		patient.DailyCalorieTarget = *req.DailyCalorieTarget
+	}
+	if req.DiagnosisDate != "" {
+		if diag, err := ParseDOB(req.DiagnosisDate); err == nil {
+			patient.DiagnosisDate = &diag
+		}
+	}
+	if req.CurrentMedication != "" {
+		patient.CurrentMedication = req.CurrentMedication
+	}
+	if req.Allergies != "" {
+		patient.Allergies = req.Allergies
+	}
+	if req.SmokingStatus != "" {
+		patient.SmokingStatus = req.SmokingStatus
+	}
+	if req.PhysicalActivityLevel != "" {
+		patient.PhysicalActivityLevel = req.PhysicalActivityLevel
+	}
+
+	if err := s.repo.Update(ctx, patient); err != nil {
+		return nil, err
+	}
+
+	return s.GetPatient(ctx, patientID)
+}
+
 // Helpers
 func strPtr(s string) *string {
 	return &s
+}
+
+func CalculateDSMESCalorieTarget(gender string, weightKg, heightCm float64, age int) int {
+	if weightKg <= 0 {
+		weightKg = 60
+	}
+	if heightCm <= 0 {
+		heightCm = 160
+	}
+	if age <= 0 {
+		age = 40
+	}
+
+	isMale := strings.ToLower(gender) == "laki-laki" || strings.ToLower(gender) == "laki_laki" || strings.ToLower(gender) == "male"
+	var bmr float64
+	if isMale {
+		bmr = 66.5 + (13.75 * weightKg) + (5.003 * heightCm) - (6.75 * float64(age))
+	} else {
+		bmr = 655.1 + (9.563 * weightKg) + (1.850 * heightCm) - (4.676 * float64(age))
+	}
+
+	if bmr < 800 {
+		if isMale {
+			bmr = 30 * weightKg
+		} else {
+			bmr = 25 * weightKg
+		}
+	}
+
+	return int(math.Round(bmr))
 }

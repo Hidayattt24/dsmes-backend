@@ -2,60 +2,99 @@ package quiz
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 )
 
-type QuestionRequest struct {
-	QuestionText  string `json:"question_text"  validate:"required"`
-	OptionA       string `json:"option_a"       validate:"required"`
-	OptionB       string `json:"option_b"       validate:"required"`
-	OptionC       string `json:"option_c"`
-	OptionD       string `json:"option_d"`
-	CorrectOption string `json:"correct_option" validate:"required,oneof=A B C D"`
-	Explanation   string `json:"explanation"`
+type ChoiceRequest struct {
+	ID           string `json:"id,omitempty"`
+	OptionText   string `json:"option_text" validate:"required"`
+	IsCorrect    bool   `json:"is_correct"`
+	DisplayOrder int    `json:"display_order"`
 }
 
-type CreateQuizRequest struct {
-	Title           string            `json:"title"             validate:"required,min=5,max=200"`
-	LinkedArticleID string            `json:"linked_article_id" validate:"required,uuid4"`
-	Difficulty      string            `json:"difficulty"        validate:"required,oneof=Mudah Sedang Sulit"`
-	PassingScore    int               `json:"passing_score"     validate:"min=0,max=100"`
-	Status          string            `json:"status"            validate:"required,oneof=Draft Terbit draft terbit"`
-	Questions       []QuestionRequest `json:"questions"         validate:"required,min=1"`
+type QuestionRequest struct {
+	ID           string          `json:"id,omitempty"`
+	QuestionText string          `json:"question_text" validate:"required"`
+	Explanation  string          `json:"explanation"`
+	DisplayOrder int             `json:"display_order"`
+	Choices      []ChoiceRequest `json:"choices" validate:"required,min=2"`
+}
+
+type QuestionCategoryRequest struct {
+	ID           string            `json:"id,omitempty"`
+	Title        string            `json:"title" validate:"required,min=2,max=200"`
+	Description  string            `json:"description"`
+	DisplayOrder int               `json:"display_order"`
+	Questions    []QuestionRequest `json:"questions" validate:"required,min=1"`
+}
+
+type CreateQuestionnaireRequest struct {
+	Title        string                    `json:"title" validate:"required,min=3,max=200"`
+	Type         string                    `json:"type" validate:"required"` // PRE_TEST | POST_TEST
+	Description  string                    `json:"description"`
+	EducationID  *string                   `json:"education_id"`
+	PassingScore *int                      `json:"passing_score"`
+	Difficulty   *string                   `json:"difficulty"`
+	Status       string                    `json:"status"` // aktif | draft | nonaktif
+	Categories   []QuestionCategoryRequest `json:"categories" validate:"required,min=1"`
+}
+
+type SubmitQuestionnaireRequest struct {
+	DurationSeconds int `json:"duration_seconds"`
+	Answers         []struct {
+		QuestionID string `json:"question_id" validate:"required"`
+		OptionID   string `json:"option_id" validate:"required"`
+	} `json:"answers" validate:"required,min=1"`
+}
+
+type ChoiceResponse struct {
+	ID           string `json:"id"`
+	OptionText   string `json:"option_text"`
+	IsCorrect    bool   `json:"is_correct,omitempty"`
+	DisplayOrder int    `json:"display_order"`
 }
 
 type QuestionResponse struct {
-	ID            string `json:"id"`
-	QuestionText  string `json:"question_text"`
-	OptionA       string `json:"option_a"`
-	OptionB       string `json:"option_b"`
-	OptionC       string `json:"option_c"`
-	OptionD       string `json:"option_d"`
-	CorrectOption string `json:"correct_option,omitempty"` // hide for patient, show for admin/staff
-	Explanation   string `json:"explanation,omitempty"`
+	ID           string           `json:"id"`
+	QuestionText string           `json:"question_text"`
+	Explanation  string           `json:"explanation,omitempty"`
+	DisplayOrder int              `json:"display_order"`
+	Choices      []ChoiceResponse `json:"choices"`
 }
 
-type QuizResponse struct {
-	ID                 string    `json:"id"`
-	Title              string    `json:"title"`
-	LinkedArticleID    string    `json:"linked_article_id"`
-	LinkedArticleTitle string    `json:"linked_article_title"`
-	Difficulty         string    `json:"difficulty"`
-	PassingScore       int       `json:"passing_score"`
-	Status             string    `json:"status"`
-	QuestionCount      int       `json:"question_count"`
-	ParticipantCount   int       `json:"participant_count"`
-	AverageScore       *int      `json:"average_score"`
-	CreatedBy          string    `json:"created_by"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+type QuestionCategoryResponse struct {
+	ID           string             `json:"id"`
+	Title        string             `json:"title"`
+	Description  string             `json:"description,omitempty"`
+	DisplayOrder int                `json:"display_order"`
+	Questions    []QuestionResponse `json:"questions"`
 }
 
-type QuizDetailResponse struct {
-	QuizResponse
-	Questions []QuestionResponse `json:"questions"`
+type QuestionnaireResponse struct {
+	ID               string    `json:"id"`
+	Title            string    `json:"title"`
+	Type             string    `json:"type"` // "PRE_TEST" | "POST_TEST"
+	Description      string    `json:"description,omitempty"`
+	EducationID      *string   `json:"education_id,omitempty"`
+	EducationTitle   string    `json:"education_title,omitempty"`
+	PassingScore     *int      `json:"passing_score,omitempty"`
+	Difficulty       *string   `json:"difficulty,omitempty"`
+	Status           string    `json:"status"`
+	CategoryCount    int       `json:"category_count"`
+	QuestionCount    int       `json:"question_count"`
+	ParticipantCount int       `json:"participant_count"`
+	AverageScore     *int      `json:"average_score"`
+	CreatedBy        string    `json:"created_by"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+type QuestionnaireDetailResponse struct {
+	QuestionnaireResponse
+	Categories []QuestionCategoryResponse `json:"categories"`
 }
 
 type QuizStats struct {
@@ -94,7 +133,15 @@ type ParticipantDetailResponse struct {
 	QuestionAnalysis []QuestionAnalysisResponse `json:"question_analysis"`
 }
 
-// formatDuration converts duration in seconds to human-readable form e.g. "4m 12s"
+type SubmitResultResponse struct {
+	AttemptID       string `json:"attempt_id"`
+	QuestionnaireID string `json:"questionnaire_id"`
+	Score           int    `json:"score"`
+	Passed          bool   `json:"passed"`
+	TotalQuestions  int    `json:"total_questions"`
+	CorrectCount    int    `json:"correct_count"`
+}
+
 func formatDuration(seconds int) string {
 	m := seconds / 60
 	s := seconds % 60
@@ -107,34 +154,40 @@ func formatDuration(seconds int) string {
 	return fmt.Sprintf("%dm %ds", m, s)
 }
 
-// normalizeStatus converts frontend-sent status ("Terbit"/"Draft") to lowercase for storage.
+func normalizeType(t string) domain.QuestionnaireType {
+	upper := strings.ToUpper(strings.TrimSpace(t))
+	if strings.Contains(upper, "PRE") {
+		return domain.TypePreTest
+	}
+	return domain.TypePostTest
+}
+
 func normalizeStatus(status string) string {
-	switch status {
-	case "Terbit", "terbit":
-		return "terbit"
-	case "Draft", "draft":
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "terbit", "aktif", "active":
+		return "aktif"
+	case "nonaktif", "inactive":
+		return "nonaktif"
+	default:
 		return "draft"
-	default:
-		return status
 	}
 }
 
-// displayStatus converts stored lowercase status to frontend display case.
 func displayStatus(status string) string {
-	switch status {
-	case "terbit":
-		return "Terbit"
-	case "draft":
-		return "Draft"
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "aktif", "active", "terbit":
+		return "Aktif"
+	case "nonaktif":
+		return "Nonaktif"
 	default:
-		return status
+		return "Draft"
 	}
 }
 
-func ToQuizResponse(q *domain.Quiz, questionCount int, participantCount int, avgScore *int) QuizResponse {
-	articleTitle := ""
-	if q.LinkedArticle != nil {
-		articleTitle = q.LinkedArticle.Title
+func ToQuestionnaireResponse(q *domain.Questionnaire, categoryCount, questionCount, participantCount int, avgScore *int) QuestionnaireResponse {
+	eduTitle := ""
+	if q.Education != nil {
+		eduTitle = q.Education.Title
 	}
 
 	createdBy := "-"
@@ -142,44 +195,65 @@ func ToQuizResponse(q *domain.Quiz, questionCount int, participantCount int, avg
 		createdBy = *q.CreatedBy
 	}
 
-	return QuizResponse{
-		ID:                 q.ID,
-		Title:              q.Title,
-		LinkedArticleID:    q.LinkedArticleID,
-		LinkedArticleTitle: articleTitle,
-		Difficulty:         q.Difficulty,
-		PassingScore:       q.PassingScore,
-		Status:             displayStatus(q.Status),
-		QuestionCount:      questionCount,
-		ParticipantCount:   participantCount,
-		AverageScore:       avgScore,
-		CreatedBy:          createdBy,
-		CreatedAt:          q.CreatedAt,
-		UpdatedAt:          q.UpdatedAt,
+	return QuestionnaireResponse{
+		ID:               q.ID,
+		Title:            q.Title,
+		Type:             string(q.Type),
+		Description:      q.Description,
+		EducationID:      q.EducationID,
+		EducationTitle:   eduTitle,
+		PassingScore:     q.PassingScore,
+		Difficulty:       q.Difficulty,
+		Status:           displayStatus(q.Status),
+		CategoryCount:    categoryCount,
+		QuestionCount:    questionCount,
+		ParticipantCount: participantCount,
+		AverageScore:     avgScore,
+		CreatedBy:        createdBy,
+		CreatedAt:        q.CreatedAt,
+		UpdatedAt:        q.UpdatedAt,
 	}
 }
 
-func ToQuizDetailResponse(q *domain.Quiz, questionCount int, participantCount int, avgScore *int, isAdminOrStaff bool) QuizDetailResponse {
-	resp := QuizDetailResponse{
-		QuizResponse: ToQuizResponse(q, questionCount, participantCount, avgScore),
-		Questions:    make([]QuestionResponse, len(q.Questions)),
+func ToQuestionnaireDetailResponse(q *domain.Questionnaire, participantCount int, avgScore *int, isAdminOrStaff bool) QuestionnaireDetailResponse {
+	totalCat := len(q.Categories)
+	totalQuest := 0
+	catResps := make([]QuestionCategoryResponse, len(q.Categories))
+
+	for i, cat := range q.Categories {
+		qResps := make([]QuestionResponse, len(cat.Questions))
+		totalQuest += len(cat.Questions)
+
+		for j, quest := range cat.Questions {
+			cResps := make([]ChoiceResponse, len(quest.Options))
+			for k, opt := range quest.Options {
+				cResps[k] = ChoiceResponse{
+					ID:           opt.ID,
+					OptionText:   opt.OptionText,
+					IsCorrect:    isAdminOrStaff && opt.IsCorrect,
+					DisplayOrder: opt.DisplayOrder,
+				}
+			}
+			qResps[j] = QuestionResponse{
+				ID:           quest.ID,
+				QuestionText: quest.QuestionText,
+				Explanation:  quest.Explanation,
+				DisplayOrder: quest.DisplayOrder,
+				Choices:      cResps,
+			}
+		}
+
+		catResps[i] = QuestionCategoryResponse{
+			ID:           cat.ID,
+			Title:        cat.Title,
+			Description:  cat.Description,
+			DisplayOrder: cat.DisplayOrder,
+			Questions:    qResps,
+		}
 	}
 
-	for i, quest := range q.Questions {
-		qResp := QuestionResponse{
-			ID:           quest.ID,
-			QuestionText: quest.QuestionText,
-			OptionA:      quest.OptionA,
-			OptionB:      quest.OptionB,
-			OptionC:      quest.OptionC,
-			OptionD:      quest.OptionD,
-		}
-		if isAdminOrStaff {
-			qResp.CorrectOption = quest.CorrectOption
-			qResp.Explanation = quest.Explanation
-		}
-		resp.Questions[i] = qResp
+	return QuestionnaireDetailResponse{
+		QuestionnaireResponse: ToQuestionnaireResponse(q, totalCat, totalQuest, participantCount, avgScore),
+		Categories:            catResps,
 	}
-
-	return resp
 }

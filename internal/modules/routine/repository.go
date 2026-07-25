@@ -75,3 +75,25 @@ func (r *routineRepository) FindLogsByPatientAndDate(ctx context.Context, patien
 	}
 	return logs, nil
 }
+
+func (r *routineRepository) ReplacePatientRoutines(ctx context.Context, patientID string, routines []domain.Routine) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Delete previous routines for this patient
+		var existingIDs []string
+		tx.Model(&domain.Routine{}).Where("patient_id = ?", patientID).Pluck("id", &existingIDs)
+
+		if len(existingIDs) > 0 {
+			tx.Where("routine_id IN ?", existingIDs).Delete(&domain.RoutineTime{})
+			tx.Where("patient_id = ?", patientID).Delete(&domain.Routine{})
+		}
+
+		for i := range routines {
+			routines[i].PatientID = patientID
+			if err := tx.Create(&routines[i]).Error; err != nil {
+				return errs.NewInternal("failed to save routine setup", err)
+			}
+		}
+		return nil
+	})
+}
+

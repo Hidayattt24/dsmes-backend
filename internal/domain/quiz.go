@@ -4,45 +4,80 @@ import (
 	"time"
 )
 
-// Quiz represents an evaluation questionnaire linked to an educational article.
-type Quiz struct {
+type QuestionnaireType string
+
+const (
+	TypePreTest  QuestionnaireType = "PRE_TEST"
+	TypePostTest QuestionnaireType = "POST_TEST"
+)
+
+// Questionnaire represents a Pre-Test or Post-Test evaluation questionnaire.
+type Questionnaire struct {
 	BaseModel
 
-	Title           string `gorm:"type:varchar(200);not null" json:"title"`
-	LinkedArticleID string `gorm:"type:uuid;not null" json:"linked_article_id"`
-	Difficulty      string `gorm:"type:varchar(50);not null;default:'Sedang'" json:"difficulty"`
-	PassingScore    int    `gorm:"type:int;not null;default:80" json:"passing_score"`
-	Status          string `gorm:"type:varchar(50);not null;default:'draft'" json:"status"`
-	CreatedBy       *string `gorm:"type:uuid" json:"created_by"`
+	Title        string            `gorm:"type:varchar(200);not null" json:"title"`
+	Type         QuestionnaireType `gorm:"type:questionnaire_type_enum;not null;default:'POST_TEST'" json:"type"`
+	Description  string            `gorm:"type:text" json:"description,omitempty"`
+	EducationID  *string           `gorm:"type:uuid" json:"education_id,omitempty"`
+	PassingScore *int              `gorm:"type:int" json:"passing_score,omitempty"`
+	Difficulty   *string           `gorm:"type:varchar(50)" json:"difficulty,omitempty"`
+	Status       string            `gorm:"type:varchar(50);not null;default:'draft'" json:"status"`
+	CreatedBy    *string           `gorm:"type:uuid" json:"created_by,omitempty"`
 
 	// Relations
-	LinkedArticle *Article       `gorm:"foreignKey:LinkedArticleID" json:"linked_article,omitempty"`
-	Questions     []QuizQuestion `gorm:"foreignKey:QuizID;constraint:OnDelete:CASCADE" json:"questions,omitempty"`
+	Education  *Article           `gorm:"foreignKey:EducationID" json:"education,omitempty"`
+	Categories []QuestionCategory `gorm:"foreignKey:QuestionnaireID;constraint:OnDelete:CASCADE" json:"categories,omitempty"`
 }
 
-func (Quiz) TableName() string { return "quizzes" }
+func (Questionnaire) TableName() string { return "questionnaires" }
 
-// QuizQuestion represents a multiple choice question in a Quiz.
-type QuizQuestion struct {
+// QuestionCategory represents a section/learning category grouping questions.
+type QuestionCategory struct {
 	BaseModel
 
-	QuizID         string `gorm:"type:uuid;not null" json:"quiz_id"`
-	QuestionText   string `gorm:"type:text;not null" json:"question_text"`
-	OptionA        string `gorm:"type:text;not null" json:"option_a"`
-	OptionB        string `gorm:"type:text;not null" json:"option_b"`
-	OptionC        string `gorm:"type:text;not null" json:"option_c"`
-	OptionD        string `gorm:"type:text;not null" json:"option_d"`
-	CorrectOption  string `gorm:"type:varchar(10);not null" json:"correct_option"`
-	Explanation    string `gorm:"type:text" json:"explanation"`
+	QuestionnaireID string `gorm:"type:uuid;not null" json:"questionnaire_id"`
+	Title           string `gorm:"type:varchar(200);not null" json:"title"`
+	Description     string `gorm:"type:text" json:"description,omitempty"`
+	DisplayOrder    int    `gorm:"type:int;not null;default:0" json:"display_order"`
+
+	// Relations
+	Questions []Question `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"questions,omitempty"`
 }
 
-func (QuizQuestion) TableName() string { return "quiz_questions" }
+func (QuestionCategory) TableName() string { return "question_categories" }
 
-// QuizAttempt represents a patient's submission/try of a Quiz.
+// Question represents a single question item inside a category.
+type Question struct {
+	BaseModel
+
+	CategoryID   string `gorm:"type:uuid;not null" json:"category_id"`
+	QuestionText string `gorm:"type:text;not null" json:"question_text"`
+	Explanation  string `gorm:"type:text" json:"explanation,omitempty"`
+	DisplayOrder int    `gorm:"type:int;not null;default:0" json:"display_order"`
+
+	// Relations
+	Options []QuestionOption `gorm:"foreignKey:QuestionID;constraint:OnDelete:CASCADE" json:"options,omitempty"`
+}
+
+func (Question) TableName() string { return "questions" }
+
+// QuestionOption represents an answer option for a question.
+type QuestionOption struct {
+	BaseModel
+
+	QuestionID   string `gorm:"type:uuid;not null" json:"question_id"`
+	OptionText   string `gorm:"type:text;not null" json:"option_text"`
+	IsCorrect    bool   `gorm:"type:boolean;not null;default:false" json:"is_correct"`
+	DisplayOrder int    `gorm:"type:int;not null;default:0" json:"display_order"`
+}
+
+func (QuestionOption) TableName() string { return "question_options" }
+
+// QuizAttempt represents a patient's submission of a Questionnaire.
 type QuizAttempt struct {
 	BaseModel
 
-	QuizID          string    `gorm:"type:uuid;not null" json:"quiz_id"`
+	QuestionnaireID string    `gorm:"column:quiz_id;type:uuid;not null" json:"questionnaire_id"`
 	PatientID       string    `gorm:"type:uuid;not null" json:"patient_id"`
 	Score           int       `gorm:"type:int;not null" json:"score"`
 	Passed          bool      `gorm:"type:boolean;not null" json:"passed"`
@@ -50,9 +85,9 @@ type QuizAttempt struct {
 	CompletedAt     time.Time `gorm:"type:timestamptz;not null;default:now()" json:"completed_at"`
 
 	// Relations
-	Quiz    *Quiz         `gorm:"foreignKey:QuizID" json:"quiz,omitempty"`
-	Patient *Patient      `gorm:"foreignKey:PatientID" json:"patient,omitempty"`
-	Answers []QuizAnswer  `gorm:"foreignKey:AttemptID;constraint:OnDelete:CASCADE" json:"answers,omitempty"`
+	Questionnaire *Questionnaire `gorm:"foreignKey:QuestionnaireID" json:"questionnaire,omitempty"`
+	Patient       *Patient       `gorm:"foreignKey:PatientID" json:"patient,omitempty"`
+	Answers       []QuizAnswer   `gorm:"foreignKey:AttemptID;constraint:OnDelete:CASCADE" json:"answers,omitempty"`
 }
 
 func (QuizAttempt) TableName() string { return "quiz_attempts" }
@@ -61,13 +96,14 @@ func (QuizAttempt) TableName() string { return "quiz_attempts" }
 type QuizAnswer struct {
 	BaseModel
 
-	AttemptID      string `gorm:"type:uuid;not null" json:"attempt_id"`
-	QuestionID     string `gorm:"type:uuid;not null" json:"question_id"`
-	SelectedOption string `gorm:"type:varchar(10);not null" json:"selected_option"`
-	IsCorrect      bool   `gorm:"type:boolean;not null" json:"is_correct"`
+	AttemptID      string  `gorm:"type:uuid;not null" json:"attempt_id"`
+	QuestionID     string  `gorm:"type:uuid;not null" json:"question_id"`
+	SelectedOption string  `gorm:"type:varchar(50);not null" json:"selected_option"`
+	OptionID       *string `gorm:"type:uuid" json:"option_id,omitempty"`
+	IsCorrect      bool    `gorm:"type:boolean;not null" json:"is_correct"`
 
 	// Relations
-	Question *QuizQuestion `gorm:"foreignKey:QuestionID" json:"question,omitempty"`
+	Question *Question `gorm:"foreignKey:QuestionID" json:"question,omitempty"`
 }
 
 func (QuizAnswer) TableName() string { return "quiz_answers" }

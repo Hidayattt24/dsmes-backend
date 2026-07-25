@@ -45,7 +45,7 @@ func (r *dashboardRepository) GetAdminStats(ctx context.Context) (*AdminDashboar
 		return nil, errs.NewInternal("failed to count articles", err)
 	}
 
-	if err := r.db.WithContext(ctx).Model(&domain.Quiz{}).Where("deleted_at IS NULL").Count(&totalQuizzes).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&domain.Questionnaire{}).Where("deleted_at IS NULL").Count(&totalQuizzes).Error; err != nil {
 		return nil, errs.NewInternal("failed to count quizzes", err)
 	}
 
@@ -211,14 +211,30 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	}
 
 	err = r.db.WithContext(ctx).Raw(`
-		SELECT DISTINCT ON (p.id) 
+		SELECT DISTINCT ON (combined.patient_id) 
 			p.id, p.full_name, p.nickname, p.email, p.whatsapp_number, p.diabetes_type, p.compliance, p.last_active_at,
-			b.glucose_value, b.status AS latest_glucose_status
+			combined.glucose_value, combined.status AS latest_glucose_status
 		FROM patients p
-		JOIN blood_sugar_logs b ON b.patient_id = p.id
-		WHERE p.assigned_staff_id = ? AND b.measured_at >= NOW() - INTERVAL '7 days' AND (b.status = 'sangat_tinggi' OR b.status = 'rendah') AND p.deleted_at IS NULL AND b.deleted_at IS NULL
-		ORDER BY p.id, b.measured_at DESC
-	`, staffID).Scan(&priorityPatientsRaw).Error
+		JOIN (
+			SELECT bs.patient_id, bs.glucose_value, bs.measured_at, bs.status::text
+			FROM blood_sugar_logs bs
+			WHERE bs.deleted_at IS NULL
+			UNION ALL
+			SELECT pm.patient_id, pm.blood_sugar AS glucose_value, pm.measured_at,
+				CASE
+					WHEN pm.blood_sugar >= 200 THEN 'sangat_tinggi'
+					WHEN pm.blood_sugar >= 140 THEN 'tinggi'
+					WHEN pm.blood_sugar < 70 THEN 'rendah'
+					ELSE 'waspada'
+				END AS status
+			FROM patient_measurements pm
+			WHERE pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 AND pm.deleted_at IS NULL
+		) combined ON combined.patient_id = p.id
+		WHERE (p.assigned_staff_id = ? OR p.assigned_staff_id IS NULL OR ? = '') 
+		  AND p.deleted_at IS NULL 
+		  AND (LOWER(combined.status) IN ('sangat_tinggi', 'tinggi', 'rendah', 'sangat_rendah', 'waspada', 'berbahaya') OR combined.glucose_value >= 140 OR combined.glucose_value <= 70)
+		ORDER BY combined.patient_id, combined.measured_at DESC
+	`, staffID, staffID).Scan(&priorityPatientsRaw).Error
 
 	var priorityPatients []PriorityPatient
 	if err == nil {
@@ -259,10 +275,10 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	err = r.db.WithContext(ctx).Raw(`
 		SELECT p.id, p.full_name, p.nickname, p.email, p.whatsapp_number, p.diabetes_type, p.compliance, p.last_active_at
 		FROM patients p
-		WHERE p.assigned_staff_id = ? AND p.deleted_at IS NULL AND (p.compliance < 50 OR p.last_active_at IS NULL OR p.last_active_at < NOW() - INTERVAL '3 days')
+		WHERE (p.assigned_staff_id = ? OR p.assigned_staff_id IS NULL OR ? = '') AND p.deleted_at IS NULL AND (p.compliance < 50 OR p.last_active_at IS NULL OR p.last_active_at < NOW() - INTERVAL '3 days')
 		ORDER BY p.compliance ASC
 		LIMIT 15
-	`, staffID).Scan(&nonCompliantRaw).Error
+	`, staffID, staffID).Scan(&nonCompliantRaw).Error
 
 	var nonCompliantPatients []PriorityPatient
 	if err == nil {
@@ -578,22 +594,30 @@ func (r *dashboardRepository) GetPatientTrends(ctx context.Context, staffID stri
 			p.id,
 			p.full_name,
 			COALESCE(p.nickname, '') AS nickname,
-			COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days' AND b.measured_at < NOW() - INTERVAL '%d days'), 0) AS avg_previous,
-			COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days'), 0) AS avg_current
+			COALESCE(AVG(combined.glucose_value) FILTER (WHERE combined.measured_at >= NOW() - INTERVAL '%d days' AND combined.measured_at < NOW() - INTERVAL '%d days'), 0) AS avg_previous,
+			COALESCE(AVG(combined.glucose_value) FILTER (WHERE combined.measured_at >= NOW() - INTERVAL '%d days'), 0) AS avg_current
 		FROM patients p
-		JOIN blood_sugar_logs b ON b.patient_id = p.id
-		WHERE p.assigned_staff_id = ? AND b.deleted_at IS NULL AND p.deleted_at IS NULL
-		AND b.measured_at >= NOW() - INTERVAL '%d days'
+		JOIN (
+			SELECT bs.patient_id, bs.glucose_value, bs.measured_at
+			FROM blood_sugar_logs bs
+			WHERE bs.deleted_at IS NULL
+			UNION ALL
+			SELECT pm.patient_id, pm.blood_sugar AS glucose_value, pm.measured_at
+			FROM patient_measurements pm
+			WHERE pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 AND pm.deleted_at IS NULL
+		) combined ON combined.patient_id = p.id
+		WHERE (p.assigned_staff_id = ? OR p.assigned_staff_id IS NULL OR ? = '') AND p.deleted_at IS NULL
+		AND combined.measured_at >= NOW() - INTERVAL '%d days'
 		GROUP BY p.id, p.full_name, p.nickname
 		HAVING
-			COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days'), 0) >
-			COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days' AND b.measured_at < NOW() - INTERVAL '%d days'), 0)
-			AND COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days' AND b.measured_at < NOW() - INTERVAL '%d days'), 0) > 0
-		ORDER BY (COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days'), 0) - COALESCE(AVG(b.glucose_value) FILTER (WHERE b.measured_at >= NOW() - INTERVAL '%d days' AND b.measured_at < NOW() - INTERVAL '%d days'), 0)) DESC
+			COALESCE(AVG(combined.glucose_value) FILTER (WHERE combined.measured_at >= NOW() - INTERVAL '%d days'), 0) >
+			COALESCE(AVG(combined.glucose_value) FILTER (WHERE combined.measured_at >= NOW() - INTERVAL '%d days' AND combined.measured_at < NOW() - INTERVAL '%d days'), 0)
+			AND COALESCE(AVG(combined.glucose_value) FILTER (WHERE combined.measured_at >= NOW() - INTERVAL '%d days' AND combined.measured_at < NOW() - INTERVAL '%d days'), 0) > 0
+		ORDER BY (COALESCE(AVG(combined.glucose_value) FILTER (WHERE combined.measured_at >= NOW() - INTERVAL '%d days'), 0) - COALESCE(AVG(combined.glucose_value) FILTER (WHERE combined.measured_at >= NOW() - INTERVAL '%d days' AND combined.measured_at < NOW() - INTERVAL '%d days'), 0)) DESC
 		LIMIT 10
 	`,
 		rangeDays, halfDays, halfDays, rangeDays, halfDays, rangeDays, halfDays, rangeDays, halfDays, halfDays, rangeDays, halfDays)
-	err := r.db.WithContext(ctx).Raw(sql, staffID).Scan(&rows).Error
+	err := r.db.WithContext(ctx).Raw(sql, staffID, staffID).Scan(&rows).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch patient trends", err)
 	}

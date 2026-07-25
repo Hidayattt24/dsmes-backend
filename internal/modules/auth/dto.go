@@ -19,8 +19,9 @@ type PatientLoginRequest struct {
 // ForgotPasswordRequest is the body for POST /api/v1/auth/forgot-password.
 type ForgotPasswordRequest struct {
 	Email     string `json:"email"      validate:"required,email"`
-	OwnerType string `json:"owner_type" validate:"required,oneof=staff patient"`
+	OwnerType string `json:"owner_type" validate:"omitempty,oneof=staff patient"`
 }
+
 
 // VerifyOTPRequest is the body for POST /api/v1/auth/verify-otp.
 type VerifyOTPRequest struct {

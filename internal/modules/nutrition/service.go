@@ -187,3 +187,9 @@ func (s *nutritionService) GetPatientMealLogs(ctx context.Context, patientID str
 	}
 	return resp, nil
 }
+
+func (s *nutritionService) CalculateCalories(ctx context.Context, req CalorieCalculationRequest) (*CalorieCalculationResponse, error) {
+	req.Normalize()
+	return CalculateDailyCalories(req)
+}
+

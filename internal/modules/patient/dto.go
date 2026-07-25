@@ -7,16 +7,33 @@ import (
 )
 
 type RegisterPatientRequest struct {
-	Email          string           `json:"email"           validate:"required,email"`
-	Password       string           `json:"password"        validate:"required,min=6"`
-	FullName       string           `json:"full_name"       validate:"required,min=3,max=150"`
-	Nickname       string           `json:"nickname"`
-	WhatsappNumber string           `json:"whatsapp_number" validate:"required,numeric,min=10,max=20"`
-	Gender         domain.Gender    `json:"gender"          validate:"required,oneof=laki_laki perempuan"`
-	DateOfBirth    string           `json:"date_of_birth"   validate:"required"` // format: "YYYY-MM-DD"
-	HeightCm       float64          `json:"height_cm"       validate:"required,gt=0"`
-	WeightKg       float64          `json:"weight_kg"       validate:"required,gt=0"`
-	BloodType      domain.BloodType `json:"blood_type"      validate:"required,oneof=A B AB O tidak_tahu"`
+	Email                 string  `json:"email"                  validate:"required,email"`
+	Password              string  `json:"password"               validate:"required,min=8"`
+	FullName              string  `json:"full_name"              validate:"required,min=3,max=150"`
+	Nickname              string  `json:"nickname"`
+	WhatsappNumber        string  `json:"whatsapp_number"`
+	PhoneNumber           string  `json:"phone_number"`
+	Gender                string  `json:"gender"                 validate:"required"`
+	DateOfBirth           string  `json:"date_of_birth"          validate:"required"` // format: "YYYY-MM-DD"
+	HeightCm              float64 `json:"height_cm"              validate:"required,gt=0"`
+	WeightKg              float64 `json:"weight_kg"              validate:"required,gt=0"`
+	BloodType             string  `json:"blood_type"             validate:"required"`
+	ActivityLevel         string  `json:"activity_level"`
+	PhysicalActivityLevel string  `json:"physical_activity_level"`
+}
+
+func (r *RegisterPatientRequest) GetPhone() string {
+	if r.PhoneNumber != "" {
+		return r.PhoneNumber
+	}
+	return r.WhatsappNumber
+}
+
+func (r *RegisterPatientRequest) GetActivity() string {
+	if r.ActivityLevel != "" {
+		return r.ActivityLevel
+	}
+	return r.PhysicalActivityLevel
 }
 
 type UpdatePatientProfileRequest struct {
@@ -69,6 +86,8 @@ type PatientResponse struct {
 	EmergencyPhone        string               `json:"emergency_phone"`
 	DiabetesType          string               `json:"diabetes_type"`
 	Compliance            int                  `json:"compliance"`
+	ComplianceLabel       string               `json:"compliance_label,omitempty"`
+	ComplianceBreakdown   *ComplianceBreakdown `json:"compliance_breakdown,omitempty"`
 	InterventionType      string               `json:"intervention_type"`
 	PatientCode           string               `json:"patient_code"`
 	Address               string               `json:"address"`
@@ -80,16 +99,60 @@ type PatientResponse struct {
 	LastActiveAt          *string              `json:"last_active_at,omitempty"`
 
 	// Summary statistics fields
-	LatestBloodSugar       *int     `json:"latest_blood_sugar,omitempty"`
-	LatestBloodSugarTime   *string  `json:"latest_blood_sugar_time,omitempty"`
-	LatestBloodSugarStatus *string  `json:"latest_blood_sugar_status,omitempty"`
-	AverageBloodSugar      *float64 `json:"average_blood_sugar,omitempty"`
-	LatestWeight           *float64 `json:"latest_weight,omitempty"`
-	BMI                    *float64 `json:"bmi,omitempty"`
-	LatestMealCalories     *float64 `json:"latest_meal_calories,omitempty"`
-	LatestMealType         *string  `json:"latest_meal_type,omitempty"`
-	LatestActivityTime     *string  `json:"latest_activity_time,omitempty"`
-	LatestActivityName     *string  `json:"latest_activity_name,omitempty"`
+	LatestBloodSugar       *int               `json:"latest_blood_sugar,omitempty"`
+	LatestBloodSugarTime   *string            `json:"latest_blood_sugar_time,omitempty"`
+	LatestBloodSugarStatus *string            `json:"latest_blood_sugar_status,omitempty"`
+	AverageBloodSugar      *float64           `json:"average_blood_sugar,omitempty"`
+	LatestWeight           *float64           `json:"latest_weight,omitempty"`
+	BMI                    *float64           `json:"bmi,omitempty"`
+	LatestMealCalories     *float64           `json:"latest_meal_calories,omitempty"`
+	LatestMealType         *string            `json:"latest_meal_type,omitempty"`
+	LatestActivityTime     *string            `json:"latest_activity_time,omitempty"`
+	LatestActivityName     *string            `json:"latest_activity_name,omitempty"`
+	WaistCircumferenceCm   *float64           `json:"waist_circumference_cm,omitempty"`
+	CalorieStatus          *CalorieStatusInfo `json:"calorie_status_info,omitempty"`
+}
+
+type CalorieStatusInfo struct {
+	TargetCalories        int     `json:"target_calories"`
+	ConsumedCalories      float64 `json:"consumed_calories"`
+	AchievementPercentage float64 `json:"achievement_percentage"`
+	CalorieDifference     float64 `json:"calorie_difference"`
+	CalorieDifferenceStr  string  `json:"calorie_difference_str"`
+	CalorieStatus         string  `json:"calorie_status"`
+	CalorieStatusCode     string  `json:"calorie_status_code"`
+	CalorieDescription    string  `json:"calorie_description"`
+}
+
+type ComplianceBreakdown struct {
+	BloodSugarScore float64 `json:"blood_sugar_score"`
+	FoodScore       float64 `json:"food_score"`
+	ActivityScore   float64 `json:"activity_score"`
+	MedicationScore float64 `json:"medication_score"`
+}
+
+type ActivityAnalyticsItem struct {
+	Count      int64   `json:"count"`
+	Percentage float64 `json:"percentage"`
+}
+
+type DailyLogsAggregate struct {
+	BloodSugarCount          int
+	TotalMealCalories        float64
+	MealCount                int
+	TotalActivityMinutes     int
+	MedicationCompletedCount int
+	MedicationScheduledCount int
+}
+
+type PatientActivityAnalyticsResponse struct {
+	TotalRecords     int64                 `json:"total_records"`
+	BloodSugar       ActivityAnalyticsItem `json:"blood_sugar"`
+	Food             ActivityAnalyticsItem `json:"food"`
+	PhysicalActivity ActivityAnalyticsItem `json:"physical_activity"`
+	Medication       ActivityAnalyticsItem `json:"medication"`
+	MostUsed         string                `json:"most_used"`
+	LeastUsed        string                `json:"least_used"`
 }
 
 type PatientSummaryData struct {
@@ -103,11 +166,14 @@ type PatientSummaryData struct {
 	LatestMealType         *string    `json:"latest_meal_type,omitempty"`
 	LatestActivityTime     *time.Time `json:"latest_activity_time_raw,omitempty"`
 	LatestActivityName     *string    `json:"latest_activity_name,omitempty"`
+	TodayConsumedCalories  *float64   `json:"today_consumed_calories,omitempty"`
 }
 
 type PatientDetailResponse struct {
 	PatientResponse
-	AssignedStaff *StaffInfo `json:"assigned_staff,omitempty"`
+	AssignedStaff     *StaffInfo                   `json:"assigned_staff,omitempty"`
+	LatestMeasurement *PatientMeasurementResponse  `json:"latest_measurement,omitempty"`
+	Measurements      []PatientMeasurementResponse `json:"measurements,omitempty"`
 }
 
 type StaffInfo struct {
@@ -197,10 +263,85 @@ type PatientFilterQuery struct {
 type PatientStats struct {
 	TotalPatients  int64 `json:"total_patients"`
 	ActivePatients int64 `json:"active_patients"`
-	AverageAge     int   `json:"average_age"`
+	YoungestAge    int   `json:"youngest_age"`
+	OldestAge      int   `json:"oldest_age"`
 }
 
-// ParseDOB parses date of birth string "YYYY-MM-DD"
+// ParseDOB parses date of birth string ("YYYY-MM-DD" or ISO 8601)
 func ParseDOB(dateStr string) (time.Time, error) {
-	return time.Parse("2006-01-02", dateStr)
+	if len(dateStr) >= 10 {
+		dateStrOnly := dateStr[:10]
+		if t, err := time.Parse("2006-01-02", dateStrOnly); err == nil {
+			return t, nil
+		}
+	}
+	return time.Parse(time.RFC3339, dateStr)
+}
+
+type CreateMeasurementRequest struct {
+	WeightKg               *float64               `json:"weight_kg"`
+	HeightCm               *float64               `json:"height_cm"`
+	BloodPressureSystolic  *int                   `json:"blood_pressure_systolic"`
+	BloodPressureDiastolic *int                   `json:"blood_pressure_diastolic"`
+	BloodSugar             *int                   `json:"blood_sugar"`
+	BloodSugarTimeType     domain.MeasurementTime `json:"blood_sugar_time_type"`
+	WaistCircumferenceCm   *float64               `json:"waist_circumference_cm"`
+	DailyCalorieTarget     *int                   `json:"daily_calorie_target"`
+	Gender                 string                 `json:"gender"`
+	BloodType              string                 `json:"blood_type"`
+	PhysicalActivityLevel  string                 `json:"physical_activity_level"`
+	Notes                  string                 `json:"notes"`
+	MeasuredAt             *string                `json:"measured_at"`
+}
+
+type UpdateMeasurementRequest struct {
+	WeightKg               *float64 `json:"weight_kg"`
+	HeightCm               *float64 `json:"height_cm"`
+	BloodPressureSystolic  *int     `json:"blood_pressure_systolic"`
+	BloodPressureDiastolic *int     `json:"blood_pressure_diastolic"`
+	BloodSugar             *int     `json:"blood_sugar"`
+	WaistCircumferenceCm   *float64 `json:"waist_circumference_cm"`
+	DailyCalorieTarget     *int     `json:"daily_calorie_target"`
+	Notes                  string   `json:"notes"`
+}
+
+type UpdatePatientRequest struct {
+	FullName              string   `json:"full_name"`
+	WhatsappNumber        string   `json:"whatsapp_number"`
+	Gender                string   `json:"gender"`
+	DateOfBirth           string   `json:"date_of_birth"`
+	Address               string   `json:"address"`
+	DiabetesType          string   `json:"diabetes_type"`
+	BPJS                  string   `json:"bpjs"`
+	NIK                   string   `json:"nik"`
+	EmergencyName         string   `json:"emergency_name"`
+	EmergencyRelation     string   `json:"emergency_relation"`
+	EmergencyPhone        string   `json:"emergency_phone"`
+	HeightCm              *float64 `json:"height_cm"`
+	WeightKg              *float64 `json:"weight_kg"`
+	DailyCalorieTarget    *int     `json:"daily_calorie_target"`
+	DiagnosisDate         string   `json:"diagnosis_date"`
+	CurrentMedication     string   `json:"current_medication"`
+	Allergies             string   `json:"allergies"`
+	SmokingStatus         string   `json:"smoking_status"`
+	PhysicalActivityLevel string   `json:"physical_activity_level"`
+}
+
+type PatientMeasurementResponse struct {
+	ID                     string   `json:"id"`
+	PatientID              string   `json:"patient_id"`
+	WeightKg               *float64 `json:"weight_kg,omitempty"`
+	HeightCm               *float64 `json:"height_cm,omitempty"`
+	BMI                    *float64 `json:"bmi,omitempty"`
+	BloodPressureSystolic  *int     `json:"blood_pressure_systolic,omitempty"`
+	BloodPressureDiastolic *int     `json:"blood_pressure_diastolic,omitempty"`
+	BloodSugar             *int     `json:"blood_sugar,omitempty"`
+	WaistCircumferenceCm   *float64 `json:"waist_circumference_cm,omitempty"`
+	DailyCalorieTarget     *int     `json:"daily_calorie_target,omitempty"`
+	Notes                  string   `json:"notes,omitempty"`
+	RecordedByID           *string  `json:"recorded_by_id,omitempty"`
+	RecordedByName         string   `json:"recorded_by_name"`
+	RecordedByRole         string   `json:"recorded_by_role"`
+	MeasuredAt             string   `json:"measured_at"`
+	CreatedAt              string   `json:"created_at"`
 }

@@ -178,3 +178,30 @@ func (h *NutritionHandler) GetPatientMealLogs(c fiber.Ctx) error {
 	}
 	return response.Success(c, "patient meal logs retrieved", res)
 }
+
+// CalculateCalories handles POST /api/v1/nutrition/calculate-calories
+// @Summary      Calculate daily calorie requirements & targets (BMR & TDEE)
+// @Tags         nutrition
+// @Accept       json
+// @Produce      json
+// @Param        body  body  CalorieCalculationRequest  true  "Calculation payload"
+// @Success      200  {object}  map[string]any
+// @Router       /nutrition/calculate-calories [post]
+func (h *NutritionHandler) CalculateCalories(c fiber.Ctx) error {
+	var req CalorieCalculationRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	req.Normalize()
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.CalculateCalories(c.Context(), req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "calorie calculation successful", res)
+}
+

@@ -146,7 +146,7 @@ func (r *educationRepository) RecordView(ctx context.Context, view *domain.Artic
 func (r *educationRepository) MarkCompleted(ctx context.Context, completion *domain.UserArticleCompletion) error {
 	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "patient_id"}, {Name: "article_id"}},
-		DoNothing: true,
+		DoUpdates: clause.AssignmentColumns([]string{"article_read", "article_read_at", "completed_at", "updated_at"}),
 	}).Create(completion).Error
 	if err != nil {
 		return errs.NewInternal("failed to record article completion", err)

@@ -42,7 +42,10 @@ func main() {
 		"000001_create_auth_and_staff_tables.up.sql",
 		"000002_create_remaining_tables.up.sql",
 		"000003_add_patient_gaps_and_quiz_tables.up.sql",
+		"000004_add_patient_extended_fields.up.sql",
+		"000005_add_routine_icon_and_schedule.up.sql",
 	}
+
 
 	for _, fileName := range migrationFiles {
 		filePath := filepath.Join("migrations", fileName)

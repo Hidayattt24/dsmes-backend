@@ -22,6 +22,7 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/modules/checkin"
 	"github.com/dsmes/dsmes-backend/internal/modules/dashboard"
 	"github.com/dsmes/dsmes-backend/internal/modules/education"
+	"github.com/dsmes/dsmes-backend/internal/modules/education_progress"
 	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
 	"github.com/dsmes/dsmes-backend/internal/modules/patient"
 	"github.com/dsmes/dsmes-backend/internal/modules/quiz"
@@ -65,8 +66,9 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	staffHandler := staff.NewStaffHandler(staffSvc, c.Logger)
 
 	// 2. Patient
+	authRepo := auth.NewAuthRepository(c.DB, c.Logger)
 	patientRepo := patient.NewPatientRepository(c.DB, c.Logger)
-	patientSvc := patient.NewPatientService(patientRepo, c.Email, c.Logger)
+	patientSvc := patient.NewPatientService(patientRepo, authRepo, c.JWT, c.Email, c.Logger)
 	patientHandler := patient.NewPatientHandler(patientSvc, c.Logger)
 
 	// 3. Routine
@@ -99,7 +101,12 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	eduSvc := education.NewEducationService(eduRepo, c.Logger)
 	eduHandler := education.NewEducationHandler(eduSvc, c.Logger)
 
-	// 9. Summary
+	// 9. Education Progress
+	eduProgressRepo := education_progress.NewEducationProgressRepository(c.DB, c.Logger)
+	eduProgressSvc := education_progress.NewEducationProgressService(eduProgressRepo, eduRepo, c.Logger)
+	eduProgressHandler := education_progress.NewEducationProgressHandler(eduProgressSvc, c.Logger)
+
+	// 10. Summary
 	summaryRepo := summary.NewSummaryRepository(c.DB, c.Logger)
 	summarySvc := summary.NewSummaryService(summaryRepo, c.Logger)
 	summaryHandler := summary.NewSummaryHandler(summarySvc, c.Logger)
@@ -125,6 +132,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	// ── Public routes (no JWT) ────────────────────────────────────────────────
 	auth.RegisterRoutes(v1, c)
 	v1.Post("/auth/register", patientHandler.Register)
+	v1.Post("/nutrition/calculate-calories", nutritionHandler.CalculateCalories)
 
 	// ── Protected: Admin Group (JWT + RequireRole("admin")) ───────────────────
 	admin := v1.Group("/admin",
@@ -154,17 +162,20 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Get("/patients/stats", patientHandler.GetStats)
 		admin.Get("/patients", patientHandler.List)
 		admin.Get("/patients/:id", patientHandler.GetByID)
+		admin.Put("/patients/:id", patientHandler.UpdatePatientByAdmin)
 		admin.Patch("/patients/:id/status", patientHandler.ToggleStatus)
 		admin.Patch("/patients/:id/assign", patientHandler.AssignStaff)
 		admin.Delete("/patients/:id", patientHandler.Delete)
 
-		// Blood Sugar Logs view
+		// Patient Health Measurements & Logs views
+		admin.Get("/patients/:id/measurements", patientHandler.GetPatientMeasurements)
+		admin.Post("/patients/:id/measurements", patientHandler.CreateMeasurement)
+		admin.Put("/patients/:id/measurements/:measurementId", patientHandler.UpdateMeasurement)
 		admin.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
-
-		// Patient Logs views
 		admin.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
 		admin.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
 		admin.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
+		admin.Get("/patients/:id/activity-analytics", patientHandler.GetPatientActivityAnalytics)
 
 		// Global Foods Management
 		admin.Post("/foods", nutritionHandler.CreateFood)
@@ -178,9 +189,17 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Patch("/education/articles/:id/publish", eduHandler.Publish)
 		admin.Delete("/education/articles/:id", eduHandler.Delete)
 
+		// Education Progress Tracking
+		admin.Get("/education/:id/progress", eduProgressHandler.GetArticleProgress)
+		admin.Get("/education/:id/progress/analytics", eduProgressHandler.GetArticleAnalytics)
+		admin.Post("/education/:id/progress/read-article", eduProgressHandler.MarkArticleReadAdmin)
+		admin.Post("/education/:id/progress/watch-video", eduProgressHandler.MarkVideoWatchedAdmin)
+
 		// Quiz / Questionnaire Management
 		admin.Get("/quiz/stats", quizHandler.GetStats)
 		admin.Get("/quiz", quizHandler.List)
+		admin.Get("/quiz/pre-test", quizHandler.GetActivePreTest)
+		admin.Get("/quiz/post-test", quizHandler.GetPostTestByEducation)
 		admin.Get("/quiz/:id", quizHandler.GetByID)
 		admin.Post("/quiz", quizHandler.Create)
 		admin.Put("/quiz/:id", quizHandler.Update)
@@ -207,10 +226,12 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		staff.Get("/patients/stats", patientHandler.GetStatsStaff)
 		staff.Get("/patients", patientHandler.ListStaff)
 		staff.Get("/patients/:id", patientHandler.GetByID)
+		staff.Get("/patients/:id/measurements", patientHandler.GetPatientMeasurements)
 		staff.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
 		staff.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
 		staff.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
 		staff.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
+		staff.Get("/patients/:id/activity-analytics", patientHandler.GetPatientActivityAnalytics)
 
 		// Dashboard statistics
 		staff.Get("/dashboard/blood-sugar", bsHandler.GetDashboard)
@@ -239,9 +260,14 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Get("/me", patientHandler.GetMe)
 		patientGroup.Put("/me", patientHandler.UpdateMe)
 
+		// Health Measurements
+		patientGroup.Get("/measurements", patientHandler.GetPatientMeasurements)
+		patientGroup.Post("/measurements", patientHandler.CreateMeasurement)
+
 		// Routines habit logging
 		patientGroup.Get("/routines", routineHandler.List)
 		patientGroup.Put("/routines/:routineTimeId", routineHandler.Configure)
+		patientGroup.Post("/routines/setup", routineHandler.BulkSetup)
 		patientGroup.Post("/routines/log", routineHandler.Log)
 		patientGroup.Get("/routines/status", routineHandler.Status)
 
@@ -274,28 +300,32 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Post("/education/:id/save", eduHandler.Save)
 		patientGroup.Get("/education/saved", eduHandler.ListSaved)
 
+		// Education Progress (Mobile-ready API)
+		patientGroup.Get("/education/:id/progress", eduProgressHandler.GetPatientProgress)
+		patientGroup.Post("/education/:id/read-article", eduProgressHandler.MarkArticleRead)
+		patientGroup.Post("/education/:id/watch-video", eduProgressHandler.MarkVideoWatched)
+
 		// Weekly analytical summary cards
 		patientGroup.Get("/summary/weekly", summaryHandler.GetLatest)
 
 		// Support Ticket submission
 		patientGroup.Post("/support/tickets", settingsHandler.SubmitTicket)
 		patientGroup.Get("/support/tickets", settingsHandler.GetMyTickets)
+
+		// Questionnaire (Pre-Test / Post-Test) for Patient Mobile
+		patientGroup.Get("/questionnaires/pre-test", quizHandler.GetActivePreTest)
+		patientGroup.Get("/questionnaires/post-test", quizHandler.GetPostTestByEducation)
+		patientGroup.Get("/questionnaires/:id", quizHandler.GetByID)
+		patientGroup.Post("/questionnaires/:id/submit", quizHandler.Submit)
 	}
 
 	// ── Authenticated Shared Group (any authenticated role) ───────────────────
-	shared := v1.Group("", middleware.JWT(c.Config))
-	{
-		// Food database search
-		shared.Get("/foods", nutritionHandler.Search)
-
-		// Helpdesk FAQs
-		shared.Get("/faqs", settingsHandler.GetFAQs)
-
-		// General education articles view
-		shared.Get("/education/categories", eduHandler.ListCategories)
-		shared.Get("/education/articles", eduHandler.ListPublished)
-		shared.Get("/education/articles/:id", eduHandler.GetByID)
-	}
+	jwtAuth := middleware.JWT(c.Config)
+	v1.Get("/foods", jwtAuth, nutritionHandler.Search)
+	v1.Get("/faqs", jwtAuth, settingsHandler.GetFAQs)
+	v1.Get("/education/categories", jwtAuth, eduHandler.ListCategories)
+	v1.Get("/education/articles", jwtAuth, eduHandler.ListPublished)
+	v1.Get("/education/articles/:id", jwtAuth, eduHandler.GetByID)
 
 	// ── Internal / Cron Group ─────────────────────────────────────────────────
 	internal := v1.Group("/internal")

@@ -28,4 +28,6 @@ type NutritionService interface {
 	GetPatientMealLogs(ctx context.Context, patientID string, dateStr string) ([]MealLogResponse, error)
 	CreateFood(ctx context.Context, req CreateFoodRequest) (*FoodResponse, error)
 	UpdateFood(ctx context.Context, id string, req CreateFoodRequest) (*FoodResponse, error)
+	CalculateCalories(ctx context.Context, req CalorieCalculationRequest) (*CalorieCalculationResponse, error)
 }
+
