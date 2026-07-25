@@ -2,6 +2,7 @@ package patient
 
 import (
 	"context"
+	"time"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/modules/auth"
@@ -17,6 +18,8 @@ type PatientRepository interface {
 	GetStats(ctx context.Context, staffID string) (*PatientStats, error)
 	GetPatientSummary(ctx context.Context, patientID string) (*PatientSummaryData, error)
 	GetPatientSummaries(ctx context.Context, patientIDs []string) (map[string]*PatientSummaryData, error)
+	GetPatientActivityAnalytics(ctx context.Context, patientID string, days int) (*PatientActivityAnalyticsResponse, error)
+	GetPatientDailyLogsAggregate(ctx context.Context, patientID string, startDate, endDate time.Time) (map[string]*DailyLogsAggregate, error)
 
 	// Transactional onboarding helpers
 	CreateWithOnboarding(ctx context.Context, p *domain.Patient, defaultRoutines []domain.Routine, defaultReminders []domain.Reminder) error
@@ -32,4 +35,5 @@ type PatientService interface {
 	ToggleStatus(ctx context.Context, id string) (*PatientResponse, error)
 	DeletePatient(ctx context.Context, id string) error
 	GetStats(ctx context.Context, staffID string) (*PatientStats, error)
+	GetPatientActivityAnalytics(ctx context.Context, patientID string, days int) (*PatientActivityAnalyticsResponse, error)
 }

@@ -2,6 +2,8 @@ package patient
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -189,6 +191,68 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 }
 
 
+func CalculateCalorieStatus(target int, consumed float64) *CalorieStatusInfo {
+	if target <= 0 {
+		target = 2000
+	}
+
+	achievement := (consumed / float64(target)) * 100.0
+	achievement = math.Round(achievement*10) / 10
+
+	diff := consumed - float64(target)
+	diff = math.Round(diff)
+
+	diffStr := ""
+	if diff > 0 {
+		diffStr = fmt.Sprintf("+%d kcal", int(diff))
+	} else if diff < 0 {
+		diffStr = fmt.Sprintf("%d kcal", int(diff))
+	} else {
+		diffStr = "0 kcal"
+	}
+
+	status := "Target Tercapai"
+	code := "excellent"
+	desc := "Asupan kalori harian sesuai dengan target rekomendasi."
+
+	if achievement >= 95.0 && achievement <= 105.0 {
+		status = "Target Tercapai"
+		code = "excellent"
+		desc = "Asupan kalori harian sesuai dengan target rekomendasi."
+	} else if achievement >= 80.0 && achievement < 95.0 {
+		status = "Sedikit di Bawah Target"
+		code = "slightly_below"
+		desc = "Pasien mengonsumsi sedikit lebih sedikit kalori dari target."
+	} else if achievement >= 60.0 && achievement < 80.0 {
+		status = "di Bawah Target"
+		code = "below"
+		desc = "Asupan kalori signifikan di bawah rekomendasi."
+	} else if achievement < 60.0 {
+		status = "Asupan Sangat Rendah"
+		code = "very_low"
+		desc = "Pasien mengonsumsi kalori sangat rendah dari target."
+	} else if achievement > 105.0 && achievement <= 120.0 {
+		status = "di Atas Target"
+		code = "above"
+		desc = "Asupan kalori pasien melebihi target rekomendasi."
+	} else if achievement > 120.0 {
+		status = "Asupan Sangat Tinggi"
+		code = "excessive"
+		desc = "Asupan kalori pasien jauh melebihi target rekomendasi."
+	}
+
+	return &CalorieStatusInfo{
+		TargetCalories:        target,
+		ConsumedCalories:      math.Round(consumed),
+		AchievementPercentage: achievement,
+		CalorieDifference:     diff,
+		CalorieDifferenceStr:  diffStr,
+		CalorieStatus:         status,
+		CalorieStatusCode:     code,
+		CalorieDescription:    desc,
+	}
+}
+
 func populateSummary(res *PatientResponse, summary *PatientSummaryData) {
 	if summary == nil {
 		return
@@ -209,6 +273,12 @@ func populateSummary(res *PatientResponse, summary *PatientSummaryData) {
 		tStr := summary.LatestActivityTime.Format("2006-01-02T15:04:05Z07:00")
 		res.LatestActivityTime = &tStr
 	}
+
+	consumed := 0.0
+	if summary.TodayConsumedCalories != nil {
+		consumed = *summary.TodayConsumedCalories
+	}
+	res.CalorieStatus = CalculateCalorieStatus(res.DailyCalorieTarget, consumed)
 }
 
 func (s *patientService) ListPatients(ctx context.Context, filter PatientFilterQuery) ([]PatientResponse, int64, error) {
@@ -241,6 +311,9 @@ func (s *patientService) ListPatients(ctx context.Context, filter PatientFilterQ
 
 	for i := range items {
 		resp[i] = ToPatientResponse(&items[i])
+		score, label, _ := s.CalculateDynamicCompliance(ctx, items[i].ID, items[i].DailyCalorieTarget, items[i].CreatedAt)
+		resp[i].Compliance = score
+		resp[i].ComplianceLabel = label
 		if summary, ok := summaries[items[i].ID]; ok && summary != nil {
 			populateSummary(&resp[i], summary)
 		}
@@ -256,12 +329,149 @@ func (s *patientService) GetPatient(ctx context.Context, id string) (*PatientDet
 	}
 	res := ToPatientDetailResponse(patient)
 
+	score, label, breakdown := s.CalculateDynamicCompliance(ctx, patient.ID, patient.DailyCalorieTarget, patient.CreatedAt)
+	res.Compliance = score
+	res.ComplianceLabel = label
+	res.ComplianceBreakdown = breakdown
+
 	summary, err := s.repo.GetPatientSummary(ctx, id)
 	if err == nil && summary != nil {
 		populateSummary(&res.PatientResponse, summary)
 	}
 
 	return &res, nil
+}
+
+func (s *patientService) GetPatientActivityAnalytics(ctx context.Context, patientID string, days int) (*PatientActivityAnalyticsResponse, error) {
+	return s.repo.GetPatientActivityAnalytics(ctx, patientID, days)
+}
+
+func (s *patientService) CalculateDynamicCompliance(ctx context.Context, patientID string, dailyTarget int, createdAt time.Time) (int, string, *ComplianceBreakdown) {
+	now := time.Now()
+	endDate := now
+	startDate := now.AddDate(0, 0, -6)
+
+	if dailyTarget <= 0 {
+		dailyTarget = 2000
+	}
+
+	daysSinceReg := int(now.Sub(createdAt).Hours()/24) + 1
+	evalWindow := 7
+	if daysSinceReg < evalWindow {
+		evalWindow = daysSinceReg
+	}
+	if evalWindow < 1 {
+		evalWindow = 1
+	}
+
+	dailyAggs, err := s.repo.GetPatientDailyLogsAggregate(ctx, patientID, startDate, endDate)
+	if err != nil {
+		s.log.Warn("patient: failed to fetch daily logs aggregate for compliance", zap.Error(err))
+		dailyAggs = make(map[string]*DailyLogsAggregate)
+	}
+
+	var sumBS, sumFood, sumAct, sumMed float64
+
+	for i := 0; i < evalWindow; i++ {
+		d := now.AddDate(0, 0, -i).Format("2006-01-02")
+		agg, ok := dailyAggs[d]
+		if !ok || agg == nil {
+			agg = &DailyLogsAggregate{}
+		}
+
+		// 1. Blood Sugar (25 pts max)
+		bsScore := 0.0
+		if agg.BloodSugarCount > 0 {
+			bsScore = 25.0
+		}
+
+		// 2. Food & Calories (25 pts max)
+		foodScore := 0.0
+		if agg.MealCount > 0 {
+			ratio := agg.TotalMealCalories / float64(dailyTarget)
+			if ratio >= 0.85 && ratio <= 1.15 {
+				foodScore = 25.0
+			} else if (ratio >= 0.70 && ratio < 0.85) || (ratio > 1.15 && ratio <= 1.30) {
+				foodScore = 17.5
+			} else if (ratio >= 0.50 && ratio < 0.70) || (ratio > 1.30 && ratio <= 1.50) {
+				foodScore = 10.0
+			} else if ratio > 0 {
+				foodScore = 5.0
+			}
+		}
+
+		// 3. Activity (25 pts max, 30 min target)
+		actScore := 0.0
+		if agg.TotalActivityMinutes > 0 {
+			actRatio := float64(agg.TotalActivityMinutes) / 30.0
+			if actRatio > 1.0 {
+				actRatio = 1.0
+			}
+			actScore = actRatio * 25.0
+		}
+
+		// 4. Medication (25 pts max)
+		medScore := 0.0
+		if agg.MedicationScheduledCount > 0 {
+			medRatio := float64(agg.MedicationCompletedCount) / float64(agg.MedicationScheduledCount)
+			if medRatio > 1.0 {
+				medRatio = 1.0
+			}
+			medScore = medRatio * 25.0
+		} else {
+			// No medication reminders configured — redistribute 25 pts equally among active 3 pillars (+8.333 each)
+			if bsScore > 0 {
+				bsScore += 8.333
+			}
+			if foodScore > 0 {
+				foodScore += (foodScore / 25.0) * 8.333
+			}
+			if actScore > 0 {
+				actScore += (actScore / 25.0) * 8.333
+			}
+		}
+
+		sumBS += bsScore
+		sumFood += foodScore
+		sumAct += actScore
+		sumMed += medScore
+	}
+
+	w := float64(evalWindow)
+	avgBS := math.Round((sumBS/w)*10) / 10
+	avgFood := math.Round((sumFood/w)*10) / 10
+	avgAct := math.Round((sumAct/w)*10) / 10
+	avgMed := math.Round((sumMed/w)*10) / 10
+
+	totalAvg := int(math.Round((sumBS + sumFood + sumAct + sumMed) / w))
+	if totalAvg > 100 {
+		totalAvg = 100
+	}
+	if totalAvg < 0 {
+		totalAvg = 0
+	}
+
+	label := "Kurang"
+	if totalAvg >= 90 {
+		label = "Sangat Patuh"
+	} else if totalAvg >= 75 {
+		label = "Patuh"
+	} else if totalAvg >= 60 {
+		label = "Cukup"
+	} else if totalAvg >= 40 {
+		label = "Kurang"
+	} else {
+		label = "Tidak Patuh"
+	}
+
+	breakdown := &ComplianceBreakdown{
+		BloodSugarScore: avgBS,
+		FoodScore:       avgFood,
+		ActivityScore:   avgAct,
+		MedicationScore: avgMed,
+	}
+
+	return totalAvg, label, breakdown
 }
 
 func (s *patientService) UpdateProfile(ctx context.Context, patientID string, req UpdatePatientProfileRequest) (*PatientResponse, error) {

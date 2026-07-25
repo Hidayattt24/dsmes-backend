@@ -162,13 +162,12 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Patch("/patients/:id/assign", patientHandler.AssignStaff)
 		admin.Delete("/patients/:id", patientHandler.Delete)
 
-		// Blood Sugar Logs view
-		admin.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
-
 		// Patient Logs views
+		admin.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
 		admin.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
 		admin.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
 		admin.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
+		admin.Get("/patients/:id/activity-analytics", patientHandler.GetPatientActivityAnalytics)
 
 		// Global Foods Management
 		admin.Post("/foods", nutritionHandler.CreateFood)
@@ -215,6 +214,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		staff.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
 		staff.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
 		staff.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
+		staff.Get("/patients/:id/activity-analytics", patientHandler.GetPatientActivityAnalytics)
 
 		// Dashboard statistics
 		staff.Get("/dashboard/blood-sugar", bsHandler.GetDashboard)

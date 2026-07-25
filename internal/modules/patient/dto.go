@@ -87,6 +87,8 @@ type PatientResponse struct {
 	EmergencyPhone        string               `json:"emergency_phone"`
 	DiabetesType          string               `json:"diabetes_type"`
 	Compliance            int                  `json:"compliance"`
+	ComplianceLabel       string               `json:"compliance_label,omitempty"`
+	ComplianceBreakdown   *ComplianceBreakdown `json:"compliance_breakdown,omitempty"`
 	InterventionType      string               `json:"intervention_type"`
 	PatientCode           string               `json:"patient_code"`
 	Address               string               `json:"address"`
@@ -108,6 +110,49 @@ type PatientResponse struct {
 	LatestMealType         *string  `json:"latest_meal_type,omitempty"`
 	LatestActivityTime     *string  `json:"latest_activity_time,omitempty"`
 	LatestActivityName     *string  `json:"latest_activity_name,omitempty"`
+	CalorieStatus          *CalorieStatusInfo `json:"calorie_status_info,omitempty"`
+}
+
+type CalorieStatusInfo struct {
+	TargetCalories        int     `json:"target_calories"`
+	ConsumedCalories      float64 `json:"consumed_calories"`
+	AchievementPercentage float64 `json:"achievement_percentage"`
+	CalorieDifference     float64 `json:"calorie_difference"`
+	CalorieDifferenceStr  string  `json:"calorie_difference_str"`
+	CalorieStatus         string  `json:"calorie_status"`
+	CalorieStatusCode     string  `json:"calorie_status_code"`
+	CalorieDescription    string  `json:"calorie_description"`
+}
+
+type ComplianceBreakdown struct {
+	BloodSugarScore float64 `json:"blood_sugar_score"`
+	FoodScore       float64 `json:"food_score"`
+	ActivityScore   float64 `json:"activity_score"`
+	MedicationScore float64 `json:"medication_score"`
+}
+
+type ActivityAnalyticsItem struct {
+	Count      int64   `json:"count"`
+	Percentage float64 `json:"percentage"`
+}
+
+type DailyLogsAggregate struct {
+	BloodSugarCount          int
+	TotalMealCalories        float64
+	MealCount                int
+	TotalActivityMinutes     int
+	MedicationCompletedCount int
+	MedicationScheduledCount int
+}
+
+type PatientActivityAnalyticsResponse struct {
+	TotalRecords     int64                 `json:"total_records"`
+	BloodSugar       ActivityAnalyticsItem `json:"blood_sugar"`
+	Food             ActivityAnalyticsItem `json:"food"`
+	PhysicalActivity ActivityAnalyticsItem `json:"physical_activity"`
+	Medication       ActivityAnalyticsItem `json:"medication"`
+	MostUsed         string                `json:"most_used"`
+	LeastUsed        string                `json:"least_used"`
 }
 
 type PatientSummaryData struct {
@@ -121,6 +166,7 @@ type PatientSummaryData struct {
 	LatestMealType         *string    `json:"latest_meal_type,omitempty"`
 	LatestActivityTime     *time.Time `json:"latest_activity_time_raw,omitempty"`
 	LatestActivityName     *string    `json:"latest_activity_name,omitempty"`
+	TodayConsumedCalories  *float64   `json:"today_consumed_calories,omitempty"`
 }
 
 type PatientDetailResponse struct {
@@ -215,7 +261,8 @@ type PatientFilterQuery struct {
 type PatientStats struct {
 	TotalPatients  int64 `json:"total_patients"`
 	ActivePatients int64 `json:"active_patients"`
-	AverageAge     int   `json:"average_age"`
+	YoungestAge    int   `json:"youngest_age"`
+	OldestAge      int   `json:"oldest_age"`
 }
 
 // ParseDOB parses date of birth string ("YYYY-MM-DD" or ISO 8601)

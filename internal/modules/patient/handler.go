@@ -199,6 +199,20 @@ func (h *PatientHandler) GetByID(c fiber.Ctx) error {
 	return response.Success(c, "patient details retrieved", res)
 }
 
+// GetPatientActivityAnalytics handles GET /api/v1/admin/patients/:id/activity-analytics
+func (h *PatientHandler) GetPatientActivityAnalytics(c fiber.Ctx) error {
+	id := c.Params("id")
+	days, _ := strconv.Atoi(c.Query("days", "7"))
+	if days < 0 {
+		days = 7
+	}
+	res, err := h.svc.GetPatientActivityAnalytics(c.Context(), id, days)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient activity analytics retrieved", res)
+}
+
 // GetMe handles GET /api/v1/patient/me
 // @Summary      Get current patient profile
 // @Tags         patient
