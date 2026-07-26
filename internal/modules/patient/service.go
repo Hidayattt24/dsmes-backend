@@ -285,24 +285,41 @@ func (s *patientService) SetupHealthProfile(ctx context.Context, patientID strin
 		return nil, err
 	}
 
-	// Create measurement entry
-	hM := req.HeightCm / 100.0
-	val := math.Round((req.WeightKg/(hM*hM))*10) / 10
-	bmiVal := &val
+	// Check if there is an existing initial measurement from registration to update (to avoid duplicate logs)
+	latestMeasurement, latestErr := s.repo.GetLatestMeasurement(ctx, patient.ID)
+	if latestErr == nil && latestMeasurement != nil &&
+		(latestMeasurement.Notes == "Pengukuran Awal (Registrasi Akun Pasien)" || latestMeasurement.Notes == "Pengukuran Awal (Registrasi)") &&
+		latestMeasurement.WeightKg != nil && *latestMeasurement.WeightKg == req.WeightKg &&
+		latestMeasurement.HeightCm != nil && *latestMeasurement.HeightCm == req.HeightCm {
 
-	measurement := &domain.PatientMeasurement{
-		PatientID:          patient.ID,
-		WeightKg:           &req.WeightKg,
-		HeightCm:           &req.HeightCm,
-		BMI:                bmiVal,
-		DailyCalorieTarget: &dailyCalorieTarget,
-		Notes:              "Setup Profil Kesehatan (Onboarding Phase 2)",
-		RecordedByID:       &patient.ID,
-		RecordedByName:     patient.FullName,
-		RecordedByRole:     "user",
-		MeasuredAt:         time.Now(),
+		latestMeasurement.DailyCalorieTarget = &dailyCalorieTarget
+		latestMeasurement.Notes = "Setup Profil Kesehatan (Onboarding Phase 2)"
+		latestMeasurement.RecordedByID = &patient.ID
+		latestMeasurement.RecordedByName = patient.FullName
+		latestMeasurement.RecordedByRole = "user"
+		latestMeasurement.MeasuredAt = time.Now()
+
+		_ = s.repo.UpdateMeasurement(ctx, latestMeasurement)
+	} else {
+		// Create new measurement entry
+		hM := req.HeightCm / 100.0
+		val := math.Round((req.WeightKg/(hM*hM))*10) / 10
+		bmiVal := &val
+
+		measurement := &domain.PatientMeasurement{
+			PatientID:          patient.ID,
+			WeightKg:           &req.WeightKg,
+			HeightCm:           &req.HeightCm,
+			BMI:                bmiVal,
+			DailyCalorieTarget: &dailyCalorieTarget,
+			Notes:              "Setup Profil Kesehatan (Onboarding Phase 2)",
+			RecordedByID:       &patient.ID,
+			RecordedByName:     patient.FullName,
+			RecordedByRole:     "user",
+			MeasuredAt:         time.Now(),
+		}
+		_ = s.repo.CreateMeasurement(ctx, measurement)
 	}
-	_ = s.repo.CreateMeasurement(ctx, measurement)
 
 	return s.GetPatient(ctx, patient.ID)
 }
