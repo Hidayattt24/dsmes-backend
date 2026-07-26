@@ -37,13 +37,15 @@ func main() {
 
 	logger.Info("Starting database migration process...")
 
-	// Migration files in order
 	migrationFiles := []string{
 		"000001_create_auth_and_staff_tables.up.sql",
 		"000002_create_remaining_tables.up.sql",
 		"000003_add_patient_gaps_and_quiz_tables.up.sql",
 		"000004_add_patient_extended_fields.up.sql",
+		"000004_redesign_questionnaires.up.sql",
 		"000005_add_routine_icon_and_schedule.up.sql",
+		"000006_add_education_progress_fields.up.sql",
+		"000007_add_patient_measurements_and_calorie_recommendations.up.sql",
 	}
 
 

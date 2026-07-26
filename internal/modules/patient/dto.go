@@ -1,25 +1,27 @@
 package patient
 
 import (
+	"math"
 	"time"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
+	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
 )
 
 type RegisterPatientRequest struct {
-	Email                 string  `json:"email"                  validate:"required,email"`
-	Password              string  `json:"password"               validate:"required,min=8"`
-	FullName              string  `json:"full_name"              validate:"required,min=3,max=150"`
-	Nickname              string  `json:"nickname"`
-	WhatsappNumber        string  `json:"whatsapp_number"`
-	PhoneNumber           string  `json:"phone_number"`
-	Gender                string  `json:"gender"                 validate:"required"`
-	DateOfBirth           string  `json:"date_of_birth"          validate:"required"` // format: "YYYY-MM-DD"
-	HeightCm              float64 `json:"height_cm"              validate:"required,gt=0"`
-	WeightKg              float64 `json:"weight_kg"              validate:"required,gt=0"`
-	BloodType             string  `json:"blood_type"             validate:"required"`
-	ActivityLevel         string  `json:"activity_level"`
-	PhysicalActivityLevel string  `json:"physical_activity_level"`
+	Email          string `json:"email"           validate:"required,email"`
+	Password       string `json:"password"        validate:"required,min=8"`
+	FullName       string `json:"full_name"       validate:"required,min=3,max=150"`
+	Nickname       string `json:"nickname"`
+	WhatsappNumber string `json:"whatsapp_number"`
+	PhoneNumber    string `json:"phone_number"`
+	Gender         string `json:"gender"`
+	DateOfBirth    string `json:"date_of_birth"`
+	HeightCm       float64 `json:"height_cm"`
+	WeightKg       float64 `json:"weight_kg"`
+	BloodType      string  `json:"blood_type"`
+	ActivityLevel  string  `json:"activity_level"`
+	PhysicalActivityLevel string `json:"physical_activity_level"`
 }
 
 func (r *RegisterPatientRequest) GetPhone() string {
@@ -30,6 +32,23 @@ func (r *RegisterPatientRequest) GetPhone() string {
 }
 
 func (r *RegisterPatientRequest) GetActivity() string {
+	if r.ActivityLevel != "" {
+		return r.ActivityLevel
+	}
+	return r.PhysicalActivityLevel
+}
+
+type SetupHealthProfileRequest struct {
+	Gender                string  `json:"gender"        validate:"required"`
+	DateOfBirth           string  `json:"date_of_birth" validate:"required"` // format: "YYYY-MM-DD"
+	HeightCm              float64 `json:"height_cm"     validate:"required,gt=0"`
+	WeightKg              float64 `json:"weight_kg"     validate:"required,gt=0"`
+	BloodType             string  `json:"blood_type"    validate:"required"`
+	ActivityLevel         string  `json:"activity_level"`
+	PhysicalActivityLevel string  `json:"physical_activity_level"`
+}
+
+func (r *SetupHealthProfileRequest) GetActivity() string {
 	if r.ActivityLevel != "" {
 		return r.ActivityLevel
 	}
@@ -74,8 +93,9 @@ type PatientResponse struct {
 	HeightCm              float64              `json:"height_cm"`
 	WeightKg              float64              `json:"weight_kg"`
 	BloodType             domain.BloodType     `json:"blood_type"`
-	DailyCalorieTarget    int                  `json:"daily_calorie_target"`
-	MedicalStatus         string               `json:"medical_status"`
+	DailyCalorieTarget    int                                `json:"daily_calorie_target"`
+	Recommendations       *nutrition.CalorieRecommendations  `json:"recommendations,omitempty"`
+	MedicalStatus         string                             `json:"medical_status"`
 	ProfilePhotoURL       string               `json:"profile_photo_url"`
 	Status                domain.AccountStatus `json:"status"`
 	CreatedAt             string               `json:"created_at"`
@@ -105,6 +125,7 @@ type PatientResponse struct {
 	AverageBloodSugar      *float64           `json:"average_blood_sugar,omitempty"`
 	LatestWeight           *float64           `json:"latest_weight,omitempty"`
 	BMI                    *float64           `json:"bmi,omitempty"`
+	BMICategory            *string            `json:"bmi_category,omitempty"`
 	LatestMealCalories     *float64           `json:"latest_meal_calories,omitempty"`
 	LatestMealType         *string            `json:"latest_meal_type,omitempty"`
 	LatestActivityTime     *string            `json:"latest_activity_time,omitempty"`
@@ -194,7 +215,28 @@ func ToPatientResponse(p *domain.Patient) PatientResponse {
 		lastActiveAt = &t
 	}
 
-	return PatientResponse{
+	var bmiVal *float64
+	var bmiCat *string
+	if p.HeightCm > 0 && p.WeightKg > 0 {
+		hM := p.HeightCm / 100.0
+		b := p.WeightKg / (hM * hM)
+		b = math.Round(b*10) / 10
+		bmiVal = &b
+
+		var cat string
+		if b < 18.5 {
+			cat = "Kurus"
+		} else if b >= 18.5 && b < 23.0 {
+			cat = "Normal"
+		} else if b >= 23.0 && b < 25.0 {
+			cat = "Kelebihan Berat Badan"
+		} else {
+			cat = "Obesitas"
+		}
+		bmiCat = &cat
+	}
+
+	resp := PatientResponse{
 		ID:                    p.ID,
 		Email:                 p.Email,
 		FullName:              p.FullName,
@@ -226,7 +268,39 @@ func ToPatientResponse(p *domain.Patient) PatientResponse {
 		SmokingStatus:         p.SmokingStatus,
 		PhysicalActivityLevel: p.PhysicalActivityLevel,
 		LastActiveAt:          lastActiveAt,
+		BMI:                   bmiVal,
+		BMICategory:           bmiCat,
 	}
+
+	if p.MaintenanceCalories > 0 {
+		resp.Recommendations = &nutrition.CalorieRecommendations{
+			Maintain: nutrition.CalorieRecommendationDetail{
+				Title:      "Pertahankan Berat Badan",
+				Calories:   p.MaintenanceCalories,
+				Percentage: p.MaintenancePercentage,
+			},
+			MildLoss: nutrition.CalorieRecommendationDetail{
+				Title:        "Penurunan Berat Ringan",
+				WeeklyTarget: "0,25 kg/minggu",
+				Calories:     p.MildWeightLossCalories,
+				Percentage:   p.MildPercentage,
+			},
+			WeightLoss: nutrition.CalorieRecommendationDetail{
+				Title:        "Turunkan Berat Badan",
+				WeeklyTarget: "0,5 kg/minggu",
+				Calories:     p.WeightLossCalories,
+				Percentage:   p.WeightLossPercentage,
+			},
+			ExtremeLoss: nutrition.CalorieRecommendationDetail{
+				Title:        "Penurunan Berat Intensif",
+				WeeklyTarget: "1 kg/minggu",
+				Calories:     p.ExtremeWeightLossCalories,
+				Percentage:   p.ExtremePercentage,
+			},
+		}
+	}
+
+	return resp
 }
 
 func ToPatientDetailResponse(p *domain.Patient) PatientDetailResponse {

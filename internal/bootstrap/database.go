@@ -20,7 +20,6 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/dsmes/dsmes-backend/internal/config"
-	"github.com/dsmes/dsmes-backend/internal/domain"
 )
 
 
@@ -77,48 +76,6 @@ func NewDatabase(cfg *config.Config, log *zap.Logger) (*gorm.DB, error) {
 		zap.Int("maxIdleConns", cfg.DB.MaxIdleConns),
 		zap.Int("maxOpenConns", cfg.DB.MaxOpenConns),
 	)
-
-	// Ensure routine and patient_measurements tables are created and automigrated
-	_ = db.Exec("ALTER TABLE routines ALTER COLUMN routine_type TYPE VARCHAR(50) USING routine_type::text;").Error
-	_ = db.Exec(`
-		CREATE TABLE IF NOT EXISTS patient_measurements (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			patient_id UUID NOT NULL,
-			weight_kg NUMERIC(5,2),
-			height_cm NUMERIC(5,2),
-			bmi NUMERIC(4,1),
-			blood_pressure_systolic INT,
-			blood_pressure_diastolic INT,
-			blood_sugar INT,
-			waist_circumference_cm NUMERIC(5,2),
-			daily_calorie_target INT,
-			notes TEXT,
-			recorded_by_id UUID,
-			recorded_by_name VARCHAR(150) NOT NULL DEFAULT 'Admin',
-			recorded_by_role VARCHAR(50) NOT NULL DEFAULT 'admin',
-			measured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			deleted_at TIMESTAMPTZ
-		)
-	`).Error
-	_ = db.Exec("CREATE INDEX IF NOT EXISTS idx_patient_measurements_patient_id ON patient_measurements(patient_id)").Error
-	_ = db.Exec("CREATE INDEX IF NOT EXISTS idx_patient_measurements_measured_at ON patient_measurements(measured_at)").Error
-
-	_ = db.Exec("DO $$ BEGIN CREATE TYPE questionnaire_type_enum AS ENUM ('PRE_TEST', 'POST_TEST'); EXCEPTION WHEN duplicate_object THEN null; END $$;").Error
-
-	if err := db.AutoMigrate(
-		&domain.Routine{},
-		&domain.RoutineTime{},
-		&domain.PatientMeasurement{},
-		&domain.Questionnaire{},
-		&domain.QuestionCategory{},
-		&domain.Question{},
-		&domain.QuestionOption{},
-	); err != nil {
-		log.Warn("table auto-migration notice", zap.Error(err))
-	}
-
 
 	return db, nil
 }

@@ -47,6 +47,37 @@ func (h *PatientHandler) Register(c fiber.Ctx) error {
 	return response.Created(c, "patient registered successfully", res)
 }
 
+// SetupHealthProfile handles POST /api/v1/patient/profile/setup
+// @Summary      Setup patient health profile
+// @Tags         patient
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  SetupHealthProfileRequest  true  "Health profile setup payload"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/profile/setup [post]
+func (h *PatientHandler) SetupHealthProfile(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req SetupHealthProfileRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.SetupHealthProfile(c.Context(), claims.UserID, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "health profile set up successfully", res)
+}
+
 // List handles GET /api/v1/admin/patients
 // @Summary      List all patients (Admin)
 // @Tags         patient

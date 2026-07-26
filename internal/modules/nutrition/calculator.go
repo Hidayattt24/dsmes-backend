@@ -32,15 +32,17 @@ func ParseDOB(dateStr string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("invalid date format: %s", dateStr)
 }
 
-// CalculateAge computes user age in years from birthdate.
+// CalculateAge computes user age in years from birthdate independently of server timezone.
 func CalculateAge(dob time.Time) (int, error) {
-	now := time.Now()
-	if dob.After(now) {
+	now := time.Now().UTC()
+	dobUTC := dob.UTC()
+
+	if dobUTC.After(now) {
 		return 0, fmt.Errorf("date of birth cannot be in the future")
 	}
 
-	age := now.Year() - dob.Year()
-	if now.Month() < dob.Month() || (now.Month() == dob.Month() && now.Day() < dob.Day()) {
+	age := now.Year() - dobUTC.Year()
+	if now.Month() < dobUTC.Month() || (now.Month() == dobUTC.Month() && now.Day() < dobUTC.Day()) {
 		age--
 	}
 
@@ -51,11 +53,37 @@ func CalculateAge(dob time.Time) (int, error) {
 	return age, nil
 }
 
+// CalculateBMI computes BMI and WHO Asia-Pacific category for Asian populations (Indonesia PERKENI).
+// Underweight: < 18.5
+// Normal: 18.5 - 22.9
+// Overweight: 23.0 - 24.9
+// Obese: >= 25.0
+func CalculateBMI(weightKg, heightCm float64) (float64, string) {
+	if heightCm <= 0 || weightKg <= 0 {
+		return 0, "Unknown"
+	}
+	heightM := heightCm / 100.0
+	bmi := math.Round((weightKg/(heightM*heightM))*10) / 10
+
+	var category string
+	if bmi < 18.5 {
+		category = "Underweight"
+	} else if bmi <= 22.9 {
+		category = "Normal"
+	} else if bmi <= 24.9 {
+		category = "Overweight"
+	} else {
+		category = "Obese"
+	}
+
+	return bmi, category
+}
+
 // NormalizeGender validates and normalizes gender into standard "male" or "female".
 func NormalizeGender(gender string) (string, bool, error) {
 	g := strings.ToLower(strings.TrimSpace(gender))
 	switch g {
-	case "male", "l", "laki-laki", "pria", "m":
+	case "male", "l", "laki-laki", "laki_laki", "pria", "m":
 		return "male", true, nil
 	case "female", "p", "perempuan", "wanita", "f":
 		return "female", false, nil
@@ -68,13 +96,13 @@ func NormalizeGender(gender string) (string, bool, error) {
 func NormalizeActivityLevel(level string) (float64, error) {
 	l := strings.ToLower(strings.TrimSpace(level))
 	switch l {
-	case "very low", "sangat rendah", "1.2", "1.20":
+	case "very low", "sangat rendah", "1.2", "1.20", "sangat jarang":
 		return 1.20, nil
-	case "light", "ringan", "1.375":
+	case "light", "ringan", "1.375", "aktivitas ringan":
 		return 1.375, nil
-	case "moderate", "sedang", "1.55":
+	case "moderate", "sedang", "1.55", "aktivitas sedang":
 		return 1.55, nil
-	case "high", "aktif", "1.725":
+	case "high", "aktif", "1.725", "aktivitas berat":
 		return 1.725, nil
 	case "very high", "sangat aktif", "1.9", "1.90":
 		return 1.90, nil
@@ -139,33 +167,74 @@ func CalculateDailyCalories(req CalorieCalculationRequest) (*CalorieCalculationR
 	tdeeFloat := bmrFloat * multiplier
 	tdee := int(math.Round(tdeeFloat))
 
-	// 7. Calculate Recommended Calorie Targets with safety clamping
-	// Weight Loss: TDEE - 500 (Min Female: 1200, Min Male: 1500)
-	minWeightLossCal := 1200
+	// 7. Calculate BMI & Category (WHO Asia-Pacific)
+	bmiVal, bmiCat := CalculateBMI(req.WeightKg, req.HeightCm)
+
+	// 8. Calculate 4-level Recommendations in Indonesian with safety clamping
+	minCal := 1200
 	if isMale {
-		minWeightLossCal = 1500
+		minCal = 1500
 	}
 
-	weightLoss := tdee - 500
-	if weightLoss < minWeightLossCal {
-		weightLoss = minWeightLossCal
+	clamp := func(c int) int {
+		if c < minCal {
+			return minCal
+		}
+		return c
 	}
 
-	maintenance := tdee
-	weightGain := tdee + 500
+	maintainCal := tdee
+	mildLossCal := clamp(tdee - 250)
+	weightLossCal := clamp(tdee - 500)
+	extremeLossCal := clamp(tdee - 1000)
+
+	mildLossPct := int(math.Round((float64(mildLossCal) / float64(tdee)) * 100))
+	weightLossPct := int(math.Round((float64(weightLossCal) / float64(tdee)) * 100))
+	extremeLossPct := int(math.Round((float64(extremeLossCal) / float64(tdee)) * 100))
+
+	recommendations := CalorieRecommendations{
+		Maintain: CalorieRecommendationDetail{
+			Title:      "Mempertahankan Berat Badan",
+			Calories:   maintainCal,
+			Percentage: 100,
+		},
+		MildLoss: CalorieRecommendationDetail{
+			Title:        "Menurunkan Berat Badan Ringan",
+			WeeklyTarget: "0,25 kg/minggu",
+			Calories:     mildLossCal,
+			Percentage:   mildLossPct,
+		},
+		WeightLoss: CalorieRecommendationDetail{
+			Title:        "Menurunkan Berat Badan",
+			WeeklyTarget: "0,5 kg/minggu",
+			Calories:     weightLossCal,
+			Percentage:   weightLossPct,
+		},
+		ExtremeLoss: CalorieRecommendationDetail{
+			Title:        "Menurunkan Berat Badan Ekstrem",
+			WeeklyTarget: "1 kg/minggu",
+			Calories:     extremeLossCal,
+			Percentage:   extremeLossPct,
+		},
+	}
 
 	return &CalorieCalculationResponse{
 		Age:                age,
 		Gender:             normalizedGender,
 		Height:             req.HeightCm,
+		HeightCm:           req.HeightCm,
 		Weight:             req.WeightKg,
+		WeightKg:           req.WeightKg,
+		BMI:                bmiVal,
+		BMICategory:        bmiCat,
 		BMR:                bmr,
 		ActivityMultiplier: multiplier,
 		TDEE:               tdee,
 		RecommendedCalories: RecommendedCalories{
-			WeightLoss:  weightLoss,
-			Maintenance: maintenance,
-			WeightGain:  weightGain,
+			WeightLoss:  weightLossCal,
+			Maintenance: maintainCal,
+			WeightGain:  tdee + 500,
 		},
+		Recommendations: recommendations,
 	}, nil
 }

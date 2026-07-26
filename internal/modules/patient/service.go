@@ -13,6 +13,7 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
 	"github.com/dsmes/dsmes-backend/internal/modules/auth"
+	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
 )
@@ -42,10 +43,10 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		return nil, errs.NewInternal("failed to hash password", err)
 	}
 
-	// 3. Parse DOB
-	dob, err := ParseDOB(req.DateOfBirth)
-	if err != nil {
-		return nil, errs.NewBadRequest("invalid date of birth format (must be YYYY-MM-DD or ISO string)", err)
+	// 3. Optional Parse DOB
+	var dob time.Time
+	if req.DateOfBirth != "" {
+		dob, _ = ParseDOB(req.DateOfBirth)
 	}
 
 	// 4. Normalize Gender & BloodType & Activity
@@ -56,7 +57,7 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 
 	bloodType := domain.BloodType(req.BloodType)
 	cleanBlood := strings.ToLower(strings.TrimSpace(req.BloodType))
-	if cleanBlood == "tidak tahu" || cleanBlood == "tidak_tahu" {
+	if cleanBlood == "" || cleanBlood == "tidak tahu" || cleanBlood == "tidak_tahu" {
 		bloodType = domain.BloodTypeTidakTahu
 	}
 
@@ -68,6 +69,11 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	age := 0
 	if !dob.IsZero() {
 		age = time.Now().Year() - dob.Year()
+	}
+
+	dailyCalorie := 2000
+	if req.WeightKg > 0 && req.HeightCm > 0 {
+		dailyCalorie = CalculateDSMESCalorieTarget(string(gender), req.WeightKg, req.HeightCm, age)
 	}
 
 	patient := &domain.Patient{
@@ -82,7 +88,7 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		WeightKg:              req.WeightKg,
 		BloodType:             bloodType,
 		PhysicalActivityLevel: activityLevel,
-		DailyCalorieTarget:    CalculateDSMESCalorieTarget(string(gender), req.WeightKg, req.HeightCm, age),
+		DailyCalorieTarget:    dailyCalorie,
 		Status:                domain.StatusAktif,
 	}
 
@@ -151,7 +157,6 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	}
 
 	// 5. Seed default reminders using system templates inside repo transaction
-	// Let's pass empty slice; repository will auto-query system templates
 	var defaultReminders []domain.Reminder
 
 	if err = s.repo.CreateWithOnboarding(ctx, patient, defaultRoutines, defaultReminders); err != nil {
@@ -182,28 +187,27 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		s.log.Warn("patient: failed to persist session on register", zap.Error(err), zap.String("patient_id", patient.ID))
 	}
 
-	// Seed initial baseline measurement record in DB so baseline track record is PERMANENT
-	var bmiVal *float64
+	// Seed initial baseline measurement record in DB if metrics were provided
 	if req.WeightKg > 0 && req.HeightCm > 0 {
 		hM := req.HeightCm / 100.0
 		val := math.Round((req.WeightKg/(hM*hM))*10) / 10
-		bmiVal = &val
-	}
-	initCalTarget := patient.DailyCalorieTarget
+		bmiVal := &val
+		initCalTarget := patient.DailyCalorieTarget
 
-	initMeasurement := &domain.PatientMeasurement{
-		PatientID:          patient.ID,
-		WeightKg:           &req.WeightKg,
-		HeightCm:           &req.HeightCm,
-		BMI:                bmiVal,
-		DailyCalorieTarget: &initCalTarget,
-		Notes:              "Pengukuran Awal (Registrasi Akun Pasien)",
-		RecordedByID:       &patient.ID,
-		RecordedByName:     "Sistem (Registrasi Awal)",
-		RecordedByRole:     "admin",
-		MeasuredAt:         patient.CreatedAt,
+		initMeasurement := &domain.PatientMeasurement{
+			PatientID:          patient.ID,
+			WeightKg:           &req.WeightKg,
+			HeightCm:           &req.HeightCm,
+			BMI:                bmiVal,
+			DailyCalorieTarget: &initCalTarget,
+			Notes:              "Pengukuran Awal (Registrasi Akun Pasien)",
+			RecordedByID:       &patient.ID,
+			RecordedByName:     "Sistem (Registrasi Awal)",
+			RecordedByRole:     "admin",
+			MeasuredAt:         patient.CreatedAt,
+		}
+		_ = s.repo.CreateMeasurement(ctx, initMeasurement)
 	}
-	_ = s.repo.CreateMeasurement(ctx, initMeasurement)
 
 	return &auth.LoginResponse{
 		User: auth.AuthUserResponse{
@@ -214,6 +218,93 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		},
 		Tokens: *tokens,
 	}, nil
+}
+
+func (s *patientService) SetupHealthProfile(ctx context.Context, patientID string, req SetupHealthProfileRequest) (*PatientDetailResponse, error) {
+	patient, err := s.repo.FindByID(ctx, patientID)
+	if err != nil {
+		return nil, err
+	}
+
+	dob, err := ParseDOB(req.DateOfBirth)
+	if err != nil {
+		return nil, errs.NewBadRequest("invalid date of birth format (must be YYYY-MM-DD or ISO string)", err)
+	}
+
+	gender := domain.GenderLakiLaki
+	if strings.EqualFold(req.Gender, "perempuan") || strings.EqualFold(req.Gender, "female") {
+		gender = domain.GenderPerempuan
+	}
+
+	bloodType := domain.BloodType(req.BloodType)
+	cleanBlood := strings.ToLower(strings.TrimSpace(req.BloodType))
+	if cleanBlood == "tidak tahu" || cleanBlood == "tidak_tahu" {
+		bloodType = domain.BloodTypeTidakTahu
+	}
+
+	activityLevel := req.GetActivity()
+	if activityLevel == "" {
+		activityLevel = "Ringan"
+	}
+
+	age := time.Now().Year() - dob.Year()
+
+	// Calculate using standardized nutrition calculator (Mifflin-St Jeor + TDEE multiplier)
+	calcRes, calcErr := nutrition.CalculateDailyCalories(nutrition.CalorieCalculationRequest{
+		Gender:        req.Gender,
+		DateOfBirth:   req.DateOfBirth,
+		HeightCm:      req.HeightCm,
+		WeightKg:      req.WeightKg,
+		ActivityLevel: activityLevel,
+	})
+
+	dailyCalorieTarget := 2000
+	if calcErr == nil && calcRes != nil {
+		dailyCalorieTarget = calcRes.TDEE
+		patient.MaintenanceCalories = calcRes.Recommendations.Maintain.Calories
+		patient.MildWeightLossCalories = calcRes.Recommendations.MildLoss.Calories
+		patient.WeightLossCalories = calcRes.Recommendations.WeightLoss.Calories
+		patient.ExtremeWeightLossCalories = calcRes.Recommendations.ExtremeLoss.Calories
+		patient.MaintenancePercentage = calcRes.Recommendations.Maintain.Percentage
+		patient.MildPercentage = calcRes.Recommendations.MildLoss.Percentage
+		patient.WeightLossPercentage = calcRes.Recommendations.WeightLoss.Percentage
+		patient.ExtremePercentage = calcRes.Recommendations.ExtremeLoss.Percentage
+	} else {
+		dailyCalorieTarget = CalculateDSMESCalorieTarget(string(gender), req.WeightKg, req.HeightCm, age)
+	}
+
+	patient.Gender = gender
+	patient.DateOfBirth = dob
+	patient.HeightCm = req.HeightCm
+	patient.WeightKg = req.WeightKg
+	patient.BloodType = bloodType
+	patient.PhysicalActivityLevel = activityLevel
+	patient.DailyCalorieTarget = dailyCalorieTarget
+
+	if err := s.repo.Update(ctx, patient); err != nil {
+		return nil, err
+	}
+
+	// Create measurement entry
+	hM := req.HeightCm / 100.0
+	val := math.Round((req.WeightKg/(hM*hM))*10) / 10
+	bmiVal := &val
+
+	measurement := &domain.PatientMeasurement{
+		PatientID:          patient.ID,
+		WeightKg:           &req.WeightKg,
+		HeightCm:           &req.HeightCm,
+		BMI:                bmiVal,
+		DailyCalorieTarget: &dailyCalorieTarget,
+		Notes:              "Setup Profil Kesehatan (Onboarding Phase 2)",
+		RecordedByID:       &patient.ID,
+		RecordedByName:     patient.FullName,
+		RecordedByRole:     "user",
+		MeasuredAt:         time.Now(),
+	}
+	_ = s.repo.CreateMeasurement(ctx, measurement)
+
+	return s.GetPatient(ctx, patient.ID)
 }
 
 func CalculateCalorieStatus(target int, consumed float64) *CalorieStatusInfo {
@@ -552,6 +643,51 @@ func (s *patientService) UpdateProfile(ctx context.Context, patientID string, re
 	patient.Allergies = req.Allergies
 	patient.SmokingStatus = req.SmokingStatus
 	patient.PhysicalActivityLevel = req.PhysicalActivityLevel
+
+	// Always trigger automatic calorie & BMI recalculation on profile update
+	dobStr := ""
+	if !patient.DateOfBirth.IsZero() {
+		dobStr = patient.DateOfBirth.Format("2006-01-02")
+	}
+
+	calcRes, calcErr := nutrition.CalculateDailyCalories(nutrition.CalorieCalculationRequest{
+		Gender:        string(patient.Gender),
+		DateOfBirth:   dobStr,
+		HeightCm:      patient.HeightCm,
+		WeightKg:      patient.WeightKg,
+		ActivityLevel: patient.PhysicalActivityLevel,
+	})
+	if calcErr != nil {
+		return nil, calcErr
+	}
+
+	patient.DailyCalorieTarget = calcRes.TDEE
+	patient.MaintenanceCalories = calcRes.Recommendations.Maintain.Calories
+	patient.MildWeightLossCalories = calcRes.Recommendations.MildLoss.Calories
+	patient.WeightLossCalories = calcRes.Recommendations.WeightLoss.Calories
+	patient.ExtremeWeightLossCalories = calcRes.Recommendations.ExtremeLoss.Calories
+	patient.MaintenancePercentage = calcRes.Recommendations.Maintain.Percentage
+	patient.MildPercentage = calcRes.Recommendations.MildLoss.Percentage
+	patient.WeightLossPercentage = calcRes.Recommendations.WeightLoss.Percentage
+	patient.ExtremePercentage = calcRes.Recommendations.ExtremeLoss.Percentage
+
+	// Insert updated measurement record for tracking history
+	hM := patient.HeightCm / 100.0
+	bmiVal := math.Round((patient.WeightKg/(hM*hM))*10) / 10
+	tdeeVal := calcRes.TDEE
+
+	_ = s.repo.CreateMeasurement(ctx, &domain.PatientMeasurement{
+		PatientID:          patient.ID,
+		WeightKg:           &patient.WeightKg,
+		HeightCm:           &patient.HeightCm,
+		BMI:                &bmiVal,
+		DailyCalorieTarget: &tdeeVal,
+		Notes:              "Pembaruan Profil Kesehatan (Rekalkulasi Otomatis)",
+		RecordedByID:       &patient.ID,
+		RecordedByName:     patient.FullName,
+		RecordedByRole:     "user",
+		MeasuredAt:         time.Now(),
+	})
 
 	if err = s.repo.Update(ctx, patient); err != nil {
 		return nil, err

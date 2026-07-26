@@ -35,6 +35,7 @@ type PatientRepository interface {
 
 type PatientService interface {
 	RegisterPatient(ctx context.Context, req RegisterPatientRequest) (*auth.LoginResponse, error)
+	SetupHealthProfile(ctx context.Context, patientID string, req SetupHealthProfileRequest) (*PatientDetailResponse, error)
 
 	ListPatients(ctx context.Context, filter PatientFilterQuery) ([]PatientResponse, int64, error)
 	GetPatient(ctx context.Context, id string) (*PatientDetailResponse, error)

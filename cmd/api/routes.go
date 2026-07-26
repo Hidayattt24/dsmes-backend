@@ -259,6 +259,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	{
 		patientGroup.Get("/me", patientHandler.GetMe)
 		patientGroup.Put("/me", patientHandler.UpdateMe)
+		patientGroup.Post("/profile/setup", patientHandler.SetupHealthProfile)
 
 		// Health Measurements
 		patientGroup.Get("/measurements", patientHandler.GetPatientMeasurements)

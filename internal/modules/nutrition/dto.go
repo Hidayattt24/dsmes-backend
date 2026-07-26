@@ -80,6 +80,20 @@ func (r *CalorieCalculationRequest) Normalize() {
 	}
 }
 
+type CalorieRecommendationDetail struct {
+	Title        string `json:"title"`
+	WeeklyTarget string `json:"weekly_target,omitempty"`
+	Calories     int    `json:"calories"`
+	Percentage   int    `json:"percentage"`
+}
+
+type CalorieRecommendations struct {
+	Maintain    CalorieRecommendationDetail `json:"maintain"`
+	MildLoss    CalorieRecommendationDetail `json:"mild_loss"`
+	WeightLoss  CalorieRecommendationDetail `json:"weight_loss"`
+	ExtremeLoss CalorieRecommendationDetail `json:"extreme_loss"`
+}
+
 type RecommendedCalories struct {
 	WeightLoss  int `json:"weightLoss"`
 	Maintenance int `json:"maintenance"`
@@ -87,13 +101,18 @@ type RecommendedCalories struct {
 }
 
 type CalorieCalculationResponse struct {
-	Age                 int                 `json:"age"`
-	Gender              string              `json:"gender"`
-	Height              float64             `json:"height"`
-	Weight              float64             `json:"weight"`
-	BMR                 int                 `json:"bmr"`
-	ActivityMultiplier  float64             `json:"activityMultiplier"`
-	TDEE                int                 `json:"tdee"`
-	RecommendedCalories RecommendedCalories `json:"recommendedCalories"`
+	Age                 int                    `json:"age"`
+	Gender              string                 `json:"gender"`
+	Height              float64                `json:"height"`
+	HeightCm            float64                `json:"height_cm"`
+	Weight              float64                `json:"weight"`
+	WeightKg            float64                `json:"weight_kg"`
+	BMI                 float64                `json:"bmi"`
+	BMICategory         string                 `json:"bmi_category"`
+	BMR                 int                    `json:"bmr"`
+	ActivityMultiplier  float64                `json:"activityMultiplier"`
+	TDEE                int                    `json:"tdee"`
+	RecommendedCalories RecommendedCalories    `json:"recommendedCalories"`
+	Recommendations     CalorieRecommendations `json:"recommendations"`
 }
 

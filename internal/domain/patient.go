@@ -35,7 +35,15 @@ type Patient struct {
 	HeightCm            float64       `gorm:"type:numeric(5,2)" json:"height_cm"`
 	WeightKg            float64       `gorm:"type:numeric(5,2)" json:"weight_kg"`
 	BloodType           BloodType     `gorm:"type:blood_type_enum;default:tidak_tahu" json:"blood_type"`
-	DailyCalorieTarget  int           `gorm:"type:int;not null;default:2000" json:"daily_calorie_target"`
+	DailyCalorieTarget         int           `gorm:"type:int;not null;default:2000" json:"daily_calorie_target"`
+	MaintenanceCalories        int           `gorm:"type:int" json:"maintenance_calories"`
+	MildWeightLossCalories     int           `gorm:"type:int" json:"mild_weight_loss_calories"`
+	WeightLossCalories         int           `gorm:"type:int" json:"weight_loss_calories"`
+	ExtremeWeightLossCalories  int           `gorm:"type:int" json:"extreme_weight_loss_calories"`
+	MaintenancePercentage       int           `gorm:"type:int" json:"maintenance_percentage"`
+	MildPercentage             int           `gorm:"type:int" json:"mild_percentage"`
+	WeightLossPercentage       int           `gorm:"type:int" json:"weight_loss_percentage"`
+	ExtremePercentage          int           `gorm:"type:int" json:"extreme_percentage"`
 	MedicalStatus       string        `gorm:"type:varchar(100)" json:"medical_status"`
 	ProfilePhotoURL     string        `gorm:"type:text" json:"profile_photo_url"`
 	Status              AccountStatus `gorm:"type:account_status_enum;not null;default:aktif" json:"status"`
