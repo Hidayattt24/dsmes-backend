@@ -133,6 +133,22 @@ type ParticipantDetailResponse struct {
 	QuestionAnalysis []QuestionAnalysisResponse `json:"question_analysis"`
 }
 
+// PatientQuestionnaireItem is the patient-facing questionnaire list item.
+// It includes whether the patient has already completed it.
+type PatientQuestionnaireItem struct {
+	ID             string  `json:"id"`
+	Title          string  `json:"title"`
+	Type           string  `json:"type"`
+	Description    string  `json:"description,omitempty"`
+	EducationID    *string `json:"education_id,omitempty"`
+	EducationTitle string  `json:"education_title,omitempty"`
+	QuestionCount  int     `json:"question_count"`
+	PassingScore   *int    `json:"passing_score,omitempty"`
+	Difficulty     *string `json:"difficulty,omitempty"`
+	IsCompleted    bool    `json:"is_completed"`
+	Score          *int    `json:"score,omitempty"`
+}
+
 type SubmitResultResponse struct {
 	AttemptID       string `json:"attempt_id"`
 	QuestionnaireID string `json:"questionnaire_id"`
@@ -140,6 +156,34 @@ type SubmitResultResponse struct {
 	Passed          bool   `json:"passed"`
 	TotalQuestions  int    `json:"total_questions"`
 	CorrectCount    int    `json:"correct_count"`
+}
+
+// MyAttemptResponse is the patient-facing view of their own attempt for a specific questionnaire.
+type MyAttemptResponse struct {
+	AttemptID       string    `json:"attempt_id"`
+	QuestionnaireID string    `json:"questionnaire_id"`
+	Score           int       `json:"score"`
+	Passed          bool      `json:"passed"`
+	TotalQuestions  int       `json:"total_questions"`
+	CorrectCount    int       `json:"correct_count"`
+	IncorrectCount  int       `json:"incorrect_count"`
+	Percentage      int       `json:"percentage"`
+	CompletedAt     time.Time `json:"completed_at"`
+}
+
+// MyHistoryItemResponse is a single questionnaire attempt in the patient's history list.
+type MyHistoryItemResponse struct {
+	AttemptID          string    `json:"attempt_id"`
+	QuestionnaireID    string    `json:"questionnaire_id"`
+	QuestionnaireTitle string    `json:"questionnaire_title"`
+	Type               string    `json:"type"`
+	Score              int       `json:"score"`
+	Passed             bool      `json:"passed"`
+	TotalQuestions     int       `json:"total_questions"`
+	CorrectCount       int       `json:"correct_count"`
+	IncorrectCount     int       `json:"incorrect_count"`
+	Percentage         int       `json:"percentage"`
+	CompletedAt        time.Time `json:"completed_at"`
 }
 
 func formatDuration(seconds int) string {

@@ -315,9 +315,13 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Get("/support/tickets", settingsHandler.GetMyTickets)
 
 		// Questionnaire (Pre-Test / Post-Test) for Patient Mobile
+		patientGroup.Get("/questionnaires", quizHandler.ListPatient)
+		patientGroup.Get("/questionnaires/my-history", quizHandler.GetMyHistory)
 		patientGroup.Get("/questionnaires/pre-test", quizHandler.GetActivePreTest)
 		patientGroup.Get("/questionnaires/post-test", quizHandler.GetPostTestByEducation)
 		patientGroup.Get("/questionnaires/:id", quizHandler.GetByID)
+		patientGroup.Get("/questionnaires/:id/my-attempt", quizHandler.GetMyAttempt)
+		patientGroup.Get("/questionnaires/:id/my-attempt/detail", quizHandler.GetMyAttemptDetail)
 		patientGroup.Post("/questionnaires/:id/submit", quizHandler.Submit)
 	}
 

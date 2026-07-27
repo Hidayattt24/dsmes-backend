@@ -177,10 +177,15 @@ func (r *quizRepository) Update(ctx context.Context, q *domain.Questionnaire) er
 }
 
 func (r *quizRepository) Delete(ctx context.Context, id string) error {
-	if err := r.db.WithContext(ctx).Delete(&domain.Questionnaire{}, "id = ?", id).Error; err != nil {
-		return errs.NewInternal("failed to delete questionnaire", err)
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("quiz_id = ?", id).Delete(&domain.QuizAttempt{}).Error; err != nil {
+			return errs.NewInternal("failed to delete questionnaire attempts", err)
+		}
+		if err := tx.Delete(&domain.Questionnaire{}, "id = ?", id).Error; err != nil {
+			return errs.NewInternal("failed to delete questionnaire", err)
+		}
+		return nil
+	})
 }
 
 func (r *quizRepository) GetStats(ctx context.Context) (*QuizStats, error) {
@@ -190,11 +195,16 @@ func (r *quizRepository) GetStats(ctx context.Context) (*QuizStats, error) {
 	_ = r.db.WithContext(ctx).Model(&domain.Questionnaire{}).Where("deleted_at IS NULL").Count(&total)
 	_ = r.db.WithContext(ctx).Model(&domain.Questionnaire{}).Where("LOWER(status) IN ('aktif', 'terbit') AND deleted_at IS NULL").Count(&published)
 	_ = r.db.WithContext(ctx).Model(&domain.Questionnaire{}).Where("LOWER(status) = 'draft' AND deleted_at IS NULL").Count(&draft)
-	_ = r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).Where("deleted_at IS NULL").Count(&attempts)
 
-	_ = r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
-		Where("deleted_at IS NULL").
-		Select("COALESCE(ROUND(AVG(score)), 0)").
+	_ = r.db.WithContext(ctx).Table("quiz_attempts").
+		Joins("JOIN questionnaires ON questionnaires.id = quiz_attempts.quiz_id AND questionnaires.deleted_at IS NULL").
+		Where("quiz_attempts.deleted_at IS NULL").
+		Count(&attempts)
+
+	_ = r.db.WithContext(ctx).Table("quiz_attempts").
+		Joins("JOIN questionnaires ON questionnaires.id = quiz_attempts.quiz_id AND questionnaires.deleted_at IS NULL").
+		Where("quiz_attempts.deleted_at IS NULL").
+		Select("COALESCE(ROUND(AVG(quiz_attempts.score)), 0)").
 		Scan(&avgScore)
 
 	return &QuizStats{
@@ -243,6 +253,83 @@ func (r *quizRepository) FindAttemptByID(ctx context.Context, questionnaireID st
 	return &attempt, nil
 }
 
+func (r *quizRepository) FindActiveForPatient(ctx context.Context, qType string, patientID string, page, perPage int) ([]PatientQuestionnaireItem, int64, error) {
+	var questionnaires []domain.Questionnaire
+	var total int64
+
+	base := r.db.WithContext(ctx).
+		Model(&domain.Questionnaire{}).
+		Where("LOWER(questionnaires.status) IN ('aktif', 'terbit') AND questionnaires.deleted_at IS NULL")
+
+	if qType != "" {
+		base = base.Where("questionnaires.type = ?", qType)
+	}
+
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, errs.NewInternal("failed to count patient questionnaires", err)
+	}
+
+	offset := (page - 1) * perPage
+	q := r.db.WithContext(ctx).
+		Preload("Education").
+		Preload("Categories", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Where("LOWER(questionnaires.status) IN ('aktif', 'terbit') AND questionnaires.deleted_at IS NULL")
+
+	if qType != "" {
+		q = q.Where("questionnaires.type = ?", qType)
+	}
+
+	if err := q.Order("questionnaires.created_at DESC").Offset(offset).Limit(perPage).Find(&questionnaires).Error; err != nil {
+		return nil, 0, errs.NewInternal("failed to fetch patient questionnaires", err)
+	}
+
+	items := make([]PatientQuestionnaireItem, 0, len(questionnaires))
+	for _, qn := range questionnaires {
+		eduTitle := ""
+		if qn.Education != nil {
+			eduTitle = qn.Education.Title
+		}
+
+		totalQuest := 0
+		for _, cat := range qn.Categories {
+			totalQuest += len(cat.Questions)
+		}
+
+		var attempt domain.QuizAttempt
+		var isCompleted bool
+		var score *int
+		err := r.db.WithContext(ctx).
+			Where("quiz_id = ? AND patient_id = ? AND deleted_at IS NULL", qn.ID, patientID).
+			Order("completed_at DESC").
+			First(&attempt).Error
+		if err == nil {
+			isCompleted = true
+			score = &attempt.Score
+		}
+
+		items = append(items, PatientQuestionnaireItem{
+			ID:             qn.ID,
+			Title:          qn.Title,
+			Type:           string(qn.Type),
+			Description:    qn.Description,
+			EducationID:    qn.EducationID,
+			EducationTitle: eduTitle,
+			QuestionCount:  totalQuest,
+			PassingScore:   qn.PassingScore,
+			Difficulty:     qn.Difficulty,
+			IsCompleted:    isCompleted,
+			Score:          score,
+		})
+	}
+
+	return items, total, nil
+}
+
 func (r *quizRepository) CountAttempts(ctx context.Context, questionnaireID string) (int, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
@@ -261,4 +348,37 @@ func (r *quizRepository) GetAverageScore(ctx context.Context, questionnaireID st
 		return nil, err
 	}
 	return &avg, nil
+}
+
+func (r *quizRepository) FindMyAttempt(ctx context.Context, patientID, questionnaireID string) (*domain.QuizAttempt, error) {
+	var attempt domain.QuizAttempt
+	err := r.db.WithContext(ctx).
+		Preload("Questionnaire").
+		Where("quiz_id = ? AND patient_id = ? AND deleted_at IS NULL", questionnaireID, patientID).
+		Order("completed_at DESC").
+		First(&attempt).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("no attempt found for this questionnaire")
+		}
+		return nil, errs.NewInternal("failed to fetch patient attempt", err)
+	}
+	return &attempt, nil
+}
+
+func (r *quizRepository) FindMyHistory(ctx context.Context, patientID, qType string) ([]domain.QuizAttempt, error) {
+	var attempts []domain.QuizAttempt
+	q := r.db.WithContext(ctx).
+		Preload("Questionnaire").
+		Joins("JOIN questionnaires ON questionnaires.id = quiz_attempts.quiz_id AND questionnaires.deleted_at IS NULL").
+		Where("quiz_attempts.patient_id = ? AND quiz_attempts.deleted_at IS NULL", patientID)
+
+	if qType != "" {
+		q = q.Where("questionnaires.type = ?", qType)
+	}
+
+	if err := q.Order("quiz_attempts.completed_at DESC").Find(&attempts).Error; err != nil {
+		return nil, errs.NewInternal("failed to fetch patient history", err)
+	}
+	return attempts, nil
 }

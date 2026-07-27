@@ -123,9 +123,16 @@ func (s *quizService) validateQuestionnairePayload(ctx context.Context, question
 	return qType, status, nil
 }
 
-func buildCategoriesFromRequest(reqCategories []QuestionCategoryRequest) []domain.QuestionCategory {
+func buildCategoriesFromRequest(reqTitle string, qType domain.QuestionnaireType, reqCategories []QuestionCategoryRequest) []domain.QuestionCategory {
 	categories := make([]domain.QuestionCategory, len(reqCategories))
 	for i, cReq := range reqCategories {
+		title := cReq.Title
+		if qType == domain.TypePostTest && strings.TrimSpace(title) == "" {
+			title = reqTitle
+			if strings.TrimSpace(title) == "" {
+				title = "Soal Post-Test"
+			}
+		}
 		questions := make([]domain.Question, len(cReq.Questions))
 		for j, qReq := range cReq.Questions {
 			options := make([]domain.QuestionOption, len(qReq.Choices))
@@ -144,7 +151,7 @@ func buildCategoriesFromRequest(reqCategories []QuestionCategoryRequest) []domai
 			}
 		}
 		categories[i] = domain.QuestionCategory{
-			Title:        cReq.Title,
+			Title:        title,
 			Description:  cReq.Description,
 			DisplayOrder: i,
 			Questions:    questions,
@@ -179,7 +186,7 @@ func (s *quizService) CreateQuestionnaire(ctx context.Context, staffID string, r
 		Difficulty:   difficulty,
 		Status:       status,
 		CreatedBy:    &createdBy,
-		Categories:   buildCategoriesFromRequest(req.Categories),
+		Categories:   buildCategoriesFromRequest(req.Title, qType, req.Categories),
 	}
 
 	if err := s.repo.Create(ctx, q); err != nil {
@@ -217,7 +224,7 @@ func (s *quizService) UpdateQuestionnaire(ctx context.Context, id string, req Cr
 	q.PassingScore = passingScore
 	q.Difficulty = difficulty
 	q.Status = status
-	q.Categories = buildCategoriesFromRequest(req.Categories)
+	q.Categories = buildCategoriesFromRequest(req.Title, qType, req.Categories)
 
 	if err := s.repo.Update(ctx, q); err != nil {
 		return nil, err
@@ -413,4 +420,109 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, questionnaireID 
 		QuizTitle:        q.Title,
 		QuestionAnalysis: analysis,
 	}, nil
+}
+
+func (s *quizService) ListPatientQuestionnaires(ctx context.Context, qType string, patientID string, page, perPage int) ([]PatientQuestionnaireItem, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+	return s.repo.FindActiveForPatient(ctx, qType, patientID, page, perPage)
+}
+
+func (s *quizService) GetMyAttempt(ctx context.Context, patientID, questionnaireID string) (*MyAttemptResponse, error) {
+	attempt, err := s.repo.FindMyAttempt(ctx, patientID, questionnaireID)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := s.repo.FindByID(ctx, questionnaireID)
+	if err != nil {
+		return nil, err
+	}
+
+	totalQuestions := 0
+	for _, cat := range q.Categories {
+		totalQuestions += len(cat.Questions)
+	}
+
+	correctCount := 0
+	for _, ans := range attempt.Answers {
+		if ans.IsCorrect {
+			correctCount++
+		}
+	}
+	if len(attempt.Answers) == 0 && totalQuestions > 0 {
+		correctCount = (attempt.Score * totalQuestions) / 100
+	}
+	incorrectCount := totalQuestions - correctCount
+
+	return &MyAttemptResponse{
+		AttemptID:       attempt.ID,
+		QuestionnaireID: questionnaireID,
+		Score:           attempt.Score,
+		Passed:          attempt.Passed,
+		TotalQuestions:  totalQuestions,
+		CorrectCount:    correctCount,
+		IncorrectCount:  incorrectCount,
+		Percentage:      attempt.Score,
+		CompletedAt:     attempt.CompletedAt,
+	}, nil
+}
+
+func (s *quizService) GetMyAttemptDetail(ctx context.Context, patientID, questionnaireID string) (*ParticipantDetailResponse, error) {
+	return s.GetParticipantDetail(ctx, questionnaireID, patientID)
+}
+
+func (s *quizService) GetMyHistory(ctx context.Context, patientID, qType string) ([]MyHistoryItemResponse, error) {
+	attempts, err := s.repo.FindMyHistory(ctx, patientID, strings.ToUpper(strings.TrimSpace(qType)))
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]MyHistoryItemResponse, 0, len(attempts))
+	for _, a := range attempts {
+		title := ""
+		qTypeStr := ""
+		if a.Questionnaire != nil {
+			title = a.Questionnaire.Title
+			qTypeStr = string(a.Questionnaire.Type)
+		}
+
+		correctCount := 0
+		for _, ans := range a.Answers {
+			if ans.IsCorrect {
+				correctCount++
+			}
+		}
+
+		totalQuestions := 0
+		if a.Questionnaire != nil {
+			for _, cat := range a.Questionnaire.Categories {
+				totalQuestions += len(cat.Questions)
+			}
+		}
+
+		if len(a.Answers) == 0 && totalQuestions > 0 {
+			correctCount = (a.Score * totalQuestions) / 100
+		}
+		incorrectCount := totalQuestions - correctCount
+
+		result = append(result, MyHistoryItemResponse{
+			AttemptID:          a.ID,
+			QuestionnaireID:    a.QuestionnaireID,
+			QuestionnaireTitle: title,
+			Type:               qTypeStr,
+			Score:              a.Score,
+			Passed:             a.Passed,
+			TotalQuestions:     totalQuestions,
+			CorrectCount:       correctCount,
+			IncorrectCount:     incorrectCount,
+			Percentage:         a.Score,
+			CompletedAt:        a.CompletedAt,
+		})
+	}
+	return result, nil
 }
