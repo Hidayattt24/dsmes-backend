@@ -31,9 +31,9 @@ func (r *educationProgressRepository) FindAllByArticle(ctx context.Context, arti
 		YouTubeWatched   bool       `gorm:"column:youtube_watched"`
 		YouTubeWatchedAt *time.Time `gorm:"column:youtube_watched_at"`
 		CompletedAt      *time.Time `gorm:"column:completed_at"`
+		CompletionSource string     `gorm:"column:completion_source"`
 		CreatedAt        time.Time  `gorm:"column:created_at"`
 		PatientName      string     `gorm:"column:patient_name"`
-		Puskesmas        string     `gorm:"column:puskesmas"`
 	}
 
 	var rows []progressRow
@@ -47,12 +47,11 @@ func (r *educationProgressRepository) FindAllByArticle(ctx context.Context, arti
 			uac.youtube_watched,
 			uac.youtube_watched_at,
 			uac.completed_at,
+			uac.completion_source,
 			uac.created_at,
-			p.full_name AS patient_name,
-			COALESCE(sa.position_title, '-') AS puskesmas
+			p.full_name AS patient_name
 		FROM user_article_completions uac
 		JOIN patients p ON p.id = uac.patient_id AND p.deleted_at IS NULL
-		LEFT JOIN staff_accounts sa ON sa.id = p.assigned_staff_id AND sa.deleted_at IS NULL
 		WHERE uac.article_id = ? AND uac.deleted_at IS NULL
 		ORDER BY COALESCE(uac.completed_at, uac.created_at) DESC
 	`, articleID).Scan(&rows).Error
@@ -74,6 +73,7 @@ func (r *educationProgressRepository) FindAllByArticle(ctx context.Context, arti
 			YouTubeWatched:   r.YouTubeWatched,
 			YouTubeWatchedAt: r.YouTubeWatchedAt,
 			CompletedAt:      r.CompletedAt,
+			CompletionSource: r.CompletionSource,
 		}
 	}
 	return items, nil
@@ -113,16 +113,41 @@ func (r *educationProgressRepository) FindPatientNameAndPuskesmas(ctx context.Co
 func (r *educationProgressRepository) Upsert(ctx context.Context, progress *domain.UserArticleCompletion) error {
 	progress.UpdatedAt = time.Now()
 
+	if progress.ID != "" {
+		err := r.db.WithContext(ctx).Save(progress).Error
+		if err != nil {
+			return errs.NewInternal("failed to update education progress", err)
+		}
+		return nil
+	}
+
 	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "patient_id"}, {Name: "article_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"article_read", "article_read_at",
+			"article_started_at", "article_finished_at",
+			"article_reading_duration", "article_last_scroll_position",
 			"youtube_watched", "youtube_watched_at",
-			"completed_at", "updated_at",
+			"video_started_at", "video_finished_at",
+			"video_watch_duration", "video_last_timestamp",
+			"completed_at", "completion_source", "updated_at",
 		}),
 	}).Create(progress).Error
 	if err != nil {
 		return errs.NewInternal("failed to upsert education progress", err)
+	}
+	return nil
+}
+
+func (r *educationProgressRepository) LogActivity(ctx context.Context, patientID, articleID, activityType, metadata string) error {
+	activity := &domain.PatientEducationActivity{
+		PatientID:    patientID,
+		ArticleID:    articleID,
+		ActivityType: activityType,
+		Metadata:     metadata,
+	}
+	if err := r.db.WithContext(ctx).Create(activity).Error; err != nil {
+		return errs.NewInternal("failed to create patient education activity log", err)
 	}
 	return nil
 }

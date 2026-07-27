@@ -46,6 +46,7 @@ func main() {
 		"000005_add_routine_icon_and_schedule.up.sql",
 		"000006_add_education_progress_fields.up.sql",
 		"000007_add_patient_measurements_and_calorie_recommendations.up.sql",
+		"000008_add_education_tracking_and_activities.up.sql",
 	}
 
 

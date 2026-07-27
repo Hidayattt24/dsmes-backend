@@ -60,6 +60,8 @@ type ArticleListResponse struct {
 	Content              string               `json:"content"`
 	YoutubeLink          string               `json:"youtube_link"`
 	ReadCount            int64                `json:"read_count"`
+	IsBookmarked         bool                 `json:"is_bookmarked"`
+	IsCompleted          bool                 `json:"is_completed"`
 }
 
 type ArticleDetailResponse struct {

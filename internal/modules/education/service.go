@@ -31,7 +31,7 @@ func (s *educationService) ListCategories(ctx context.Context) ([]CategoryRespon
 	return resp, nil
 }
 
-func (s *educationService) ListArticles(ctx context.Context, categoryID string, status *domain.ArticleStatus, page, limit int) ([]ArticleListResponse, int64, error) {
+func (s *educationService) ListArticles(ctx context.Context, patientID *string, categoryID string, status *domain.ArticleStatus, page, limit int) ([]ArticleListResponse, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -44,9 +44,22 @@ func (s *educationService) ListArticles(ctx context.Context, categoryID string, 
 		return nil, 0, err
 	}
 
+	var savedMap map[string]bool
+	var completedMap map[string]bool
+	if patientID != nil && *patientID != "" {
+		savedMap, _ = s.repo.GetPatientSavedMap(ctx, *patientID)
+		completedMap, _ = s.repo.GetPatientCompletedMap(ctx, *patientID)
+	}
+
 	resp := make([]ArticleListResponse, len(items))
 	for i := range items {
 		resp[i] = ToArticleListResponse(&items[i])
+		if savedMap != nil {
+			resp[i].IsBookmarked = savedMap[items[i].ID]
+		}
+		if completedMap != nil {
+			resp[i].IsCompleted = completedMap[items[i].ID]
+		}
 	}
 	return resp, total, nil
 }
@@ -68,6 +81,16 @@ func (s *educationService) GetArticle(ctx context.Context, id string, patientID 
 	}
 
 	res := ToArticleDetailResponse(a)
+	if patientID != nil && *patientID != "" {
+		savedMap, _ := s.repo.GetPatientSavedMap(ctx, *patientID)
+		completedMap, _ := s.repo.GetPatientCompletedMap(ctx, *patientID)
+		if savedMap != nil {
+			res.IsBookmarked = savedMap[a.ID]
+		}
+		if completedMap != nil {
+			res.IsCompleted = completedMap[a.ID]
+		}
+	}
 	return &res, nil
 }
 
@@ -245,13 +268,20 @@ func (s *educationService) CompleteArticle(ctx context.Context, patientID string
 	return s.repo.MarkCompleted(ctx, completion)
 }
 
-func (s *educationService) ToggleSaveArticle(ctx context.Context, patientID string, id string) (bool, error) {
+func (s *educationService) SaveArticle(ctx context.Context, patientID string, id string) error {
 	_, err := s.repo.FindArticleByID(ctx, id)
 	if err != nil {
-		return false, err
+		return err
 	}
+	return s.repo.SaveArticle(ctx, patientID, id)
+}
 
-	return s.repo.ToggleSaved(ctx, patientID, id)
+func (s *educationService) UnsaveArticle(ctx context.Context, patientID string, id string) error {
+	_, err := s.repo.FindArticleByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.repo.UnsaveArticle(ctx, patientID, id)
 }
 
 func (s *educationService) ListSavedArticles(ctx context.Context, patientID string) ([]ArticleListResponse, error) {
@@ -260,9 +290,15 @@ func (s *educationService) ListSavedArticles(ctx context.Context, patientID stri
 		return nil, err
 	}
 
+	completedMap, _ := s.repo.GetPatientCompletedMap(ctx, patientID)
+
 	resp := make([]ArticleListResponse, len(items))
 	for i := range items {
 		resp[i] = ToArticleListResponse(&items[i])
+		resp[i].IsBookmarked = true
+		if completedMap != nil {
+			resp[i].IsCompleted = completedMap[items[i].ID]
+		}
 	}
 	return resp, nil
 }

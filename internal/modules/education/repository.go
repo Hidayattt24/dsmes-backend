@@ -3,6 +3,7 @@ package education
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -23,9 +24,15 @@ func NewEducationRepository(db *gorm.DB, log *zap.Logger) EducationRepository {
 
 func (r *educationRepository) FindAllCategories(ctx context.Context) ([]domain.ArticleCategory, error) {
 	var items []domain.ArticleCategory
-	err := r.db.WithContext(ctx).Where("deleted_at IS NULL").Find(&items).Error
-	if err != nil {
-		return nil, errs.NewInternal("failed to fetch categories", err)
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT DISTINCT ac.id, ac.name, ac.created_at, ac.updated_at, ac.deleted_at 
+		FROM article_categories ac
+		JOIN articles a ON a.category_id = ac.id AND a.deleted_at IS NULL AND a.status = 'publikasi'
+		WHERE ac.deleted_at IS NULL
+		ORDER BY ac.name ASC
+	`).Scan(&items).Error
+	if err != nil || len(items) == 0 {
+		err = r.db.WithContext(ctx).Where("deleted_at IS NULL").Order("name ASC").Find(&items).Error
 	}
 	return items, nil
 }
@@ -154,35 +161,85 @@ func (r *educationRepository) MarkCompleted(ctx context.Context, completion *dom
 	return nil
 }
 
-func (r *educationRepository) ToggleSaved(ctx context.Context, patientID string, articleID string) (bool, error) {
+func (r *educationRepository) SaveArticle(ctx context.Context, patientID string, articleID string) error {
 	var saved domain.UserSavedArticle
 	err := r.db.WithContext(ctx).
 		Where("patient_id = ? AND article_id = ?", patientID, articleID).
 		First(&saved).Error
 	if err == nil {
-		// Already exists -> delete (unsave)
-		if err := r.db.WithContext(ctx).Delete(&saved).Error; err != nil {
-			return false, errs.NewInternal("failed to unsave article", err)
-		}
-		return false, nil
+		return nil // Already saved, idempotent
 	}
-
-	// Create bookmark
 	saved = domain.UserSavedArticle{
 		PatientID: patientID,
 		ArticleID: articleID,
+		SavedAt:   time.Now(),
 	}
 	if err := r.db.WithContext(ctx).Create(&saved).Error; err != nil {
-		return false, errs.NewInternal("failed to save article", err)
+		return errs.NewInternal("failed to save article", err)
 	}
-	return true, nil
+	return nil
+}
+
+func (r *educationRepository) UnsaveArticle(ctx context.Context, patientID string, articleID string) error {
+	var saved domain.UserSavedArticle
+	err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND article_id = ?", patientID, articleID).
+		First(&saved).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil // Already unsaved, idempotent
+		}
+		return errs.NewInternal("failed to query saved article", err)
+	}
+	if err := r.db.WithContext(ctx).Delete(&saved).Error; err != nil {
+		return errs.NewInternal("failed to unsave article", err)
+	}
+	return nil
+}
+
+func (r *educationRepository) GetPatientSavedMap(ctx context.Context, patientID string) (map[string]bool, error) {
+	var results []struct {
+		ArticleID string
+	}
+	err := r.db.WithContext(ctx).Model(&domain.UserSavedArticle{}).
+		Select("article_id").
+		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Find(&results).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch saved articles map", err)
+	}
+	m := make(map[string]bool)
+	for _, res := range results {
+		m[res.ArticleID] = true
+	}
+	return m, nil
+}
+
+func (r *educationRepository) GetPatientCompletedMap(ctx context.Context, patientID string) (map[string]bool, error) {
+	var results []struct {
+		ArticleID string
+	}
+	err := r.db.WithContext(ctx).Model(&domain.UserArticleCompletion{}).
+		Select("article_id").
+		Where("patient_id = ? AND (article_read = TRUE OR youtube_watched = TRUE OR completed_at IS NOT NULL) AND deleted_at IS NULL", patientID).
+		Find(&results).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch completed articles map", err)
+	}
+	m := make(map[string]bool)
+	for _, res := range results {
+		m[res.ArticleID] = true
+	}
+	return m, nil
 }
 
 func (r *educationRepository) FindSavedArticles(ctx context.Context, patientID string) ([]domain.Article, error) {
 	var items []domain.Article
 	err := r.db.WithContext(ctx).
-		Preload("Category").
+		Select("articles.*, COALESCE(views.count, 0) as read_count").
 		Joins("JOIN user_saved_articles usa ON usa.article_id = articles.id").
+		Joins("LEFT JOIN (SELECT article_id, COUNT(*) as count FROM article_views WHERE deleted_at IS NULL GROUP BY article_id) views ON views.article_id = articles.id").
+		Preload("Category").
 		Where("usa.patient_id = ? AND articles.deleted_at IS NULL", patientID).
 		Order("usa.saved_at DESC").
 		Find(&items).Error

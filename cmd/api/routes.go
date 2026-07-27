@@ -299,6 +299,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Education bookmarks & completions
 		patientGroup.Post("/education/:id/complete", eduHandler.Complete)
 		patientGroup.Post("/education/:id/save", eduHandler.Save)
+		patientGroup.Delete("/education/:id/save", eduHandler.Unsave)
 		patientGroup.Get("/education/saved", eduHandler.ListSaved)
 
 		// Education Progress (Mobile-ready API)

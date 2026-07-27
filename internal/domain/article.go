@@ -82,11 +82,6 @@ func (ArticleSectionStep) TableName() string { return "article_section_steps" }
 // UserArticleCompletion tracks which educational content a patient has
 // read or watched. Completion uses OR logic: if either article_read OR
 // youtube_watched is true, completed_at is set.
-//
-// New fields added in migration 000006:
-//   - article_read, article_read_at — tracks article reading
-//   - youtube_watched, youtube_watched_at — tracks YouTube video watching
-//   - completed_at remains as the overall completion timestamp
 type UserArticleCompletion struct {
 	BaseModel
 
@@ -95,12 +90,23 @@ type UserArticleCompletion struct {
 	CompletedAt *time.Time `json:"completed_at"`
 
 	// Article read tracking
-	ArticleRead   bool       `gorm:"not null;default:false" json:"article_read"`
-	ArticleReadAt *time.Time `json:"article_read_at"`
+	ArticleRead               bool       `gorm:"not null;default:false" json:"article_read"`
+	ArticleReadAt             *time.Time `json:"article_read_at"`
+	ArticleStartedAt          *time.Time `json:"article_started_at"`
+	ArticleFinishedAt         *time.Time `json:"article_finished_at"`
+	ArticleReadingDuration    int        `gorm:"not null;default:0" json:"article_reading_duration"`
+	ArticleLastScrollPosition int        `gorm:"not null;default:0" json:"article_last_scroll_position"`
 
 	// YouTube video watch tracking
-	YouTubeWatched   bool       `gorm:"not null;default:false" json:"youtube_watched"`
-	YouTubeWatchedAt *time.Time `json:"youtube_watched_at"`
+	YouTubeWatched     bool       `gorm:"column:youtube_watched;not null;default:false" json:"youtube_watched"`
+	YouTubeWatchedAt   *time.Time `gorm:"column:youtube_watched_at" json:"youtube_watched_at"`
+	VideoStartedAt     *time.Time `gorm:"column:video_started_at" json:"video_started_at"`
+	VideoFinishedAt    *time.Time `gorm:"column:video_finished_at" json:"video_finished_at"`
+	VideoWatchDuration int        `gorm:"column:video_watch_duration;not null;default:0" json:"video_watch_duration"`
+	VideoLastTimestamp int        `gorm:"column:video_last_timestamp;not null;default:0" json:"video_last_timestamp"`
+
+	// Research analytics tracking
+	CompletionSource string `gorm:"type:varchar(20)" json:"completion_source"`
 }
 
 func (UserArticleCompletion) TableName() string { return "user_article_completions" }
@@ -126,3 +132,16 @@ type UserSavedArticle struct {
 }
 
 func (UserSavedArticle) TableName() string { return "user_saved_articles" }
+
+// PatientEducationActivity records granular actions taken by a patient
+// on educational resources for research audit trails.
+type PatientEducationActivity struct {
+	BaseModel
+
+	PatientID    string `gorm:"type:uuid;not null;index:idx_pea_patient" json:"patient_id"`
+	ArticleID    string `gorm:"type:uuid;not null;index:idx_pea_article" json:"article_id"`
+	ActivityType string `gorm:"type:varchar(50);not null" json:"activity_type"`
+	Metadata     string `gorm:"type:jsonb" json:"metadata"` // Raw jsonb string
+}
+
+func (PatientEducationActivity) TableName() string { return "patient_education_activities" }

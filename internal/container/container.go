@@ -35,6 +35,7 @@ import (
 
 	"github.com/dsmes/dsmes-backend/internal/bootstrap"
 	"github.com/dsmes/dsmes-backend/internal/config"
+	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
 	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
 )
@@ -93,6 +94,11 @@ func Build() (*Container, error) {
 	db, err := bootstrap.NewDatabase(cfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("container: failed to connect to database: %w", err)
+	}
+
+	// Auto-migrate education tracking models to ensure new columns exist in DB table
+	if err := db.AutoMigrate(&domain.UserArticleCompletion{}, &domain.PatientEducationActivity{}); err != nil {
+		logger.Warn("container: failed to auto-migrate education tracking models", zap.Error(err))
 	}
 
 	// 4. Fiber application (global middleware already registered)

@@ -52,8 +52,11 @@ func (h *EducationProgressHandler) MarkArticleRead(c fiber.Ctx) error {
 		return fiber.ErrUnauthorized
 	}
 
+	var req MarkArticleReadRequest
+	_ = c.Bind().Body(&req)
+
 	articleID := c.Params("id")
-	if err := h.svc.MarkArticleRead(c.Context(), claims.UserID, articleID); err != nil {
+	if err := h.svc.MarkArticleRead(c.Context(), claims.UserID, articleID, req.ReadingDuration, req.LastScrollPosition); err != nil {
 		return err
 	}
 	return response.Success(c, "article marked as read", nil)
@@ -67,8 +70,11 @@ func (h *EducationProgressHandler) MarkVideoWatched(c fiber.Ctx) error {
 		return fiber.ErrUnauthorized
 	}
 
+	var req MarkVideoWatchedRequest
+	_ = c.Bind().Body(&req)
+
 	articleID := c.Params("id")
-	if err := h.svc.MarkVideoWatched(c.Context(), claims.UserID, articleID); err != nil {
+	if err := h.svc.MarkVideoWatched(c.Context(), claims.UserID, articleID, req.WatchDuration, req.VideoLastTimestamp); err != nil {
 		return err
 	}
 	return response.Success(c, "video marked as watched", nil)
@@ -101,7 +107,8 @@ func (h *EducationProgressHandler) MarkArticleReadAdmin(c fiber.Ctx) error {
 	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
 		return response.ValidationError(c, fieldErrs)
 	}
-	if err := h.svc.MarkArticleRead(c.Context(), req.PatientID, articleID); err != nil {
+	// Admin force-marks with duration=0 and scroll=100 (fully read)
+	if err := h.svc.MarkArticleRead(c.Context(), req.PatientID, articleID, 0, 100); err != nil {
 		return err
 	}
 	return response.Success(c, "article marked as read", nil)
@@ -118,7 +125,8 @@ func (h *EducationProgressHandler) MarkVideoWatchedAdmin(c fiber.Ctx) error {
 	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
 		return response.ValidationError(c, fieldErrs)
 	}
-	if err := h.svc.MarkVideoWatched(c.Context(), req.PatientID, articleID); err != nil {
+	// Admin force-marks with duration=0 and timestamp=0
+	if err := h.svc.MarkVideoWatched(c.Context(), req.PatientID, articleID, 0, 0); err != nil {
 		return err
 	}
 	return response.Success(c, "video marked as watched", nil)
