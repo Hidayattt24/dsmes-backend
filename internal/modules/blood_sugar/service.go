@@ -25,14 +25,22 @@ func (s *bloodSugarService) LogBloodSugar(ctx context.Context, patientID string,
 		return nil, errs.NewBadRequest("invalid measured_at format (RFC3339 required)", err)
 	}
 
-	status := domain.CalculateGlucoseStatus(req.GlucoseValue, req.MeasurementTimeType)
+	normType := domain.NormalizeMeasurementType(string(req.MeasurementTimeType))
+	dob, _ := s.repo.GetPatientDOB(ctx, patientID)
+	medRes := domain.CalculateBloodSugarMedicalResult(req.GlucoseValue, normType, dob)
 
 	log := &domain.BloodSugarLog{
 		PatientID:           patientID,
 		GlucoseValue:        req.GlucoseValue,
-		MeasurementTimeType: req.MeasurementTimeType,
+		MeasurementTimeType: normType,
 		MeasuredAt:          measuredAt,
-		Status:              status,
+		Status:              medRes.Classification,
+		Severity:            medRes.Severity,
+		ReferenceMin:        medRes.ReferenceMin,
+		ReferenceMax:        medRes.ReferenceMax,
+		ReferenceRangeText:  medRes.ReferenceRangeText,
+		Recommendation:      medRes.Recommendation,
+		ColorIndicator:      medRes.ColorIndicator,
 	}
 
 	if err = s.repo.Create(ctx, log); err != nil {

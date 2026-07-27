@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sort"
 	"time"
 
 	"go.uber.org/zap"
@@ -801,6 +802,53 @@ func (r *patientRepository) GetPatientMeasurements(ctx context.Context, patientI
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch patient measurements history", err)
 	}
+
+	// Fetch blood_sugar_logs to ensure patient-entered blood sugar logs are merged into health measurement history
+	var bsLogs []domain.BloodSugarLog
+	_ = r.db.WithContext(ctx).
+		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Order("measured_at DESC").
+		Find(&bsLogs).Error
+
+	if len(bsLogs) > 0 {
+		existingIDs := make(map[string]bool)
+		for _, m := range items {
+			existingIDs[m.ID] = true
+		}
+
+		var patientName string = "Pasien"
+		var pat domain.Patient
+		if pErr := r.db.WithContext(ctx).Select("full_name").Where("id = ?", patientID).First(&pat).Error; pErr == nil && pat.FullName != "" {
+			patientName = pat.FullName
+		}
+
+		for _, bs := range bsLogs {
+			if !existingIDs[bs.ID] {
+				val := bs.GlucoseValue
+				measType := string(bs.MeasurementTimeType)
+				m := domain.PatientMeasurement{
+					BaseModel: domain.BaseModel{
+						ID:        bs.ID,
+						CreatedAt: bs.CreatedAt,
+						UpdatedAt: bs.UpdatedAt,
+					},
+					PatientID:          bs.PatientID,
+					BloodSugar:         &val,
+					BloodSugarTimeType: &measType,
+					RecordedByID:       &bs.PatientID,
+					RecordedByName:     patientName,
+					RecordedByRole:     "patient",
+					MeasuredAt:         bs.MeasuredAt,
+				}
+				items = append(items, m)
+			}
+		}
+
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].MeasuredAt.After(items[j].MeasuredAt)
+		})
+	}
+
 	return items, nil
 }
 

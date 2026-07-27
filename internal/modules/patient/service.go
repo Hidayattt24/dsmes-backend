@@ -882,13 +882,22 @@ func (s *patientService) CreateMeasurement(ctx context.Context, patientID string
 		if bsTimeType == "" {
 			bsTimeType = domain.TimeSewaktu
 		}
-		status := domain.CalculateGlucoseStatus(*req.BloodSugar, bsTimeType)
+		medRes := domain.CalculateBloodSugarMedicalResult(*req.BloodSugar, bsTimeType, &patient.DateOfBirth)
 		bsLog := &domain.BloodSugarLog{
+			BaseModel: domain.BaseModel{
+				ID: m.ID,
+			},
 			PatientID:           patient.ID,
 			GlucoseValue:        *req.BloodSugar,
 			MeasurementTimeType: bsTimeType,
 			MeasuredAt:          measuredAt,
-			Status:              status,
+			Status:              medRes.Classification,
+			Severity:            medRes.Severity,
+			ReferenceMin:        medRes.ReferenceMin,
+			ReferenceMax:        medRes.ReferenceMax,
+			ReferenceRangeText:  medRes.ReferenceRangeText,
+			Recommendation:      medRes.Recommendation,
+			ColorIndicator:      medRes.ColorIndicator,
 		}
 		if err := s.repo.CreateBloodSugarLog(ctx, bsLog); err != nil {
 			s.log.Warn("patient: failed to sync blood sugar log", zap.Error(err), zap.String("patient_id", patient.ID))

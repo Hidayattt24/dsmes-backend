@@ -2,6 +2,7 @@ package blood_sugar
 
 import (
 	"context"
+	"time"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 )
@@ -10,6 +11,7 @@ type BloodSugarRepository interface {
 	Create(ctx context.Context, log *domain.BloodSugarLog) error
 	FindAllByPatientID(ctx context.Context, patientID string, page, limit int) ([]domain.BloodSugarLog, int64, error)
 	GetDistributionForStaff(ctx context.Context, staffID string) (*GlucoseDistributionResponse, error)
+	GetPatientDOB(ctx context.Context, patientID string) (*time.Time, error)
 }
 
 type BloodSugarService interface {

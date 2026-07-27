@@ -96,9 +96,9 @@ func Build() (*Container, error) {
 		return nil, fmt.Errorf("container: failed to connect to database: %w", err)
 	}
 
-	// Auto-migrate education tracking models to ensure new columns exist in DB table
-	if err := db.AutoMigrate(&domain.UserArticleCompletion{}, &domain.PatientEducationActivity{}); err != nil {
-		logger.Warn("container: failed to auto-migrate education tracking models", zap.Error(err))
+	// Auto-migrate education tracking models & blood sugar models to ensure new columns exist in DB table
+	if err := db.AutoMigrate(&domain.UserArticleCompletion{}, &domain.PatientEducationActivity{}, &domain.BloodSugarLog{}); err != nil {
+		logger.Warn("container: failed to auto-migrate models", zap.Error(err))
 	}
 
 	// 4. Fiber application (global middleware already registered)
