@@ -41,6 +41,7 @@ func (s *reminderService) CreateReminder(ctx context.Context, patientID string, 
 		ScheduledTime:      req.ScheduledTime,
 		IsActive:           true,
 		Notes:              req.Notes,
+		IconName:           req.IconName,
 		RepeatIntervalDays: req.RepeatIntervalDays,
 	}
 
@@ -72,6 +73,7 @@ func (s *reminderService) UpdateReminder(ctx context.Context, patientID string, 
 	rem.Category = req.Category
 	rem.ScheduledTime = req.ScheduledTime
 	rem.Notes = req.Notes
+	rem.IconName = req.IconName
 	rem.RepeatIntervalDays = req.RepeatIntervalDays
 
 	if err = s.repo.Update(ctx, rem, req.ActiveDays); err != nil {

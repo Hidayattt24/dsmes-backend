@@ -9,6 +9,7 @@ type CreateReminderRequest struct {
 	Category           domain.ReminderCategory `json:"category"             validate:"required,oneof=medis_obat nutrisi_air aktivitas_fisik lainnya"`
 	ScheduledTime      string                  `json:"scheduled_time"       validate:"required"` // format: "HH:MM:SS"
 	Notes              string                  `json:"notes"`
+	IconName           string                  `json:"icon_name"`
 	RepeatIntervalDays int                     `json:"repeat_interval_days" validate:"required,min=1"`
 	ActiveDays         []int                   `json:"active_days"          validate:"required,min=1"` // 1-7
 }
@@ -21,16 +22,17 @@ type ReminderResponse struct {
 	ScheduledTime      string                  `json:"scheduled_time"`
 	IsActive           bool                    `json:"is_active"`
 	Notes              string                  `json:"notes"`
+	IconName           string                  `json:"icon_name"`
 	RepeatIntervalDays int                     `json:"repeat_interval_days"`
 	ActiveDays         []int                   `json:"active_days"`
 }
 
 type NotificationResponse struct {
-	ID          string `json:"id"`
+	ID          string  `json:"id"`
 	ReminderID  *string `json:"reminder_id"`
-	MessageText string `json:"message_text"`
-	NotifiedAt  string `json:"notified_at"`
-	IsRead      bool   `json:"is_read"`
+	MessageText string  `json:"message_text"`
+	NotifiedAt  string  `json:"notified_at"`
+	IsRead      bool    `json:"is_read"`
 }
 
 func ToReminderResponse(r *domain.Reminder) ReminderResponse {
@@ -46,17 +48,18 @@ func ToReminderResponse(r *domain.Reminder) ReminderResponse {
 		ScheduledTime:      r.ScheduledTime,
 		IsActive:           r.IsActive,
 		Notes:              r.Notes,
+		IconName:           r.IconName,
 		RepeatIntervalDays: r.RepeatIntervalDays,
 		ActiveDays:         days,
 	}
 }
 
 type MedicationLogResponse struct {
-	ID            string                  `json:"id"`
-	ReminderID    string                  `json:"reminder_id"`
-	ActivityName  string                  `json:"activity_name"`
-	Category      domain.ReminderCategory `json:"category"`
-	ScheduledTime string                  `json:"scheduled_time"`
+	ID            string                   `json:"id"`
+	ReminderID    string                   `json:"reminder_id"`
+	ActivityName  string                   `json:"activity_name"`
+	Category      domain.ReminderCategory  `json:"category"`
+	ScheduledTime string                   `json:"scheduled_time"`
 	Status        domain.ReminderLogStatus `json:"status"`
-	LoggedDate    string                  `json:"logged_date"`
+	LoggedDate    string                   `json:"logged_date"`
 }
