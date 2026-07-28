@@ -23,6 +23,7 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/modules/dashboard"
 	"github.com/dsmes/dsmes-backend/internal/modules/education"
 	"github.com/dsmes/dsmes-backend/internal/modules/education_progress"
+	"github.com/dsmes/dsmes-backend/internal/modules/history"
 	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
 	"github.com/dsmes/dsmes-backend/internal/modules/patient"
 	"github.com/dsmes/dsmes-backend/internal/modules/quiz"
@@ -121,7 +122,12 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	quizSvc := quiz.NewQuizService(quizRepo, c.Logger)
 	quizHandler := quiz.NewQuizHandler(quizSvc, c.Logger)
 
-	// 12. Dashboard
+	// 12. History
+	historyRepo := history.NewHistoryRepository(c.DB, c.Logger)
+	historySvc := history.NewHistoryService(historyRepo, c.Logger)
+	historyHandler := history.NewHistoryHandler(historySvc, c.Logger)
+
+	// 13. Dashboard
 	dashboardRepo := dashboard.NewDashboardRepository(c.DB, c.Logger)
 	dashboardSvc := dashboard.NewDashboardService(dashboardRepo, c.Logger)
 	dashboardHandler := dashboard.NewDashboardHandler(dashboardSvc, c.Logger)
@@ -313,6 +319,9 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Support Ticket submission
 		patientGroup.Post("/support/tickets", settingsHandler.SubmitTicket)
 		patientGroup.Get("/support/tickets", settingsHandler.GetMyTickets)
+
+		// Patient Activity History
+		patientGroup.Get("/history", historyHandler.GetPatientHistory)
 
 		// Questionnaire (Pre-Test / Post-Test) for Patient Mobile
 		patientGroup.Get("/questionnaires", quizHandler.ListPatient)
