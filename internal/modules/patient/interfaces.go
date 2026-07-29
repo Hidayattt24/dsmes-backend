@@ -40,6 +40,7 @@ type PatientService interface {
 	ListPatients(ctx context.Context, filter PatientFilterQuery) ([]PatientResponse, int64, error)
 	GetPatient(ctx context.Context, id string) (*PatientDetailResponse, error)
 	UpdateProfile(ctx context.Context, patientID string, req UpdatePatientProfileRequest) (*PatientResponse, error)
+	ChangePassword(ctx context.Context, patientID string, req ChangePasswordRequest) error
 	UpdatePatientByAdmin(ctx context.Context, patientID string, req UpdatePatientRequest) (*PatientDetailResponse, error)
 	AssignStaff(ctx context.Context, id string, req AssignStaffRequest) (*PatientDetailResponse, error)
 	ToggleStatus(ctx context.Context, id string) (*PatientResponse, error)

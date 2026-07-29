@@ -23,6 +23,26 @@ type PatientProgressItem struct {
 	CompletionSource          string  `json:"completion_source"`
 }
 
+// PatientEducationSummary is the response for GET /patients/:id/education-activities.
+type PatientEducationSummary struct {
+	TotalArticles  int                            `json:"total_articles"`
+	CompletedCount int                            `json:"completed_count"`
+	ReadCount      int                            `json:"read_count"`
+	Activities     []PatientArticleCompletionItem `json:"activities"`
+}
+
+// PatientArticleCompletionItem is one article's completion status for a patient.
+type PatientArticleCompletionItem struct {
+	ArticleID        string  `json:"article_id"`
+	ArticleTitle     string  `json:"article_title"`
+	ArticleRead      bool    `json:"article_read"`
+	YouTubeWatched   bool    `json:"youtube_watched"`
+	Completed        bool    `json:"completed"`
+	CompletedAt      *string `json:"completed_at"`
+	CompletionSource string  `json:"completion_source"`
+	LastActivityAt   *string `json:"last_activity_at"`
+}
+
 // ProgressAnalytics holds summary statistics for an education article.
 type ProgressAnalytics struct {
 	TotalPatients     int64 `json:"total_patients"`

@@ -93,6 +93,18 @@ func (r *educationProgressRepository) FindByPatientAndArticle(ctx context.Contex
 	return &item, nil
 }
 
+func (r *educationProgressRepository) FindAllByPatient(ctx context.Context, patientID string) ([]domain.UserArticleCompletion, error) {
+	var items []domain.UserArticleCompletion
+	err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Order("COALESCE(updated_at, created_at) DESC").
+		Find(&items).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch patient education activities", err)
+	}
+	return items, nil
+}
+
 func (r *educationProgressRepository) FindPatientNameAndPuskesmas(ctx context.Context, patientID string) (name string, puskesmas string) {
 	var row struct {
 		PatientName string `gorm:"column:patient_name"`

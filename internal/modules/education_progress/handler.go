@@ -96,6 +96,17 @@ func (h *EducationProgressHandler) GetPatientProgress(c fiber.Ctx) error {
 	return response.Success(c, "patient progress retrieved", item)
 }
 
+// GetPatientEducationActivities handles GET /api/v1/admin/patients/:id/education-activities
+// Returns all education activities for a specific patient.
+func (h *EducationProgressHandler) GetPatientEducationActivities(c fiber.Ctx) error {
+	patientID := c.Params("id")
+	result, err := h.svc.GetPatientEducationActivities(c.Context(), patientID)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient education activities retrieved", result)
+}
+
 // MarkArticleReadAdmin handles POST /api/v1/admin/education/:id/progress/read-article
 // Admin marks article as read for a specific patient.
 func (h *EducationProgressHandler) MarkArticleReadAdmin(c fiber.Ctx) error {

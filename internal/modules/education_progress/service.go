@@ -230,6 +230,93 @@ func (s *educationProgressService) GetPatientProgress(ctx context.Context, patie
 	return &item, nil
 }
 
+func (s *educationProgressService) GetPatientEducationActivities(ctx context.Context, patientID string) (*PatientEducationSummary, error) {
+	completions, err := s.repo.FindAllByPatient(ctx, patientID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only count published articles for the denominator
+	status := domain.StatusPublikasi
+	articles, _, err := s.eduRepo.FindAllArticles(ctx, "", &status, 1, 99999)
+	if err != nil {
+		articles = nil
+	}
+	totalArticles := len(articles)
+
+	// Build a map of article ID -> title from published articles
+	titleMap := make(map[string]string, len(articles))
+	for _, a := range articles {
+		titleMap[a.ID] = a.Title
+	}
+
+	// Deduplicate completions by article_id (take the latest UpdatedAt)
+	type indexedCompletion struct {
+		idx int
+		domain.UserArticleCompletion
+	}
+	bestByArticle := make(map[string]indexedCompletion)
+	for i, c := range completions {
+		existing, ok := bestByArticle[c.ArticleID]
+		if !ok || c.UpdatedAt.After(existing.UpdatedAt) {
+			bestByArticle[c.ArticleID] = indexedCompletion{idx: i, UserArticleCompletion: c}
+		}
+	}
+
+	completedCount := 0
+	readCount := 0
+	activities := make([]PatientArticleCompletionItem, 0, len(bestByArticle))
+
+	for _, c := range bestByArticle {
+		if c.CompletedAt != nil {
+			completedCount++
+		}
+		if c.ArticleRead {
+			readCount++
+		}
+
+		item := PatientArticleCompletionItem{
+			ArticleID:        c.ArticleID,
+			ArticleTitle:     titleMap[c.ArticleID],
+			ArticleRead:      c.ArticleRead,
+			YouTubeWatched:   c.YouTubeWatched,
+			Completed:        c.CompletedAt != nil,
+			CompletionSource: c.CompletionSource,
+		}
+		if c.CompletedAt != nil {
+			val := fmtTime(*c.CompletedAt)
+			item.CompletedAt = &val
+		}
+		var lastTime *time.Time
+		if c.ArticleReadAt != nil {
+			lastTime = c.ArticleReadAt
+		}
+		if c.YouTubeWatchedAt != nil {
+			if lastTime == nil || c.YouTubeWatchedAt.After(*lastTime) {
+				lastTime = c.YouTubeWatchedAt
+			}
+		}
+		if c.UpdatedAt.After(c.CreatedAt) {
+			if lastTime == nil || c.UpdatedAt.After(*lastTime) {
+				lastTime = &c.UpdatedAt
+			}
+		}
+		if lastTime != nil {
+			val := fmtTime(*lastTime)
+			item.LastActivityAt = &val
+		}
+
+		activities = append(activities, item)
+	}
+
+	return &PatientEducationSummary{
+		TotalArticles:  totalArticles,
+		CompletedCount: completedCount,
+		ReadCount:      readCount,
+		Activities:     activities,
+	}, nil
+}
+
 func (s *educationProgressService) LogActivity(ctx context.Context, patientID, articleID, activityType, metadata string) error {
 	return s.repo.LogActivity(ctx, patientID, articleID, activityType, metadata)
 }

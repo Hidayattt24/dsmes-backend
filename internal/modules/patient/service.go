@@ -639,6 +639,26 @@ func (s *patientService) UpdateProfile(ctx context.Context, patientID string, re
 	patient.WhatsappNumber = req.WhatsappNumber
 	patient.HeightCm = req.HeightCm
 	patient.WeightKg = req.WeightKg
+	if req.Gender != "" {
+		gender := domain.GenderLakiLaki
+		if strings.EqualFold(req.Gender, "perempuan") || strings.EqualFold(req.Gender, "female") {
+			gender = domain.GenderPerempuan
+		}
+		patient.Gender = gender
+	}
+	if req.DateOfBirth != "" {
+		if t, err := ParseDOB(req.DateOfBirth); err == nil {
+			patient.DateOfBirth = t
+		}
+	}
+	if req.BloodType != "" {
+		bloodType := domain.BloodType(req.BloodType)
+		cleanBlood := strings.ToLower(strings.TrimSpace(req.BloodType))
+		if cleanBlood == "" || cleanBlood == "tidak tahu" || cleanBlood == "tidak_tahu" {
+			bloodType = domain.BloodTypeTidakTahu
+		}
+		patient.BloodType = bloodType
+	}
 	if req.ProfilePhotoURL != "" {
 		patient.ProfilePhotoURL = req.ProfilePhotoURL
 	}
@@ -712,6 +732,25 @@ func (s *patientService) UpdateProfile(ctx context.Context, patientID string, re
 
 	res := ToPatientResponse(patient)
 	return &res, nil
+}
+
+func (s *patientService) ChangePassword(ctx context.Context, patientID string, req ChangePasswordRequest) error {
+	patient, err := s.repo.FindByID(ctx, patientID)
+	if err != nil {
+		return err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(patient.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		return errs.NewUnauthorized("kata sandi saat ini salah")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return errs.NewInternal("failed to hash password", err)
+	}
+
+	patient.PasswordHash = string(hash)
+	return s.repo.Update(ctx, patient)
 }
 
 func (s *patientService) AssignStaff(ctx context.Context, id string, req AssignStaffRequest) (*PatientDetailResponse, error) {

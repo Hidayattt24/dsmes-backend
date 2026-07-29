@@ -9,19 +9,19 @@ import (
 )
 
 type RegisterPatientRequest struct {
-	Email          string `json:"email"           validate:"required,email"`
-	Password       string `json:"password"        validate:"required,min=8"`
-	FullName       string `json:"full_name"       validate:"required,min=3,max=150"`
-	Nickname       string `json:"nickname"`
-	WhatsappNumber string `json:"whatsapp_number"`
-	PhoneNumber    string `json:"phone_number"`
-	Gender         string `json:"gender"`
-	DateOfBirth    string `json:"date_of_birth"`
-	HeightCm       float64 `json:"height_cm"`
-	WeightKg       float64 `json:"weight_kg"`
-	BloodType      string  `json:"blood_type"`
-	ActivityLevel  string  `json:"activity_level"`
-	PhysicalActivityLevel string `json:"physical_activity_level"`
+	Email                 string  `json:"email"           validate:"required,email"`
+	Password              string  `json:"password"        validate:"required,min=8"`
+	FullName              string  `json:"full_name"       validate:"required,min=3,max=150"`
+	Nickname              string  `json:"nickname"`
+	WhatsappNumber        string  `json:"whatsapp_number"`
+	PhoneNumber           string  `json:"phone_number"`
+	Gender                string  `json:"gender"`
+	DateOfBirth           string  `json:"date_of_birth"`
+	HeightCm              float64 `json:"height_cm"`
+	WeightKg              float64 `json:"weight_kg"`
+	BloodType             string  `json:"blood_type"`
+	ActivityLevel         string  `json:"activity_level"`
+	PhysicalActivityLevel string  `json:"physical_activity_level"`
 }
 
 func (r *RegisterPatientRequest) GetPhone() string {
@@ -61,6 +61,9 @@ type UpdatePatientProfileRequest struct {
 	WhatsappNumber        string  `json:"whatsapp_number" validate:"required,numeric,min=10,max=20"`
 	HeightCm              float64 `json:"height_cm"       validate:"required,gt=0"`
 	WeightKg              float64 `json:"weight_kg"       validate:"required,gt=0"`
+	Gender                string  `json:"gender"`
+	DateOfBirth           string  `json:"date_of_birth"`
+	BloodType             string  `json:"blood_type"`
 	ProfilePhotoURL       string  `json:"profile_photo_url"`
 	BPJS                  string  `json:"bpjs"`
 	NIK                   string  `json:"nik"`
@@ -83,40 +86,40 @@ type AssignStaffRequest struct {
 }
 
 type PatientResponse struct {
-	ID                    string               `json:"id"`
-	Email                 string               `json:"email"`
-	FullName              string               `json:"full_name"`
-	Nickname              string               `json:"nickname"`
-	WhatsappNumber        string               `json:"whatsapp_number"`
-	Gender                domain.Gender        `json:"gender"`
-	DateOfBirth           string               `json:"date_of_birth"`
-	HeightCm              float64              `json:"height_cm"`
-	WeightKg              float64              `json:"weight_kg"`
-	BloodType             domain.BloodType     `json:"blood_type"`
-	DailyCalorieTarget    int                                `json:"daily_calorie_target"`
-	Recommendations       *nutrition.CalorieRecommendations  `json:"recommendations,omitempty"`
-	MedicalStatus         string                             `json:"medical_status"`
-	ProfilePhotoURL       string               `json:"profile_photo_url"`
-	Status                domain.AccountStatus `json:"status"`
-	CreatedAt             string               `json:"created_at"`
-	BPJS                  string               `json:"bpjs"`
-	NIK                   string               `json:"nik"`
-	EmergencyName         string               `json:"emergency_name"`
-	EmergencyRelation     string               `json:"emergency_relation"`
-	EmergencyPhone        string               `json:"emergency_phone"`
-	DiabetesType          string               `json:"diabetes_type"`
-	Compliance            int                  `json:"compliance"`
-	ComplianceLabel       string               `json:"compliance_label,omitempty"`
-	ComplianceBreakdown   *ComplianceBreakdown `json:"compliance_breakdown,omitempty"`
-	InterventionType      string               `json:"intervention_type"`
-	PatientCode           string               `json:"patient_code"`
-	Address               string               `json:"address"`
-	DiagnosisDate         string               `json:"diagnosis_date"`
-	CurrentMedication     string               `json:"current_medication"`
-	Allergies             string               `json:"allergies"`
-	SmokingStatus         string               `json:"smoking_status"`
-	PhysicalActivityLevel string               `json:"physical_activity_level"`
-	LastActiveAt          *string              `json:"last_active_at,omitempty"`
+	ID                    string                            `json:"id"`
+	Email                 string                            `json:"email"`
+	FullName              string                            `json:"full_name"`
+	Nickname              string                            `json:"nickname"`
+	WhatsappNumber        string                            `json:"whatsapp_number"`
+	Gender                domain.Gender                     `json:"gender"`
+	DateOfBirth           string                            `json:"date_of_birth"`
+	HeightCm              float64                           `json:"height_cm"`
+	WeightKg              float64                           `json:"weight_kg"`
+	BloodType             domain.BloodType                  `json:"blood_type"`
+	DailyCalorieTarget    int                               `json:"daily_calorie_target"`
+	Recommendations       *nutrition.CalorieRecommendations `json:"recommendations,omitempty"`
+	MedicalStatus         string                            `json:"medical_status"`
+	ProfilePhotoURL       string                            `json:"profile_photo_url"`
+	Status                domain.AccountStatus              `json:"status"`
+	CreatedAt             string                            `json:"created_at"`
+	BPJS                  string                            `json:"bpjs"`
+	NIK                   string                            `json:"nik"`
+	EmergencyName         string                            `json:"emergency_name"`
+	EmergencyRelation     string                            `json:"emergency_relation"`
+	EmergencyPhone        string                            `json:"emergency_phone"`
+	DiabetesType          string                            `json:"diabetes_type"`
+	Compliance            int                               `json:"compliance"`
+	ComplianceLabel       string                            `json:"compliance_label,omitempty"`
+	ComplianceBreakdown   *ComplianceBreakdown              `json:"compliance_breakdown,omitempty"`
+	InterventionType      string                            `json:"intervention_type"`
+	PatientCode           string                            `json:"patient_code"`
+	Address               string                            `json:"address"`
+	DiagnosisDate         string                            `json:"diagnosis_date"`
+	CurrentMedication     string                            `json:"current_medication"`
+	Allergies             string                            `json:"allergies"`
+	SmokingStatus         string                            `json:"smoking_status"`
+	PhysicalActivityLevel string                            `json:"physical_activity_level"`
+	LastActiveAt          *string                           `json:"last_active_at,omitempty"`
 
 	// Summary statistics fields
 	LatestBloodSugar       *int               `json:"latest_blood_sugar,omitempty"`
@@ -350,6 +353,11 @@ func ParseDOB(dateStr string) (time.Time, error) {
 		}
 	}
 	return time.Parse(time.RFC3339, dateStr)
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	NewPassword     string `json:"new_password"     validate:"required,min=8"`
 }
 
 type CreateMeasurementRequest struct {

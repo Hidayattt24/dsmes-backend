@@ -399,6 +399,37 @@ func (h *PatientHandler) UpdateMe(c fiber.Ctx) error {
 	return response.Success(c, "profile updated", res)
 }
 
+// ChangePassword handles PUT /api/v1/patient/me/password
+// @Summary      Change current patient password
+// @Tags         patient
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  ChangePasswordRequest  true  "Change password payload"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/me/password [put]
+func (h *PatientHandler) ChangePassword(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req ChangePasswordRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	if err := h.svc.ChangePassword(c.Context(), claims.UserID, req); err != nil {
+		return err
+	}
+
+	return response.Success(c, "password changed", nil)
+}
+
 // AssignStaff handles PATCH /api/v1/admin/patients/:id/assign
 // @Summary      Assign patient to monitoring staff
 // @Tags         patient

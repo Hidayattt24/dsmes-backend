@@ -180,6 +180,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
 		admin.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
 		admin.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
+		admin.Get("/patients/:id/activities/education", eduProgressHandler.GetPatientEducationActivities)
 		admin.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
 		admin.Get("/patients/:id/activity-analytics", patientHandler.GetPatientActivityAnalytics)
 
@@ -236,6 +237,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		staff.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
 		staff.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
 		staff.Get("/patients/:id/activities", routineHandler.GetPatientActivityLogs)
+		staff.Get("/patients/:id/activities/education", eduProgressHandler.GetPatientEducationActivities)
 		staff.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
 		staff.Get("/patients/:id/activity-analytics", patientHandler.GetPatientActivityAnalytics)
 
@@ -265,6 +267,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	{
 		patientGroup.Get("/me", patientHandler.GetMe)
 		patientGroup.Put("/me", patientHandler.UpdateMe)
+		patientGroup.Put("/me/password", patientHandler.ChangePassword)
 		patientGroup.Post("/profile/setup", patientHandler.SetupHealthProfile)
 
 		// Health Measurements
