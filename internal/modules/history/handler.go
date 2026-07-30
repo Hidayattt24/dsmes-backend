@@ -67,3 +67,18 @@ func (h *HistoryHandler) GetPatientHistory(c fiber.Ctx) error {
 		TotalPages: totalPages,
 	})
 }
+
+// DeleteHistoryItem handles DELETE /api/v1/patient/history/:type/:id
+func (h *HistoryHandler) DeleteHistoryItem(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+	activityType := c.Params("type")
+	id := c.Params("id")
+
+	if err := h.svc.DeleteHistoryItem(c.Context(), claims.UserID, activityType, id); err != nil {
+		return err
+	}
+	return response.NoContent(c)
+}

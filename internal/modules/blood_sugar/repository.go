@@ -2,6 +2,7 @@ package blood_sugar
 
 import (
 	"context"
+	"errors"
 	"math"
 	"time"
 
@@ -105,6 +106,36 @@ func (r *bloodSugarRepository) Create(ctx context.Context, log *domain.BloodSuga
 
 	_ = r.db.WithContext(ctx).Create(snapshot).Error
 
+	return nil
+}
+
+func (r *bloodSugarRepository) FindByID(ctx context.Context, id string) (*domain.BloodSugarLog, error) {
+	var log domain.BloodSugarLog
+	err := r.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", id).First(&log).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("blood sugar log not found")
+		}
+		return nil, errs.NewInternal("failed to fetch blood sugar log", err)
+	}
+	return &log, nil
+}
+
+func (r *bloodSugarRepository) Update(ctx context.Context, log *domain.BloodSugarLog) error {
+	if err := r.db.WithContext(ctx).Save(log).Error; err != nil {
+		return errs.NewInternal("failed to update blood sugar log", err)
+	}
+	return nil
+}
+
+func (r *bloodSugarRepository) Delete(ctx context.Context, id string) error {
+	result := r.db.WithContext(ctx).Exec("DELETE FROM blood_sugar_logs WHERE id = ?", id)
+	if result.Error != nil {
+		return errs.NewInternal("failed to delete blood sugar log", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return errs.NewNotFound("blood sugar log not found")
+	}
 	return nil
 }
 

@@ -127,13 +127,13 @@ SELECT
 	rm.patient_id,
 	'medication'::text AS activity_type,
 	COALESCE(rm.activity_name, 'Obat-obatan')::text AS title,
-	CAST(drl.status AS VARCHAR) AS subtitle,
+	COALESCE(NULLIF(rm.notes, ''), CAST(drl.status AS VARCHAR))::text AS subtitle,
 	CAST(rm.category AS VARCHAR) AS category,
 	'1'::text AS value,
 	'dosis'::text AS unit,
 	CAST(drl.status AS VARCHAR) AS status,
 	COALESCE(rm.notes, '')::text AS notes,
-	to_char(drl.log_date AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS measured_at,
+	to_char((drl.log_date::text || ' ' || COALESCE(NULLIF(rm.scheduled_time::text, ''), to_char(drl.created_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI:SS')))::timestamp, 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS measured_at,
 	to_char(drl.created_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS created_at,
 	to_char(drl.updated_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS updated_at,
 	''::text AS recorded_by,
@@ -186,6 +186,39 @@ SELECT
 	''::text AS reminder_name
 FROM patient_measurements pm
 WHERE pm.patient_id = ? AND pm.deleted_at IS NULL
+
+UNION ALL
+
+SELECT
+	pal.id,
+	pal.patient_id,
+	'activity'::text AS activity_type,
+	pal.activity_name::text AS title,
+	pal.intensity::text AS subtitle,
+	'activity'::text AS category,
+	CAST(pal.duration_minutes AS VARCHAR) AS value,
+	'menit'::text AS unit,
+	'Selesai'::text AS status,
+	COALESCE(pal.notes, '')::text AS notes,
+	to_char(pal.logged_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS measured_at,
+	to_char(pal.created_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS created_at,
+	to_char(pal.updated_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS updated_at,
+	''::text AS recorded_by,
+	'directions_walk'::text AS icon,
+	'#388E3C'::text AS color,
+	NULL::int AS glucose_value,
+	''::text AS measurement_type,
+	''::text AS meal_type,
+	NULL::double precision AS calories,
+	NULL::double precision AS carbs_g,
+	NULL::double precision AS protein_g,
+	NULL::double precision AS fat_g,
+	pal.duration_minutes::int AS activity_minutes,
+	''::text AS routine_type,
+	''::text AS log_date,
+	''::text AS reminder_name
+FROM patient_activity_logs pal
+WHERE pal.patient_id = ? AND pal.deleted_at IS NULL
 `
 
 func (r *historyRepository) FindAll(ctx context.Context, patientID string, page, limit int) ([]historyRawItem, int64, error) {
@@ -193,20 +226,51 @@ func (r *historyRepository) FindAll(ctx context.Context, patientID string, page,
 
 	var total int64
 	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM (%s) AS combined", historyUnionSQL)
-	if err := r.db.WithContext(ctx).Raw(countSQL, patientID, patientID, patientID, patientID, patientID).Scan(&total).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw(countSQL, patientID, patientID, patientID, patientID, patientID, patientID).Scan(&total).Error; err != nil {
 		return nil, 0, errs.NewInternal("failed to count patient history", err)
 	}
 
 	var items []historyRawItem
 	paginatedSQL := fmt.Sprintf(`
 		SELECT * FROM (%s) AS combined
-		ORDER BY measured_at DESC
+		ORDER BY measured_at DESC, created_at DESC
 		OFFSET ? LIMIT ?
 	`, historyUnionSQL)
 
-	if err := r.db.WithContext(ctx).Raw(paginatedSQL, patientID, patientID, patientID, patientID, patientID, offset, limit).Scan(&items).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw(paginatedSQL, patientID, patientID, patientID, patientID, patientID, patientID, offset, limit).Scan(&items).Error; err != nil {
 		return nil, 0, errs.NewInternal("failed to fetch patient history", err)
 	}
 
 	return items, total, nil
+}
+
+func (r *historyRepository) DeleteHistoryItem(ctx context.Context, patientID string, activityType string, id string) error {
+	switch activityType {
+	case "blood_sugar":
+		result := r.db.WithContext(ctx).Exec("DELETE FROM blood_sugar_logs WHERE id = ? AND patient_id = ?", id, patientID)
+		if result.Error != nil {
+			return errs.NewInternal("failed to delete blood sugar log", result.Error)
+		}
+	case "meal":
+		result := r.db.WithContext(ctx).Exec("DELETE FROM meal_logs WHERE id = ? AND patient_id = ?", id, patientID)
+		if result.Error != nil {
+			return errs.NewInternal("failed to delete meal log", result.Error)
+		}
+	case "activity":
+		r.db.WithContext(ctx).Exec("DELETE FROM patient_activity_logs WHERE id = ? AND patient_id = ?", id, patientID)
+		r.db.WithContext(ctx).Exec("DELETE FROM routine_log_entries WHERE id = ? AND patient_id = ?", id, patientID)
+	case "medication":
+		result := r.db.WithContext(ctx).Exec("DELETE FROM daily_reminder_logs WHERE id = ? AND reminder_id IN (SELECT id FROM reminders WHERE patient_id = ?)", id, patientID)
+		if result.Error != nil {
+			return errs.NewInternal("failed to delete medication log", result.Error)
+		}
+	case "measurement":
+		result := r.db.WithContext(ctx).Exec("DELETE FROM patient_measurements WHERE id = ? AND patient_id = ?", id, patientID)
+		if result.Error != nil {
+			return errs.NewInternal("failed to delete measurement", result.Error)
+		}
+	default:
+		return errs.NewBadRequest("invalid activity type")
+	}
+	return nil
 }

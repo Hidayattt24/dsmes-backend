@@ -185,6 +185,37 @@ func (h *ReminderHandler) MarkRead(c fiber.Ctx) error {
 	return response.Success(c, "all notifications marked as read", nil)
 }
 
+// LogMedication handles POST /api/v1/patient/medications/log
+// @Summary      Log medication as taken/skipped for today
+// @Tags         reminder
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  LogMedicationRequest  true  "Medication log payload"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/medications/log [post]
+func (h *ReminderHandler) LogMedication(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req LogMedicationRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.LogMedication(c.Context(), claims.UserID, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "medication logged successfully", res)
+}
+
 // GetPatientMedicationLogs handles GET /api/v1/admin/patients/:id/medications or /api/v1/staff/patients/:id/medications
 func (h *ReminderHandler) GetPatientMedicationLogs(c fiber.Ctx) error {
 	patientID := c.Params("id")

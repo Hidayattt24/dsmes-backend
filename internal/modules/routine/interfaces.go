@@ -13,6 +13,8 @@ type RoutineRepository interface {
 	CreateLog(ctx context.Context, log *domain.RoutineLogEntry) error
 	FindLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.RoutineLogEntry, error)
 	ReplacePatientRoutines(ctx context.Context, patientID string, routines []domain.Routine) error
+	CreateActivityLog(ctx context.Context, log *domain.PatientActivityLog) error
+	FindFreeActivityLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.PatientActivityLog, error)
 }
 
 type RoutineService interface {
@@ -22,5 +24,5 @@ type RoutineService interface {
 	LogRoutine(ctx context.Context, patientID string, req LogRoutineRequest) (*RoutineLogResponse, error)
 	GetOnboardingStatus(ctx context.Context, patientID string) (*OnboardingStatusResponse, error)
 	GetPatientActivityLogs(ctx context.Context, patientID string, dateStr string) ([]ActivityLogResponse, error)
+	LogActivity(ctx context.Context, patientID string, req LogActivityRequest) (*LogActivityResponse, error)
 }
-

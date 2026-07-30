@@ -129,6 +129,48 @@ func (s *reminderService) ToggleReminder(ctx context.Context, patientID string, 
 	return &res, nil
 }
 
+func (s *reminderService) LogMedication(ctx context.Context, patientID string, req LogMedicationRequest) (*MedicationLogResponse, error) {
+	rem, err := s.repo.FindByID(ctx, req.ReminderID)
+	if err != nil {
+		return nil, err
+	}
+	if rem.PatientID != patientID {
+		return nil, errs.NewForbidden("unauthorized access to reminder")
+	}
+
+	logDate := time.Now()
+	if req.LogDate != "" {
+		if t, err := time.Parse("2006-01-02", req.LogDate); err == nil {
+			logDate = t
+		}
+	}
+
+	status := domain.ReminderLogStatus(req.Status)
+	if status == "" {
+		status = domain.ReminderSelesai
+	}
+
+	log := &domain.DailyReminderLog{
+		ReminderID: req.ReminderID,
+		LogDate:    logDate,
+		Status:     status,
+	}
+
+	if err := s.repo.UpsertLog(ctx, log); err != nil {
+		return nil, err
+	}
+
+	return &MedicationLogResponse{
+		ID:            log.ID,
+		ReminderID:    req.ReminderID,
+		ActivityName:  rem.ActivityName,
+		Category:      rem.Category,
+		ScheduledTime: rem.ScheduledTime,
+		Status:        status,
+		LoggedDate:    logDate.Format("2006-01-02"),
+	}, nil
+}
+
 func (s *reminderService) GetNotifications(ctx context.Context, patientID string) ([]NotificationResponse, error) {
 	items, err := s.repo.FindNotificationsByPatientID(ctx, patientID)
 	if err != nil {

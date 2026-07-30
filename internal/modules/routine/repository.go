@@ -76,6 +76,26 @@ func (r *routineRepository) FindLogsByPatientAndDate(ctx context.Context, patien
 	return logs, nil
 }
 
+func (r *routineRepository) FindFreeActivityLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.PatientActivityLog, error) {
+	var logs []domain.PatientActivityLog
+	q := r.db.WithContext(ctx).Where("patient_id = ? AND deleted_at IS NULL", patientID)
+	if dateStr != "" {
+		q = q.Where("DATE(logged_at) = ?", dateStr)
+	}
+	err := q.Order("logged_at DESC").Find(&logs).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch free activity logs", err)
+	}
+	return logs, nil
+}
+
+func (r *routineRepository) CreateActivityLog(ctx context.Context, log *domain.PatientActivityLog) error {
+	if err := r.db.WithContext(ctx).Create(log).Error; err != nil {
+		return errs.NewInternal("failed to create activity log", err)
+	}
+	return nil
+}
+
 func (r *routineRepository) ReplacePatientRoutines(ctx context.Context, patientID string, routines []domain.Routine) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Delete previous routines for this patient
@@ -96,4 +116,3 @@ func (r *routineRepository) ReplacePatientRoutines(ctx context.Context, patientI
 		return nil
 	})
 }
-

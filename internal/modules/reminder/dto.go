@@ -54,6 +54,12 @@ func ToReminderResponse(r *domain.Reminder) ReminderResponse {
 	}
 }
 
+type LogMedicationRequest struct {
+	ReminderID string `json:"reminder_id" validate:"required,uuid4"`
+	Status     string `json:"status"      validate:"required,oneof=selesai terlewat pending"`
+	LogDate    string `json:"log_date"` // format: "YYYY-MM-DD", defaults to today
+}
+
 type MedicationLogResponse struct {
 	ID            string                   `json:"id"`
 	ReminderID    string                   `json:"reminder_id"`

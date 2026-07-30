@@ -279,11 +279,14 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Put("/routines/:routineTimeId", routineHandler.Configure)
 		patientGroup.Post("/routines/setup", routineHandler.BulkSetup)
 		patientGroup.Post("/routines/log", routineHandler.Log)
+		patientGroup.Post("/activities/log", routineHandler.LogActivity)
 		patientGroup.Get("/routines/status", routineHandler.Status)
 
 		// Blood sugar records
 		patientGroup.Post("/blood-sugar", bsHandler.Log)
 		patientGroup.Get("/blood-sugar", bsHandler.GetHistory)
+		patientGroup.Put("/blood-sugar/:id", bsHandler.Update)
+		patientGroup.Delete("/blood-sugar/:id", bsHandler.Delete)
 
 		// Daily Checkin Calendar
 		patientGroup.Post("/checkin", checkinHandler.Checkin)
@@ -300,6 +303,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Put("/reminders/:id", reminderHandler.Update)
 		patientGroup.Patch("/reminders/:id/toggle", reminderHandler.Toggle)
 		patientGroup.Delete("/reminders/:id", reminderHandler.Delete)
+		patientGroup.Post("/medications/log", reminderHandler.LogMedication)
 
 		// Notifications inbox
 		patientGroup.Get("/notifications", reminderHandler.GetNotifications)
@@ -325,6 +329,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 
 		// Patient Activity History
 		patientGroup.Get("/history", historyHandler.GetPatientHistory)
+		patientGroup.Delete("/history/:type/:id", historyHandler.DeleteHistoryItem)
 
 		// Questionnaire (Pre-Test / Post-Test) for Patient Mobile
 		patientGroup.Get("/questionnaires", quizHandler.ListPatient)

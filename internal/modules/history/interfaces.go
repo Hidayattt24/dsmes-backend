@@ -5,11 +5,13 @@ import "context"
 // HistoryRepository defines the data access contract for patient history.
 type HistoryRepository interface {
 	FindAll(ctx context.Context, patientID string, page, limit int) ([]historyRawItem, int64, error)
+	DeleteHistoryItem(ctx context.Context, patientID string, activityType string, id string) error
 }
 
 // HistoryService defines the business logic contract for the history module.
 type HistoryService interface {
 	GetPatientHistory(ctx context.Context, patientID string, page, limit int) ([]HistoryItemResponse, int64, error)
+	DeleteHistoryItem(ctx context.Context, patientID string, activityType string, id string) error
 }
 
 // historyRawItem is the raw database row returned by the UNION ALL query.

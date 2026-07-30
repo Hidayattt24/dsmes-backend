@@ -128,6 +128,18 @@ func (r *reminderRepository) MarkNotificationsAsRead(ctx context.Context, patien
 	return nil
 }
 
+func (r *reminderRepository) UpsertLog(ctx context.Context, log *domain.DailyReminderLog) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing domain.DailyReminderLog
+		result := tx.Where("reminder_id = ? AND log_date = ?", log.ReminderID, log.LogDate.Format("2006-01-02")).First(&existing)
+		if result.Error == nil {
+			existing.Status = log.Status
+			return tx.Save(&existing).Error
+		}
+		return tx.Create(log).Error
+	})
+}
+
 func (r *reminderRepository) FindLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.DailyReminderLog, error) {
 	var logs []domain.DailyReminderLog
 	q := r.db.WithContext(ctx).
@@ -144,4 +156,3 @@ func (r *reminderRepository) FindLogsByPatientAndDate(ctx context.Context, patie
 	}
 	return logs, nil
 }
-

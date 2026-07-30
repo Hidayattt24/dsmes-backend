@@ -36,6 +36,10 @@ func (s *historyService) GetPatientHistory(ctx context.Context, patientID string
 	return responses, total, nil
 }
 
+func (s *historyService) DeleteHistoryItem(ctx context.Context, patientID string, activityType string, id string) error {
+	return s.repo.DeleteHistoryItem(ctx, patientID, activityType, id)
+}
+
 func toResponse(item historyRawItem) HistoryItemResponse {
 	metadata := make(map[string]any)
 

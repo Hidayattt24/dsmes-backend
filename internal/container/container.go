@@ -106,6 +106,7 @@ func Build() (*Container, error) {
 		&domain.DailyReminderLog{},
 		&domain.NotificationLog{},
 		&domain.SystemReminderTemplate{},
+		&domain.PatientActivityLog{},
 	); err != nil {
 		logger.Warn("container: failed to auto-migrate models", zap.Error(err))
 	}
