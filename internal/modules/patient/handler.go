@@ -204,7 +204,7 @@ func (h *PatientHandler) ListStaff(c fiber.Ctx) error {
 	}
 
 	items, total, err := h.svc.ListPatients(c.Context(), PatientFilterQuery{
-		StaffID:          claims.UserID,
+		StaffID:          c.Query("staff_id"),
 		Search:           c.Query("search"),
 		Gender:           c.Query("gender"),
 		Status:           c.Query("status"),
@@ -502,11 +502,7 @@ func (h *PatientHandler) GetStats(c fiber.Ctx) error {
 
 // GetStatsStaff handles GET /api/v1/staff/patients/stats
 func (h *PatientHandler) GetStatsStaff(c fiber.Ctx) error {
-	claims := middleware.ClaimsFromContext(c)
-	if claims == nil {
-		return fiber.ErrUnauthorized
-	}
-	res, err := h.svc.GetStats(c.Context(), claims.UserID)
+	res, err := h.svc.GetStats(c.Context(), "")
 	if err != nil {
 		return err
 	}

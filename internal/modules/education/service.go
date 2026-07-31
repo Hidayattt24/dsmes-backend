@@ -179,15 +179,15 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Cre
 
 	// Verify and resolve category
 	var categoryID string
+	var categoryObj *domain.ArticleCategory
 	if req.CategoryName != "" {
-		var category *domain.ArticleCategory
-		category, err = s.repo.FindOrCreateCategoryByName(ctx, req.CategoryName)
+		categoryObj, err = s.repo.FindOrCreateCategoryByName(ctx, req.CategoryName)
 		if err != nil {
 			return nil, err
 		}
-		categoryID = category.ID
-	} else {
-		_, err = s.repo.FindCategoryByID(ctx, req.CategoryID)
+		categoryID = categoryObj.ID
+	} else if req.CategoryID != "" {
+		categoryObj, err = s.repo.FindCategoryByID(ctx, req.CategoryID)
 		if err != nil {
 			return nil, err
 		}
@@ -196,6 +196,7 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Cre
 
 	article.Title = req.Title
 	article.CategoryID = categoryID
+	article.Category = categoryObj
 	article.EstimatedReadMinutes = req.EstimatedReadMinutes
 	article.AuthorName = req.AuthorName
 	article.BannerImageURL = req.BannerImageURL
