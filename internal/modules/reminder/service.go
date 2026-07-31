@@ -194,6 +194,14 @@ func (s *reminderService) MarkAllRead(ctx context.Context, patientID string) err
 	return s.repo.MarkNotificationsAsRead(ctx, patientID)
 }
 
+func (s *reminderService) MarkReadByID(ctx context.Context, patientID string, notifID string) error {
+	return s.repo.MarkNotificationReadByID(ctx, patientID, notifID)
+}
+
+func (s *reminderService) DeleteNotificationByID(ctx context.Context, patientID string, notifID string) error {
+	return s.repo.DeleteNotificationByID(ctx, patientID, notifID)
+}
+
 func (s *reminderService) GetPatientMedicationLogs(ctx context.Context, patientID string, dateStr string) ([]MedicationLogResponse, error) {
 	if dateStr == "" {
 		dateStr = time.Now().Format("2006-01-02")
@@ -220,25 +228,17 @@ func (s *reminderService) GetPatientMedicationLogs(ctx context.Context, patientI
 			continue
 		}
 
-		status := domain.ReminderPending
-		loggedDate := ""
-		logID := ""
-
 		if log, exists := logMap[r.ID]; exists {
-			status = log.Status
-			loggedDate = log.LogDate.Format("2006-01-02")
-			logID = log.ID
+			resp = append(resp, MedicationLogResponse{
+				ID:            log.ID,
+				ReminderID:    r.ID,
+				ActivityName:  r.ActivityName,
+				Category:      r.Category,
+				ScheduledTime: r.ScheduledTime,
+				Status:        log.Status,
+				LoggedDate:    log.LogDate.Format("2006-01-02"),
+			})
 		}
-
-		resp = append(resp, MedicationLogResponse{
-			ID:            logID,
-			ReminderID:    r.ID,
-			ActivityName:  r.ActivityName,
-			Category:      r.Category,
-			ScheduledTime: r.ScheduledTime,
-			Status:        status,
-			LoggedDate:    loggedDate,
-		})
 	}
 
 	return resp, nil

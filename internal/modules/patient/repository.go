@@ -338,6 +338,8 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 		var cals float64
 		if latestMeal.Food != nil {
 			cals = latestMeal.Food.Calories * latestMeal.PortionMultiplier
+			foodName := latestMeal.Food.Name
+			summary.LatestMealName = &foodName
 		}
 		summary.LatestMealCalories = &cals
 		mType := string(latestMeal.MealType)
@@ -377,14 +379,21 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 	}
 	var actResult ActivityResult
 	err = r.db.WithContext(ctx).Raw(`
-		SELECT r.descriptive_name, le.logged_at
-		FROM routine_log_entries le
-		JOIN routine_times rt ON rt.id = le.routine_time_id
-		JOIN routines r ON r.id = rt.routine_id
-		WHERE le.patient_id = ? AND le.status = 'Completed' AND le.deleted_at IS NULL AND rt.deleted_at IS NULL AND r.deleted_at IS NULL
-		ORDER BY le.logged_at DESC
+		SELECT descriptive_name, logged_at
+		FROM (
+			SELECT pal.activity_name AS descriptive_name, pal.logged_at
+			FROM patient_activity_logs pal
+			WHERE pal.patient_id = ? AND pal.deleted_at IS NULL
+			UNION ALL
+			SELECT COALESCE(r.descriptive_name, CAST(r.routine_type AS VARCHAR)) AS descriptive_name, le.logged_at
+			FROM routine_log_entries le
+			JOIN routine_times rt ON rt.id = le.routine_time_id
+			JOIN routines r ON r.id = rt.routine_id
+			WHERE le.patient_id = ? AND le.status = 'Completed' AND le.deleted_at IS NULL AND rt.deleted_at IS NULL AND r.deleted_at IS NULL
+		) combined_act
+		ORDER BY logged_at DESC
 		LIMIT 1
-	`, patientID).Scan(&actResult).Error
+	`, patientID, patientID).Scan(&actResult).Error
 	if err == nil && actResult.DescriptiveName != "" {
 		name := actResult.DescriptiveName
 		summary.LatestActivityName = &name
@@ -469,12 +478,14 @@ func (r *patientRepository) GetPatientSummaries(ctx context.Context, patientIDs 
 		PatientID string
 		Calories  float64
 		MealType  string
+		FoodName  string
 	}
 	var mealResults []MealResult
 	r.db.WithContext(ctx).Raw(`
 		SELECT DISTINCT ON (ml.patient_id) ml.patient_id,
 			COALESCE(f.calories * ml.portion_multiplier, 0) as calories,
-			ml.meal_type
+			ml.meal_type,
+			COALESCE(f.name, '') as food_name
 		FROM meal_logs ml
 		LEFT JOIN foods f ON f.id = ml.food_id AND f.deleted_at IS NULL
 		WHERE ml.patient_id IN ? AND ml.deleted_at IS NULL
@@ -494,14 +505,20 @@ func (r *patientRepository) GetPatientSummaries(ctx context.Context, patientIDs 
 	}
 	var actResults []ActResult
 	r.db.WithContext(ctx).Raw(`
-		SELECT DISTINCT ON (le.patient_id) le.patient_id,
-			r.descriptive_name, le.logged_at
-		FROM routine_log_entries le
-		JOIN routine_times rt ON rt.id = le.routine_time_id AND rt.deleted_at IS NULL
-		JOIN routines r ON r.id = rt.routine_id AND r.deleted_at IS NULL
-		WHERE le.patient_id IN ? AND le.status = 'Completed' AND le.deleted_at IS NULL
-		ORDER BY le.patient_id, le.logged_at DESC
-	`, patientIDs).Scan(&actResults)
+		SELECT DISTINCT ON (patient_id) patient_id, descriptive_name, logged_at
+		FROM (
+			SELECT pal.patient_id, pal.activity_name AS descriptive_name, pal.logged_at
+			FROM patient_activity_logs pal
+			WHERE pal.patient_id IN ? AND pal.deleted_at IS NULL
+			UNION ALL
+			SELECT le.patient_id, COALESCE(r.descriptive_name, CAST(r.routine_type AS VARCHAR)) AS descriptive_name, le.logged_at
+			FROM routine_log_entries le
+			JOIN routine_times rt ON rt.id = le.routine_time_id AND rt.deleted_at IS NULL
+			JOIN routines r ON r.id = rt.routine_id AND r.deleted_at IS NULL
+			WHERE le.patient_id IN ? AND le.status = 'Completed' AND le.deleted_at IS NULL
+		) combined_act
+		ORDER BY patient_id, logged_at DESC
+	`, patientIDs, patientIDs).Scan(&actResults)
 
 	actMap := make(map[string]ActResult, len(actResults))
 	for _, a := range actResults {
@@ -546,6 +563,10 @@ func (r *patientRepository) GetPatientSummaries(ctx context.Context, patientIDs 
 			summary.LatestMealCalories = &m.Calories
 			mType := m.MealType
 			summary.LatestMealType = &mType
+			if m.FoodName != "" {
+				fName := m.FoodName
+				summary.LatestMealName = &fName
+			}
 		}
 
 		if a, ok := actMap[pid]; ok && a.DescriptiveName != "" {

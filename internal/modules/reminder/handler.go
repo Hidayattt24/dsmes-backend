@@ -185,6 +185,32 @@ func (h *ReminderHandler) MarkRead(c fiber.Ctx) error {
 	return response.Success(c, "all notifications marked as read", nil)
 }
 
+func (h *ReminderHandler) MarkNotificationReadByID(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	id := c.Params("id")
+	if err := h.svc.MarkReadByID(c.Context(), claims.UserID, id); err != nil {
+		return err
+	}
+	return response.Success(c, "notification marked as read", nil)
+}
+
+func (h *ReminderHandler) DeleteNotificationByID(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	id := c.Params("id")
+	if err := h.svc.DeleteNotificationByID(c.Context(), claims.UserID, id); err != nil {
+		return err
+	}
+	return response.NoContent(c)
+}
+
 // LogMedication handles POST /api/v1/patient/medications/log
 // @Summary      Log medication as taken/skipped for today
 // @Tags         reminder

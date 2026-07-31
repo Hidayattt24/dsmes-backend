@@ -20,6 +20,7 @@ type Config struct {
 	Log      LogConfig
 	Swagger  SwaggerConfig
 	Email    EmailConfig
+	AI       AIConfig
 }
 
 // AppConfig holds HTTP server and general application settings.
@@ -80,6 +81,13 @@ type EmailConfig struct {
 	ResendFromEmail string `mapstructure:"RESEND_FROM_EMAIL"`
 }
 
+// AIConfig holds AI Provider and API key settings for Personal Diabetes Assistant.
+type AIConfig struct {
+	APIKey   string `mapstructure:"AI_CHATBOT"`
+	Provider string `mapstructure:"AI_PROVIDER"` // gemini | openai | mock
+	Model    string `mapstructure:"AI_MODEL"`    // gemini-1.5-flash | gpt-4o-mini
+}
+
 // Load reads configuration from the .env file and environment variables.
 // Environment variables always override .env values (12-factor app).
 func Load() (*Config, error) {
@@ -117,6 +125,10 @@ func Load() (*Config, error) {
 
 	v.SetDefault("RESEND_API_KEY", "")
 	v.SetDefault("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+
+	v.SetDefault("AI_CHATBOT", "")
+	v.SetDefault("AI_PROVIDER", "gemini")
+	v.SetDefault("AI_MODEL", "gemini-1.5-flash-latest")
 
 	// ── .env file ─────────────────────────────────────────────────────────────
 	v.SetConfigName(".env")
@@ -180,6 +192,11 @@ func Load() (*Config, error) {
 	cfg.Email = EmailConfig{
 		ResendAPIKey:    v.GetString("RESEND_API_KEY"),
 		ResendFromEmail: v.GetString("RESEND_FROM_EMAIL"),
+	}
+	cfg.AI = AIConfig{
+		APIKey:   v.GetString("AI_CHATBOT"),
+		Provider: v.GetString("AI_PROVIDER"),
+		Model:    v.GetString("AI_MODEL"),
 	}
 
 	return cfg, nil

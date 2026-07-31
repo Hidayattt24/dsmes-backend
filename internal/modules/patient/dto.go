@@ -131,6 +131,7 @@ type PatientResponse struct {
 	BMICategory            *string            `json:"bmi_category,omitempty"`
 	LatestMealCalories     *float64           `json:"latest_meal_calories,omitempty"`
 	LatestMealType         *string            `json:"latest_meal_type,omitempty"`
+	LatestMealName         *string            `json:"latest_meal_name,omitempty"`
 	LatestActivityTime     *string            `json:"latest_activity_time,omitempty"`
 	LatestActivityName     *string            `json:"latest_activity_name,omitempty"`
 	WaistCircumferenceCm   *float64           `json:"waist_circumference_cm,omitempty"`
@@ -188,6 +189,7 @@ type PatientSummaryData struct {
 	BMI                    *float64   `json:"bmi,omitempty"`
 	LatestMealCalories     *float64   `json:"latest_meal_calories,omitempty"`
 	LatestMealType         *string    `json:"latest_meal_type,omitempty"`
+	LatestMealName         *string    `json:"latest_meal_name,omitempty"`
 	LatestActivityTime     *time.Time `json:"latest_activity_time_raw,omitempty"`
 	LatestActivityName     *string    `json:"latest_activity_name,omitempty"`
 	TodayConsumedCalories  *float64   `json:"today_consumed_calories,omitempty"`

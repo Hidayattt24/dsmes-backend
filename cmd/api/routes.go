@@ -17,6 +17,7 @@ import (
 
 	"github.com/dsmes/dsmes-backend/internal/container"
 	"github.com/dsmes/dsmes-backend/internal/middleware"
+	"github.com/dsmes/dsmes-backend/internal/modules/ai_chat"
 	"github.com/dsmes/dsmes-backend/internal/modules/auth"
 	"github.com/dsmes/dsmes-backend/internal/modules/blood_sugar"
 	"github.com/dsmes/dsmes-backend/internal/modules/checkin"
@@ -131,6 +132,11 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	dashboardRepo := dashboard.NewDashboardRepository(c.DB, c.Logger)
 	dashboardSvc := dashboard.NewDashboardService(dashboardRepo, c.Logger)
 	dashboardHandler := dashboard.NewDashboardHandler(dashboardSvc, c.Logger)
+
+	// 14. AI Personal Diabetes Assistant
+	aiChatRepo := ai_chat.NewAIChatRepository(c.DB, c.Logger)
+	aiChatSvc := ai_chat.NewAIChatService(aiChatRepo, c.Config.AI, c.Logger)
+	aiChatHandler := ai_chat.NewAIChatHandler(aiChatSvc, c.Logger)
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
 	v1 := app.Group("/api/v1")
@@ -308,6 +314,9 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Notifications inbox
 		patientGroup.Get("/notifications", reminderHandler.GetNotifications)
 		patientGroup.Patch("/notifications/read", reminderHandler.MarkRead)
+		patientGroup.Patch("/notifications/:id/read", reminderHandler.MarkNotificationReadByID)
+		patientGroup.Delete("/notifications/:id", reminderHandler.DeleteNotificationByID)
+		patientGroup.Delete("/notifications", reminderHandler.DeleteNotificationByID)
 
 		// Education bookmarks & completions
 		patientGroup.Post("/education/:id/complete", eduHandler.Complete)
@@ -340,6 +349,26 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Get("/questionnaires/:id/my-attempt", quizHandler.GetMyAttempt)
 		patientGroup.Get("/questionnaires/:id/my-attempt/detail", quizHandler.GetMyAttemptDetail)
 		patientGroup.Post("/questionnaires/:id/submit", quizHandler.Submit)
+
+		// AI Personal Diabetes Assistant
+		patientGroup.Get("/ai/conversations", aiChatHandler.ListConversations)
+		patientGroup.Post("/ai/conversations", aiChatHandler.CreateConversation)
+		patientGroup.Get("/ai/conversations/:id/messages", aiChatHandler.GetMessages)
+		patientGroup.Delete("/ai/conversations/:id", aiChatHandler.DeleteConversation)
+		patientGroup.Post("/ai/chat", aiChatHandler.SendMessage)
+	}
+
+	// ── Protected: AI Group (/api/v1/ai) ──────────────────────────────────────
+	aiGroup := v1.Group("/ai",
+		middleware.JWT(c.Config),
+		middleware.RequireRole("user"),
+	)
+	{
+		aiGroup.Get("/conversations", aiChatHandler.ListConversations)
+		aiGroup.Post("/conversations", aiChatHandler.CreateConversation)
+		aiGroup.Get("/conversations/:id/messages", aiChatHandler.GetMessages)
+		aiGroup.Delete("/conversations/:id", aiChatHandler.DeleteConversation)
+		aiGroup.Post("/chat", aiChatHandler.SendMessage)
 	}
 
 	// ── Authenticated Shared Group (any authenticated role) ───────────────────

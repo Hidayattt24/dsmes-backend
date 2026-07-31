@@ -128,6 +128,30 @@ func (r *reminderRepository) MarkNotificationsAsRead(ctx context.Context, patien
 	return nil
 }
 
+func (r *reminderRepository) MarkNotificationReadByID(ctx context.Context, patientID string, notifID string) error {
+	result := r.db.WithContext(ctx).
+		Model(&domain.NotificationLog{}).
+		Where("id = ? AND patient_id = ?", notifID, patientID).
+		Update("is_read", true)
+	if result.Error != nil {
+		return errs.NewInternal("failed to mark notification as read", result.Error)
+	}
+	return nil
+}
+
+func (r *reminderRepository) DeleteNotificationByID(ctx context.Context, patientID string, notifID string) error {
+	var err error
+	if notifID == "all" || notifID == "" {
+		err = r.db.WithContext(ctx).Model(&domain.NotificationLog{}).Where("patient_id = ?", patientID).Update("deleted_at", gorm.Expr("NOW()")).Error
+	} else {
+		err = r.db.WithContext(ctx).Model(&domain.NotificationLog{}).Where("id = ? AND patient_id = ?", notifID, patientID).Update("deleted_at", gorm.Expr("NOW()")).Error
+	}
+	if err != nil {
+		return errs.NewInternal("failed to delete notification", err)
+	}
+	return nil
+}
+
 func (r *reminderRepository) UpsertLog(ctx context.Context, log *domain.DailyReminderLog) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing domain.DailyReminderLog

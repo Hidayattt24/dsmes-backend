@@ -16,6 +16,8 @@ type ReminderRepository interface {
 
 	FindNotificationsByPatientID(ctx context.Context, patientID string) ([]domain.NotificationLog, error)
 	MarkNotificationsAsRead(ctx context.Context, patientID string) error
+	MarkNotificationReadByID(ctx context.Context, patientID string, notifID string) error
+	DeleteNotificationByID(ctx context.Context, patientID string, notifID string) error
 	FindLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.DailyReminderLog, error)
 }
 
@@ -29,5 +31,7 @@ type ReminderService interface {
 
 	GetNotifications(ctx context.Context, patientID string) ([]NotificationResponse, error)
 	MarkAllRead(ctx context.Context, patientID string) error
+	MarkReadByID(ctx context.Context, patientID string, notifID string) error
+	DeleteNotificationByID(ctx context.Context, patientID string, notifID string) error
 	GetPatientMedicationLogs(ctx context.Context, patientID string, dateStr string) ([]MedicationLogResponse, error)
 }
