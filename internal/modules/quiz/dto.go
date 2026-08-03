@@ -141,7 +141,7 @@ type ParticipantDetailResponse struct {
 }
 
 // PatientQuestionnaireItem is the patient-facing questionnaire list item.
-// It includes whether the patient has already completed it.
+// It includes the questionnaire status and whether the patient has completed it.
 type PatientQuestionnaireItem struct {
 	ID             string  `json:"id"`
 	Title          string  `json:"title"`
@@ -152,6 +152,7 @@ type PatientQuestionnaireItem struct {
 	QuestionCount  int     `json:"question_count"`
 	PassingScore   *int    `json:"passing_score,omitempty"`
 	Difficulty     *string `json:"difficulty,omitempty"`
+	Status         string  `json:"status"` // draft | aktif | nonaktif
 	IsCompleted    bool    `json:"is_completed"`
 	Score          *int    `json:"score,omitempty"`
 }

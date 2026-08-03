@@ -395,6 +395,7 @@ func (r *quizRepository) FindActiveForPatient(ctx context.Context, qType string,
 			QuestionCount:  totalQuest,
 			PassingScore:   qn.PassingScore,
 			Difficulty:     qn.Difficulty,
+			Status:         normalizeStatus(qn.Status),
 			IsCompleted:    isCompleted,
 			Score:          score,
 		})
