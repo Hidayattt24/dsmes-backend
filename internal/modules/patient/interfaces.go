@@ -12,6 +12,7 @@ type PatientRepository interface {
 	FindAll(ctx context.Context, filter PatientFilterQuery) ([]domain.Patient, int64, error)
 	FindByID(ctx context.Context, id string) (*domain.Patient, error)
 	FindByEmail(ctx context.Context, email string) (*domain.Patient, error)
+	FindByPhoneNumber(ctx context.Context, phone string) (*domain.Patient, error)
 	Create(ctx context.Context, p *domain.Patient) error
 	Update(ctx context.Context, p *domain.Patient) error
 	Delete(ctx context.Context, id string) error

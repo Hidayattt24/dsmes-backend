@@ -9,7 +9,7 @@ import (
 )
 
 type RegisterPatientRequest struct {
-	Email                 string  `json:"email"           validate:"required,email"`
+	Email                 string  `json:"email"           validate:"omitempty,email"`
 	Password              string  `json:"password"        validate:"required,min=8"`
 	FullName              string  `json:"full_name"       validate:"required,min=3,max=150"`
 	Nickname              string  `json:"nickname"`
@@ -87,6 +87,7 @@ type AssignStaffRequest struct {
 
 type PatientResponse struct {
 	ID                    string                            `json:"id"`
+	PhoneNumber           string                            `json:"phone_number"`
 	Email                 string                            `json:"email"`
 	FullName              string                            `json:"full_name"`
 	Nickname              string                            `json:"nickname"`
@@ -243,7 +244,8 @@ func ToPatientResponse(p *domain.Patient) PatientResponse {
 
 	resp := PatientResponse{
 		ID:                    p.ID,
-		Email:                 p.Email,
+		PhoneNumber:           p.PhoneNumber,
+		Email:                 p.GetEmail(),
 		FullName:              p.FullName,
 		Nickname:              p.Nickname,
 		WhatsappNumber:        p.WhatsappNumber,

@@ -16,6 +16,7 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
+	"github.com/dsmes/dsmes-backend/internal/pkg/phone"
 )
 
 type patientService struct {
@@ -31,25 +32,42 @@ func NewPatientService(repo PatientRepository, authRepo auth.AuthRepository, jwt
 }
 
 func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatientRequest) (*auth.LoginResponse, error) {
-	// 1. Unique Check
-	_, err := s.repo.FindByEmail(ctx, req.Email)
-	if err == nil {
-		return nil, errs.NewConflict("email already registered")
+	// 1. Phone Number Normalization & Unique Check
+	rawPhone := req.GetPhone()
+	phoneNum, err := phone.Normalize(rawPhone)
+	if err != nil {
+		return nil, errs.NewBadRequest(err.Error())
 	}
 
-	// 2. Hash Password
+	_, err = s.repo.FindByPhoneNumber(ctx, phoneNum)
+	if err == nil {
+		return nil, errs.NewConflict("nomor handphone sudah terdaftar")
+	}
+
+	// 2. Optional Email Check
+	var emailPtr *string
+	cleanEmail := strings.TrimSpace(req.Email)
+	if cleanEmail != "" {
+		_, err := s.repo.FindByEmail(ctx, cleanEmail)
+		if err == nil {
+			return nil, errs.NewConflict("email sudah terdaftar")
+		}
+		emailPtr = &cleanEmail
+	}
+
+	// 3. Hash Password
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, errs.NewInternal("failed to hash password", err)
 	}
 
-	// 3. Optional Parse DOB
+	// 4. Optional Parse DOB
 	var dob time.Time
 	if req.DateOfBirth != "" {
 		dob, _ = ParseDOB(req.DateOfBirth)
 	}
 
-	// 4. Normalize Gender & BloodType & Activity
+	// 5. Normalize Gender & BloodType & Activity
 	gender := domain.GenderLakiLaki
 	if strings.EqualFold(req.Gender, "perempuan") || strings.EqualFold(req.Gender, "female") {
 		gender = domain.GenderPerempuan
@@ -77,11 +95,12 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	}
 
 	patient := &domain.Patient{
-		Email:                 req.Email,
+		PhoneNumber:           phoneNum,
+		Email:                 emailPtr,
 		PasswordHash:          string(hash),
 		FullName:              req.FullName,
 		Nickname:              req.Nickname,
-		WhatsappNumber:        req.GetPhone(),
+		WhatsappNumber:        phoneNum,
 		Gender:                gender,
 		DateOfBirth:           dob,
 		HeightCm:              req.HeightCm,
@@ -92,7 +111,7 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		Status:                domain.StatusAktif,
 	}
 
-	// 4. Seed default routines & times
+	// 6. Seed default routines & times
 	defaultRoutines := []domain.Routine{
 		{
 			RoutineType:     domain.RoutineJalanPagi,
@@ -111,7 +130,7 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		{
 			RoutineType:     domain.RoutineMinumAir,
 			DescriptiveName: "Minum Air Putih",
-			BaseFrequency:   "Setiap 4 jam",
+			BaseFrequency:   "Harian",
 			IsActive:        true,
 			RoutineTimes: []domain.RoutineTime{
 				{
@@ -128,13 +147,13 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 				},
 				{
 					TimeType:       domain.WaktuDefault,
-					ScheduledTime:  strPtr("16:00:00"),
+					ScheduledTime:  strPtr("15:00:00"),
 					Status:         domain.WaktuSet,
 					ReminderActive: true,
 				},
 				{
 					TimeType:       domain.WaktuDefault,
-					ScheduledTime:  strPtr("20:00:00"),
+					ScheduledTime:  strPtr("18:00:00"),
 					Status:         domain.WaktuSet,
 					ReminderActive: true,
 				},
@@ -156,23 +175,26 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		},
 	}
 
-	// 5. Seed default reminders using system templates inside repo transaction
+	// Seed default reminders using system templates inside repo transaction
 	var defaultReminders []domain.Reminder
 
 	if err = s.repo.CreateWithOnboarding(ctx, patient, defaultRoutines, defaultReminders); err != nil {
 		return nil, err
 	}
 
-	// Send welcome email in the background
-	go func() {
-		bgCtx := context.Background()
-		if err := s.email.SendWelcomeEmail(bgCtx, patient.Email, patient.FullName); err != nil {
-			s.log.Warn("patient: welcome email delivery skipped or restricted by Resend test mode", zap.String("email", patient.Email), zap.Error(err))
-		}
-	}()
+	// Send welcome email in the background if email was provided
+	if patient.Email != nil && *patient.Email != "" {
+		targetEmail := *patient.Email
+		go func() {
+			bgCtx := context.Background()
+			if err := s.email.SendWelcomeEmail(bgCtx, targetEmail, patient.FullName); err != nil {
+				s.log.Warn("patient: welcome email delivery skipped or restricted by Resend test mode", zap.String("email", targetEmail), zap.Error(err))
+			}
+		}()
+	}
 
 	// Generate JWT tokens for instant mobile login
-	tokens, err := s.jwt.GenerateTokenPair(patient.ID, patient.Email, "user")
+	tokens, err := s.jwt.GenerateTokenPair(patient.ID, patient.GetEmail(), "user")
 	if err != nil {
 		return nil, errs.NewInternal("failed to generate tokens on register", err)
 	}
@@ -211,10 +233,11 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 
 	return &auth.LoginResponse{
 		User: auth.AuthUserResponse{
-			ID:       patient.ID,
-			FullName: patient.FullName,
-			Email:    patient.Email,
-			Role:     "user",
+			ID:          patient.ID,
+			FullName:    patient.FullName,
+			PhoneNumber: patient.PhoneNumber,
+			Email:       patient.GetEmail(),
+			Role:        "user",
 		},
 		Tokens: *tokens,
 	}, nil

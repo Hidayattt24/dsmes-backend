@@ -13,6 +13,7 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
+	"github.com/dsmes/dsmes-backend/internal/pkg/phone"
 )
 
 type authService struct {
@@ -71,9 +72,14 @@ func (s *authService) StaffLogin(ctx context.Context, req StaffLoginRequest) (*L
 // ── PatientLogin ──────────────────────────────────────────────────────────────
 
 func (s *authService) PatientLogin(ctx context.Context, req PatientLoginRequest) (*LoginResponse, error) {
-	patient, err := s.repo.FindPatientByEmail(ctx, req.Email)
+	phoneNum, err := phone.Normalize(req.PhoneNumber)
 	if err != nil {
-		return nil, errs.NewUnauthorized("invalid email or password")
+		return nil, errs.NewBadRequest(err.Error())
+	}
+
+	patient, err := s.repo.FindPatientByPhoneNumber(ctx, phoneNum)
+	if err != nil {
+		return nil, errs.NewUnauthorized("nomor handphone atau kata sandi tidak valid")
 	}
 
 	if patient.Status == domain.StatusNonaktif {
@@ -81,10 +87,10 @@ func (s *authService) PatientLogin(ctx context.Context, req PatientLoginRequest)
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(patient.PasswordHash), []byte(req.Password)); err != nil {
-		return nil, errs.NewUnauthorized("invalid email or password")
+		return nil, errs.NewUnauthorized("nomor handphone atau kata sandi tidak valid")
 	}
 
-	tokens, err := s.jwt.GenerateTokenPair(patient.ID, patient.Email, "user")
+	tokens, err := s.jwt.GenerateTokenPair(patient.ID, patient.GetEmail(), "user")
 	if err != nil {
 		return nil, errs.NewInternal("failed to generate tokens", err)
 	}
@@ -101,10 +107,11 @@ func (s *authService) PatientLogin(ctx context.Context, req PatientLoginRequest)
 
 	return &LoginResponse{
 		User: AuthUserResponse{
-			ID:       patient.ID,
-			FullName: patient.FullName,
-			Email:    patient.Email,
-			Role:     "user",
+			ID:          patient.ID,
+			FullName:    patient.FullName,
+			PhoneNumber: patient.PhoneNumber,
+			Email:       patient.GetEmail(),
+			Role:        "user",
 		},
 		Tokens: *tokens,
 	}, nil

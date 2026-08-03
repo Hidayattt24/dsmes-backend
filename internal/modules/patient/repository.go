@@ -185,6 +185,22 @@ func (r *patientRepository) FindByEmail(ctx context.Context, email string) (*dom
 	return &p, nil
 }
 
+func (r *patientRepository) FindByPhoneNumber(ctx context.Context, phone string) (*domain.Patient, error) {
+	var p domain.Patient
+	err := r.db.WithContext(ctx).
+		Preload("AssignedStaff").
+		Where("phone_number = ? AND deleted_at IS NULL", phone).
+		First(&p).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("patient not found")
+		}
+		return nil, errs.NewInternal("failed to fetch patient by phone number", err)
+	}
+	return &p, nil
+}
+
+
 func (r *patientRepository) Create(ctx context.Context, p *domain.Patient) error {
 	if err := r.db.WithContext(ctx).Create(p).Error; err != nil {
 		return errs.NewInternal("failed to create patient", err)

@@ -14,6 +14,7 @@ type AuthRepository interface {
 
 	// ── Patient ────────────────────────────────────────────────────────────────
 	FindPatientByEmail(ctx context.Context, email string) (*domain.Patient, error)
+	FindPatientByPhoneNumber(ctx context.Context, phone string) (*domain.Patient, error)
 	FindPatientByID(ctx context.Context, id string) (*domain.Patient, error)
 	UpdatePatientPassword(ctx context.Context, id, hash string) error
 

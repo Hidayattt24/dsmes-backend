@@ -25,11 +25,12 @@ const (
 type Patient struct {
 	BaseModel
 
-	Email               string        `gorm:"type:varchar(150);uniqueIndex:idx_patients_email;not null" json:"email"`
+	PhoneNumber         string        `gorm:"type:varchar(20);uniqueIndex:idx_patients_phone_number;not null" json:"phone_number"`
+	Email               *string       `gorm:"type:varchar(150);uniqueIndex:idx_patients_email" json:"email"`
 	PasswordHash        string        `gorm:"type:varchar(255);not null" json:"-"`
 	FullName            string        `gorm:"type:varchar(150);not null" json:"full_name"`
 	Nickname            string        `gorm:"type:varchar(50)" json:"nickname"`
-	WhatsappNumber      string        `gorm:"type:varchar(20);not null" json:"whatsapp_number"`
+	WhatsappNumber      string        `gorm:"type:varchar(20)" json:"whatsapp_number"`
 	Gender              Gender        `gorm:"type:gender_enum;not null" json:"gender"`
 	DateOfBirth         time.Time     `gorm:"type:date;not null" json:"date_of_birth"`
 	HeightCm            float64       `gorm:"type:numeric(5,2)" json:"height_cm"`
@@ -70,3 +71,10 @@ type Patient struct {
 }
 
 func (Patient) TableName() string { return "patients" }
+
+func (p *Patient) GetEmail() string {
+	if p.Email != nil {
+		return *p.Email
+	}
+	return ""
+}
