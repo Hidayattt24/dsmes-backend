@@ -48,6 +48,10 @@ func main() {
 		"000007_add_patient_measurements_and_calorie_recommendations.up.sql",
 		"000008_add_education_tracking_and_activities.up.sql",
 		"000009_fix_quiz_fk_constraints.up.sql",
+		"000010_create_patient_activity_logs.up.sql",
+		"000011_create_ai_chat_tables.up.sql",
+		"000012_auth_phone_number_primary.up.sql",
+		"000013_pre_test_dmses_refactor.up.sql",
 	}
 
 

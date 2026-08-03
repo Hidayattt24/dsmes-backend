@@ -96,6 +96,21 @@ func Build() (*Container, error) {
 		return nil, fmt.Errorf("container: failed to connect to database: %w", err)
 	}
 
+	// Apply critical schema additions via raw SQL before AutoMigrate.
+	// This ensures columns exist even if golang-migrate hasn't been run manually.
+	// All statements use IF NOT EXISTS so they are safe to re-run.
+	criticalAlters := []string{
+		`ALTER TABLE questions ADD COLUMN IF NOT EXISTS question_image_url TEXT`,
+		`ALTER TABLE questions ALTER COLUMN category_id DROP NOT NULL`,
+		`ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS self_efficacy_category VARCHAR(50)`,
+		`ALTER TABLE quiz_answers ADD COLUMN IF NOT EXISTS selected_value INT`,
+	}
+	for _, stmt := range criticalAlters {
+		if err := db.Exec(stmt).Error; err != nil {
+			logger.Warn("container: schema patch skipped (column may already exist or table not ready)", zap.String("stmt", stmt), zap.Error(err))
+		}
+	}
+
 	// Auto-migrate all domain models
 	if err := db.AutoMigrate(
 		&domain.Patient{},
@@ -108,6 +123,12 @@ func Build() (*Container, error) {
 		&domain.NotificationLog{},
 		&domain.SystemReminderTemplate{},
 		&domain.PatientActivityLog{},
+		&domain.Questionnaire{},
+		&domain.QuestionCategory{},
+		&domain.Question{},
+		&domain.QuestionOption{},
+		&domain.QuizAttempt{},
+		&domain.QuizAnswer{},
 	); err != nil {
 		logger.Warn("container: failed to auto-migrate models", zap.Error(err))
 	}
