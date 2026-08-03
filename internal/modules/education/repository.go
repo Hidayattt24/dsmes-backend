@@ -249,6 +249,36 @@ func (r *educationRepository) FindSavedArticles(ctx context.Context, patientID s
 	return items, nil
 }
 
+func (r *educationRepository) BroadcastEducationNotification(ctx context.Context, message string, articleID string) error {
+	var patientIDs []string
+	if err := r.db.WithContext(ctx).
+		Model(&domain.Patient{}).
+		Where("deleted_at IS NULL").
+		Pluck("id", &patientIDs).Error; err != nil {
+		return errs.NewInternal("failed to fetch patient ids", err)
+	}
+
+	if len(patientIDs) == 0 {
+		return nil
+	}
+
+	logs := make([]domain.NotificationLog, 0, len(patientIDs))
+	for _, pid := range patientIDs {
+		logs = append(logs, domain.NotificationLog{
+			PatientID:   pid,
+			MessageText: message,
+			NotifiedAt:  time.Now(),
+			NotifType:   "education",
+			ArticleID:   &articleID,
+		})
+	}
+
+	if err := r.db.WithContext(ctx).Create(&logs).Error; err != nil {
+		return errs.NewInternal("failed to broadcast education notification", err)
+	}
+	return nil
+}
+
 func (r *educationRepository) ReplaceSections(ctx context.Context, articleID string, sections []domain.ArticleSection) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Clean steps

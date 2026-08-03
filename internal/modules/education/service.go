@@ -2,6 +2,7 @@ package education
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -167,6 +168,12 @@ func (s *educationService) CreateArticle(ctx context.Context, staffID string, re
 		return nil, err
 	}
 
+	// Broadcast new-education notification to all patients when article is
+	// created directly as published (active).
+	if article.Status == domain.StatusPublikasi {
+		s.broadcastEducationNotif(ctx, article.Title, article.ID)
+	}
+
 	res := ToArticleDetailResponse(refetched)
 	return &res, nil
 }
@@ -248,7 +255,38 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Cre
 }
 
 func (s *educationService) PublishArticle(ctx context.Context, id string) error {
-	return s.repo.PublishArticle(ctx, id)
+	article, err := s.repo.FindArticleByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := s.repo.PublishArticle(ctx, id); err != nil {
+		return err
+	}
+
+	// Broadcast only when transitioning from draft to published to avoid
+	// duplicate notifications on re-publish.
+	if article.Status != domain.StatusPublikasi {
+		s.broadcastEducationNotif(ctx, article.Title, article.ID)
+	}
+
+	return nil
+}
+
+// broadcastEducationNotif asynchronously pushes a notification_log entry to
+// every active patient. It runs in a goroutine so it never blocks the request.
+func (s *educationService) broadcastEducationNotif(ctx context.Context, title string, articleID string) {
+	message := fmt.Sprintf("Materi edukasi baru: %s", title)
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.repo.BroadcastEducationNotification(bgCtx, message, articleID); err != nil {
+			s.log.Warn("failed to broadcast education notification",
+				zap.String("article_id", articleID),
+				zap.Error(err),
+			)
+		}
+	}()
 }
 
 func (s *educationService) CompleteArticle(ctx context.Context, patientID string, id string) error {

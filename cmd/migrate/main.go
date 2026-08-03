@@ -52,8 +52,8 @@ func main() {
 		"000011_create_ai_chat_tables.up.sql",
 		"000012_auth_phone_number_primary.up.sql",
 		"000013_pre_test_dmses_refactor.up.sql",
+		"000014_add_notif_type_to_notification_logs.up.sql",
 	}
-
 
 	for _, fileName := range migrationFiles {
 		filePath := filepath.Join("migrations", fileName)

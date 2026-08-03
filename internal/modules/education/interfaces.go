@@ -27,6 +27,10 @@ type EducationRepository interface {
 	GetPatientSavedMap(ctx context.Context, patientID string) (map[string]bool, error)
 	GetPatientCompletedMap(ctx context.Context, patientID string) (map[string]bool, error)
 
+	// BroadcastEducationNotification inserts an education notification into
+	// every active patient's notification_logs inbox.
+	BroadcastEducationNotification(ctx context.Context, message string, articleID string) error
+
 	// Transactional updates for sections/steps
 	ReplaceSections(ctx context.Context, articleID string, sections []domain.ArticleSection) error
 }

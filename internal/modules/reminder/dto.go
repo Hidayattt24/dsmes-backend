@@ -33,6 +33,8 @@ type NotificationResponse struct {
 	MessageText string  `json:"message_text"`
 	NotifiedAt  string  `json:"notified_at"`
 	IsRead      bool    `json:"is_read"`
+	NotifType   string  `json:"notif_type"`
+	ArticleID   *string `json:"article_id"`
 }
 
 func ToReminderResponse(r *domain.Reminder) ReminderResponse {

@@ -87,6 +87,8 @@ type NotificationLog struct {
 	MessageText string    `gorm:"type:text;not null" json:"message_text"`
 	NotifiedAt  time.Time `gorm:"not null;default:now()" json:"notified_at"`
 	IsRead      bool      `gorm:"not null;default:false" json:"is_read"`
+	NotifType   string    `gorm:"type:varchar(50);not null;default:reminder" json:"notif_type"`
+	ArticleID   *string   `gorm:"type:uuid" json:"article_id"`
 }
 
 func (NotificationLog) TableName() string { return "notification_logs" }

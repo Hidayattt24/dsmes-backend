@@ -185,6 +185,8 @@ func (s *reminderService) GetNotifications(ctx context.Context, patientID string
 			MessageText: items[i].MessageText,
 			NotifiedAt:  items[i].NotifiedAt.Format(time.RFC3339),
 			IsRead:      items[i].IsRead,
+			NotifType:   items[i].NotifType,
+			ArticleID:   items[i].ArticleID,
 		}
 	}
 	return resp, nil
