@@ -145,3 +145,20 @@ type PatientEducationActivity struct {
 }
 
 func (PatientEducationActivity) TableName() string { return "patient_education_activities" }
+
+// EducationReview represents user feedback and rating for an educational article.
+type EducationReview struct {
+	BaseModel
+
+	EducationID string   `gorm:"type:uuid;not null;uniqueIndex:uq_education_patient_review" json:"education_id"`
+	PatientID   string   `gorm:"type:uuid;not null;uniqueIndex:uq_education_patient_review" json:"patient_id"`
+	Rating      int      `gorm:"not null" json:"rating"`
+	Note        string   `gorm:"type:text" json:"note"`
+
+	// Relations
+	Patient   *Patient `gorm:"foreignKey:PatientID" json:"patient,omitempty"`
+	Education *Article `gorm:"foreignKey:EducationID" json:"education,omitempty"`
+}
+
+func (EducationReview) TableName() string { return "education_reviews" }
+

@@ -59,8 +59,9 @@ type MarkActionRequest struct {
 }
 
 type MarkArticleReadRequest struct {
-	ReadingDuration    int `json:"reading_duration" validate:"gte=0"`
-	LastScrollPosition int `json:"last_scroll_position" validate:"gte=0,lte=100"`
+	ReadingDuration    int  `json:"reading_duration" validate:"gte=0"`
+	LastScrollPosition int  `json:"last_scroll_position" validate:"gte=0,lte=100"`
+	IsCompleted        bool `json:"is_completed"`
 }
 
 type MarkVideoWatchedRequest struct {

@@ -351,3 +351,107 @@ func (r *educationRepository) GetStats(ctx context.Context) (*EducationStats, er
 		TotalReads:        totalReads,
 	}, nil
 }
+
+func (r *educationRepository) UpsertReview(ctx context.Context, review *domain.EducationReview) error {
+	err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "education_id"}, {Name: "patient_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"rating", "note", "updated_at"}),
+		}).
+		Create(review).Error
+	if err != nil {
+		return errs.NewInternal("failed to upsert education review", err)
+	}
+	return nil
+}
+
+func (r *educationRepository) GetReviewByPatientAndArticle(ctx context.Context, patientID string, educationID string) (*domain.EducationReview, error) {
+	var rev domain.EducationReview
+	err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND education_id = ? AND deleted_at IS NULL", patientID, educationID).
+		First(&rev).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, errs.NewInternal("failed to fetch review", err)
+	}
+	return &rev, nil
+}
+
+func (r *educationRepository) GetRatingSummary(ctx context.Context, educationID string) (average float64, count int64, dist RatingDistribution, err error) {
+	var result struct {
+		AvgRating float64 `gorm:"column:avg_rating"`
+		Total     int64   `gorm:"column:total"`
+		Star1     int64   `gorm:"column:star_1"`
+		Star2     int64   `gorm:"column:star_2"`
+		Star3     int64   `gorm:"column:star_3"`
+		Star4     int64   `gorm:"column:star_4"`
+		Star5     int64   `gorm:"column:star_5"`
+	}
+
+	err = r.db.WithContext(ctx).Raw(`
+		SELECT
+			COALESCE(AVG(rating), 0) AS avg_rating,
+			COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE rating = 1) AS star_1,
+			COUNT(*) FILTER (WHERE rating = 2) AS star_2,
+			COUNT(*) FILTER (WHERE rating = 3) AS star_3,
+			COUNT(*) FILTER (WHERE rating = 4) AS star_4,
+			COUNT(*) FILTER (WHERE rating = 5) AS star_5
+		FROM education_reviews
+		WHERE education_id = ? AND deleted_at IS NULL
+	`, educationID).Scan(&result).Error
+
+	if err != nil {
+		return 0, 0, RatingDistribution{}, errs.NewInternal("failed to fetch rating summary", err)
+	}
+
+	dist = RatingDistribution{
+		Star1: result.Star1,
+		Star2: result.Star2,
+		Star3: result.Star3,
+		Star4: result.Star4,
+		Star5: result.Star5,
+	}
+
+	return result.AvgRating, result.Total, dist, nil
+}
+
+func (r *educationRepository) GetAdminReviews(ctx context.Context, educationID string) ([]domain.EducationReview, map[string]string, map[string]*time.Time, error) {
+	var reviews []domain.EducationReview
+	err := r.db.WithContext(ctx).
+		Where("education_id = ? AND deleted_at IS NULL", educationID).
+		Order("created_at DESC").
+		Find(&reviews).Error
+	if err != nil {
+		return nil, nil, nil, errs.NewInternal("failed to fetch admin reviews", err)
+	}
+
+	patientNames := make(map[string]string)
+	completionDates := make(map[string]*time.Time)
+
+	if len(reviews) > 0 {
+		patientIDs := make([]string, 0, len(reviews))
+		for _, rev := range reviews {
+			patientIDs = append(patientIDs, rev.PatientID)
+		}
+
+		var patients []domain.Patient
+		if err := r.db.WithContext(ctx).Where("id IN ?", patientIDs).Find(&patients).Error; err == nil {
+			for _, p := range patients {
+				patientNames[p.ID] = p.FullName
+			}
+		}
+
+		var completions []domain.UserArticleCompletion
+		if err := r.db.WithContext(ctx).Where("article_id = ? AND patient_id IN ?", educationID, patientIDs).Find(&completions).Error; err == nil {
+			for _, c := range completions {
+				completionDates[c.PatientID] = c.CompletedAt
+			}
+		}
+	}
+
+	return reviews, patientNames, completionDates, nil
+}
+

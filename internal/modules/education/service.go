@@ -349,3 +349,139 @@ func (s *educationService) DeleteArticle(ctx context.Context, id string) error {
 func (s *educationService) GetStats(ctx context.Context) (*EducationStats, error) {
 	return s.repo.GetStats(ctx)
 }
+
+func (s *educationService) SubmitReview(ctx context.Context, patientID string, educationID string, req CreateReviewRequest) (*EducationReviewResponse, error) {
+	if _, err := s.repo.FindArticleByID(ctx, educationID); err != nil {
+		return nil, err
+	}
+
+	review := &domain.EducationReview{
+		EducationID: educationID,
+		PatientID:   patientID,
+		Rating:      req.Rating,
+		Note:        req.Note,
+	}
+
+	if err := s.repo.UpsertReview(ctx, review); err != nil {
+		return nil, err
+	}
+
+	saved, err := s.repo.GetReviewByPatientAndArticle(ctx, patientID, educationID)
+	if err != nil || saved == nil {
+		saved = review
+	}
+
+	res := &EducationReviewResponse{
+		ID:          saved.ID,
+		EducationID: saved.EducationID,
+		PatientID:   saved.PatientID,
+		Rating:      saved.Rating,
+		Note:        saved.Note,
+		CreatedAt:   saved.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   saved.UpdatedAt.Format(time.RFC3339),
+	}
+	return res, nil
+}
+
+func (s *educationService) GetPatientReview(ctx context.Context, patientID string, educationID string) (*EducationReviewResponse, error) {
+	rev, err := s.repo.GetReviewByPatientAndArticle(ctx, patientID, educationID)
+	if err != nil {
+		return nil, err
+	}
+	if rev == nil {
+		return nil, nil
+	}
+	res := &EducationReviewResponse{
+		ID:          rev.ID,
+		EducationID: rev.EducationID,
+		PatientID:   rev.PatientID,
+		Rating:      rev.Rating,
+		Note:        rev.Note,
+		CreatedAt:   rev.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   rev.UpdatedAt.Format(time.RFC3339),
+	}
+	return res, nil
+}
+
+func (s *educationService) GetRatingSummary(ctx context.Context, educationID string, patientID *string) (*ArticleRatingResponse, error) {
+	if _, err := s.repo.FindArticleByID(ctx, educationID); err != nil {
+		return nil, err
+	}
+
+	avg, total, dist, err := s.repo.GetRatingSummary(ctx, educationID)
+	if err != nil {
+		return nil, err
+	}
+
+	var userReviewResp *EducationReviewResponse
+	if patientID != nil && *patientID != "" {
+		rev, err := s.repo.GetReviewByPatientAndArticle(ctx, *patientID, educationID)
+		if err == nil && rev != nil {
+			userReviewResp = &EducationReviewResponse{
+				ID:          rev.ID,
+				EducationID: rev.EducationID,
+				PatientID:   rev.PatientID,
+				Rating:      rev.Rating,
+				Note:        rev.Note,
+				CreatedAt:   rev.CreatedAt.Format(time.RFC3339),
+				UpdatedAt:   rev.UpdatedAt.Format(time.RFC3339),
+			}
+		}
+	}
+
+	return &ArticleRatingResponse{
+		AverageRating:      avg,
+		TotalReviews:       total,
+		RatingDistribution: dist,
+		CurrentUserReview:  userReviewResp,
+	}, nil
+}
+
+func (s *educationService) GetAdminReviews(ctx context.Context, educationID string) (*AdminArticleReviewsResponse, error) {
+	if _, err := s.repo.FindArticleByID(ctx, educationID); err != nil {
+		return nil, err
+	}
+
+	avg, total, dist, err := s.repo.GetRatingSummary(ctx, educationID)
+	if err != nil {
+		return nil, err
+	}
+
+	reviews, patientNames, completionDates, err := s.repo.GetAdminReviews(ctx, educationID)
+	if err != nil {
+		return nil, err
+	}
+
+	list := make([]EducationReviewResponse, len(reviews))
+	for i, r := range reviews {
+		name := patientNames[r.PatientID]
+		if name == "" {
+			name = "Pasien"
+		}
+		var compStr *string
+		if cDate, ok := completionDates[r.PatientID]; ok && cDate != nil {
+			formatted := cDate.Format(time.RFC3339)
+			compStr = &formatted
+		}
+
+		list[i] = EducationReviewResponse{
+			ID:             r.ID,
+			EducationID:    r.EducationID,
+			PatientID:      r.PatientID,
+			PatientName:    name,
+			Rating:         r.Rating,
+			Note:           r.Note,
+			CompletionDate: compStr,
+			CreatedAt:      r.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:      r.UpdatedAt.Format(time.RFC3339),
+		}
+	}
+
+	return &AdminArticleReviewsResponse{
+		AverageRating:      avg,
+		TotalReviews:       total,
+		RatingDistribution: dist,
+		Reviews:            list,
+	}, nil
+}
+

@@ -338,3 +338,65 @@ func (h *EducationHandler) GetStats(c fiber.Ctx) error {
 	}
 	return response.Success(c, "education statistics retrieved", res)
 }
+
+func (h *EducationHandler) SubmitReview(c fiber.Ctx) error {
+	id := c.Params("id")
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil || claims.UserID == "" {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	var req CreateReviewRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.SubmitReview(c.Context(), claims.UserID, id, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "review submitted successfully", res)
+}
+
+func (h *EducationHandler) GetReview(c fiber.Ctx) error {
+	id := c.Params("id")
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil || claims.UserID == "" {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	res, err := h.svc.GetPatientReview(c.Context(), claims.UserID, id)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "review retrieved", res)
+}
+
+func (h *EducationHandler) GetRatingSummary(c fiber.Ctx) error {
+	id := c.Params("id")
+	claims := middleware.ClaimsFromContext(c)
+	var patientID *string
+	if claims != nil && claims.Role == "user" {
+		patientID = &claims.UserID
+	}
+
+	res, err := h.svc.GetRatingSummary(c.Context(), id, patientID)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "rating summary retrieved", res)
+}
+
+func (h *EducationHandler) GetAdminReviews(c fiber.Ctx) error {
+	id := c.Params("id")
+	res, err := h.svc.GetAdminReviews(c.Context(), id)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "admin article reviews retrieved", res)
+}
+

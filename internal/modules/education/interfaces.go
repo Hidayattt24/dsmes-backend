@@ -2,6 +2,7 @@ package education
 
 import (
 	"context"
+	"time"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 )
@@ -33,6 +34,12 @@ type EducationRepository interface {
 
 	// Transactional updates for sections/steps
 	ReplaceSections(ctx context.Context, articleID string, sections []domain.ArticleSection) error
+
+	// Reviews & Ratings
+	UpsertReview(ctx context.Context, review *domain.EducationReview) error
+	GetReviewByPatientAndArticle(ctx context.Context, patientID string, educationID string) (*domain.EducationReview, error)
+	GetRatingSummary(ctx context.Context, educationID string) (average float64, count int64, dist RatingDistribution, err error)
+	GetAdminReviews(ctx context.Context, educationID string) ([]domain.EducationReview, map[string]string, map[string]*time.Time, error)
 }
 
 type EducationService interface {
@@ -49,4 +56,11 @@ type EducationService interface {
 	SaveArticle(ctx context.Context, patientID string, id string) error
 	UnsaveArticle(ctx context.Context, patientID string, id string) error
 	ListSavedArticles(ctx context.Context, patientID string) ([]ArticleListResponse, error)
+
+	// Reviews & Ratings
+	SubmitReview(ctx context.Context, patientID string, educationID string, req CreateReviewRequest) (*EducationReviewResponse, error)
+	GetPatientReview(ctx context.Context, patientID string, educationID string) (*EducationReviewResponse, error)
+	GetRatingSummary(ctx context.Context, educationID string, patientID *string) (*ArticleRatingResponse, error)
+	GetAdminReviews(ctx context.Context, educationID string) (*AdminArticleReviewsResponse, error)
 }
+

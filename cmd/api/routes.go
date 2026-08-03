@@ -202,11 +202,13 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Patch("/education/articles/:id/publish", eduHandler.Publish)
 		admin.Delete("/education/articles/:id", eduHandler.Delete)
 
-		// Education Progress Tracking
+		// Education Progress Tracking & Reviews
 		admin.Get("/education/:id/progress", eduProgressHandler.GetArticleProgress)
 		admin.Get("/education/:id/progress/analytics", eduProgressHandler.GetArticleAnalytics)
 		admin.Post("/education/:id/progress/read-article", eduProgressHandler.MarkArticleReadAdmin)
 		admin.Post("/education/:id/progress/watch-video", eduProgressHandler.MarkVideoWatchedAdmin)
+		admin.Get("/education/:id/reviews", eduHandler.GetAdminReviews)
+
 
 		// Quiz / Questionnaire Management
 		admin.Get("/quiz/stats", quizHandler.GetStats)
@@ -325,9 +327,14 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Get("/education/saved", eduHandler.ListSaved)
 
 		// Education Progress (Mobile-ready API)
+		admin.Get("/education/:id/progress", eduProgressHandler.GetPatientProgress)
 		patientGroup.Get("/education/:id/progress", eduProgressHandler.GetPatientProgress)
 		patientGroup.Post("/education/:id/read-article", eduProgressHandler.MarkArticleRead)
 		patientGroup.Post("/education/:id/watch-video", eduProgressHandler.MarkVideoWatched)
+		patientGroup.Post("/education/:id/review", eduHandler.SubmitReview)
+		patientGroup.Get("/education/:id/review", eduHandler.GetReview)
+		patientGroup.Get("/education/:id/rating", eduHandler.GetRatingSummary)
+
 
 		// Weekly analytical summary cards
 		patientGroup.Get("/summary/weekly", summaryHandler.GetLatest)
@@ -378,6 +385,10 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	v1.Get("/education/categories", jwtAuth, eduHandler.ListCategories)
 	v1.Get("/education/articles", jwtAuth, eduHandler.ListPublished)
 	v1.Get("/education/articles/:id", jwtAuth, eduHandler.GetByID)
+	v1.Post("/education/:id/review", jwtAuth, eduHandler.SubmitReview)
+	v1.Get("/education/:id/review", jwtAuth, eduHandler.GetReview)
+	v1.Get("/education/:id/rating", jwtAuth, eduHandler.GetRatingSummary)
+
 
 	// ── Internal / Cron Group ─────────────────────────────────────────────────
 	internal := v1.Group("/internal")

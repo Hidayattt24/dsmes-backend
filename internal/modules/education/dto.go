@@ -137,3 +137,43 @@ func ToArticleDetailResponse(a *domain.Article) ArticleDetailResponse {
 		Sections:            sections,
 	}
 }
+
+type CreateReviewRequest struct {
+	Rating int    `json:"rating" validate:"required,min=1,max=5"`
+	Note   string `json:"note"   validate:"max=500"`
+}
+
+type EducationReviewResponse struct {
+	ID             string  `json:"id"`
+	EducationID    string  `json:"education_id"`
+	PatientID      string  `json:"patient_id"`
+	PatientName    string  `json:"patient_name,omitempty"`
+	Rating         int     `json:"rating"`
+	Note           string  `json:"note"`
+	CompletionDate *string `json:"completion_date,omitempty"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+}
+
+type RatingDistribution struct {
+	Star1 int64 `json:"star_1"`
+	Star2 int64 `json:"star_2"`
+	Star3 int64 `json:"star_3"`
+	Star4 int64 `json:"star_4"`
+	Star5 int64 `json:"star_5"`
+}
+
+type ArticleRatingResponse struct {
+	AverageRating      float64                  `json:"average_rating"`
+	TotalReviews       int64                    `json:"total_reviews"`
+	RatingDistribution RatingDistribution       `json:"rating_distribution"`
+	CurrentUserReview  *EducationReviewResponse `json:"current_user_review,omitempty"`
+}
+
+type AdminArticleReviewsResponse struct {
+	AverageRating      float64                   `json:"average_rating"`
+	TotalReviews       int64                     `json:"total_reviews"`
+	RatingDistribution RatingDistribution        `json:"rating_distribution"`
+	Reviews            []EducationReviewResponse `json:"reviews"`
+}
+

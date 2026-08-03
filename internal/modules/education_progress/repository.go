@@ -80,17 +80,18 @@ func (r *educationProgressRepository) FindAllByArticle(ctx context.Context, arti
 }
 
 func (r *educationProgressRepository) FindByPatientAndArticle(ctx context.Context, patientID, articleID string) (*domain.UserArticleCompletion, error) {
-	var item domain.UserArticleCompletion
+	var items []domain.UserArticleCompletion
 	err := r.db.WithContext(ctx).
 		Where("patient_id = ? AND article_id = ? AND deleted_at IS NULL", patientID, articleID).
-		First(&item).Error
+		Limit(1).
+		Find(&items).Error
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, nil
-		}
 		return nil, errs.NewInternal("failed to fetch patient progress", err)
 	}
-	return &item, nil
+	if len(items) == 0 {
+		return nil, nil
+	}
+	return &items[0], nil
 }
 
 func (r *educationProgressRepository) FindAllByPatient(ctx context.Context, patientID string) ([]domain.UserArticleCompletion, error) {

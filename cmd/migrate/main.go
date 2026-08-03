@@ -53,6 +53,7 @@ func main() {
 		"000012_auth_phone_number_primary.up.sql",
 		"000013_pre_test_dmses_refactor.up.sql",
 		"000014_add_notif_type_to_notification_logs.up.sql",
+		"000015_create_education_reviews.up.sql",
 	}
 
 	for _, fileName := range migrationFiles {

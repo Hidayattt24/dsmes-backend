@@ -64,7 +64,7 @@ func (s *educationProgressService) GetArticleAnalytics(ctx context.Context, arti
 	return s.repo.GetAnalytics(ctx, articleID)
 }
 
-func (s *educationProgressService) MarkArticleRead(ctx context.Context, patientID, articleID string, readingDuration, lastScroll int) error {
+func (s *educationProgressService) MarkArticleRead(ctx context.Context, patientID, articleID string, readingDuration, lastScroll int, isCompleted bool) error {
 	_, err := s.eduRepo.FindArticleByID(ctx, articleID)
 	if err != nil {
 		return err
@@ -76,7 +76,6 @@ func (s *educationProgressService) MarkArticleRead(ctx context.Context, patientI
 	}
 
 	now := time.Now()
-	isCompleting := true
 
 	if existing != nil {
 		if existing.ArticleReadingDuration == 0 {
@@ -88,20 +87,18 @@ func (s *educationProgressService) MarkArticleRead(ctx context.Context, patientI
 			existing.ArticleLastScrollPosition = lastScroll
 		}
 
-		if !existing.ArticleRead {
-			existing.ArticleRead = true
-			existing.ArticleReadAt = &now
-			existing.ArticleFinishedAt = &now
-			_ = s.repo.LogActivity(ctx, patientID, articleID, "COMPLETE_READ", `{"status":"completed"}`)
-		}
+		if isCompleted {
+			if !existing.ArticleRead {
+				existing.ArticleRead = true
+				existing.ArticleReadAt = &now
+				existing.ArticleFinishedAt = &now
+				_ = s.repo.LogActivity(ctx, patientID, articleID, "COMPLETE_READ", `{"status":"completed"}`)
+			}
 
-		if (existing.ArticleRead || existing.YouTubeWatched) && existing.CompletedAt == nil {
-			existing.CompletedAt = &now
-			if existing.CompletionSource == "" {
-				if existing.ArticleRead {
+			if existing.CompletedAt == nil {
+				existing.CompletedAt = &now
+				if existing.CompletionSource == "" {
 					existing.CompletionSource = "ARTICLE"
-				} else {
-					existing.CompletionSource = "VIDEO"
 				}
 			}
 		}
@@ -116,7 +113,7 @@ func (s *educationProgressService) MarkArticleRead(ctx context.Context, patientI
 	var finishedAt *time.Time
 	var source string
 
-	if isCompleting {
+	if isCompleted {
 		readAt = &now
 		finishedAt = &now
 		completedAt = &now
@@ -127,7 +124,7 @@ func (s *educationProgressService) MarkArticleRead(ctx context.Context, patientI
 	progress := &domain.UserArticleCompletion{
 		PatientID:                 patientID,
 		ArticleID:                 articleID,
-		ArticleRead:               isCompleting,
+		ArticleRead:               isCompleted,
 		ArticleReadAt:             readAt,
 		ArticleStartedAt:          &now,
 		ArticleFinishedAt:         finishedAt,

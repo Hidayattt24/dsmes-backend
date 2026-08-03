@@ -56,7 +56,7 @@ func (h *EducationProgressHandler) MarkArticleRead(c fiber.Ctx) error {
 	_ = c.Bind().Body(&req)
 
 	articleID := c.Params("id")
-	if err := h.svc.MarkArticleRead(c.Context(), claims.UserID, articleID, req.ReadingDuration, req.LastScrollPosition); err != nil {
+	if err := h.svc.MarkArticleRead(c.Context(), claims.UserID, articleID, req.ReadingDuration, req.LastScrollPosition, req.IsCompleted); err != nil {
 		return err
 	}
 	return response.Success(c, "article marked as read", nil)
@@ -118,8 +118,8 @@ func (h *EducationProgressHandler) MarkArticleReadAdmin(c fiber.Ctx) error {
 	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
 		return response.ValidationError(c, fieldErrs)
 	}
-	// Admin force-marks with duration=0 and scroll=100 (fully read)
-	if err := h.svc.MarkArticleRead(c.Context(), req.PatientID, articleID, 0, 100); err != nil {
+	// Admin force-marks with duration=0, scroll=100, and isCompleted=true
+	if err := h.svc.MarkArticleRead(c.Context(), req.PatientID, articleID, 0, 100, true); err != nil {
 		return err
 	}
 	return response.Success(c, "article marked as read", nil)
