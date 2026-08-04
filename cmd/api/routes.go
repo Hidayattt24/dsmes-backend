@@ -33,6 +33,7 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/modules/settings"
 	"github.com/dsmes/dsmes-backend/internal/modules/staff"
 	"github.com/dsmes/dsmes-backend/internal/modules/summary"
+	"github.com/dsmes/dsmes-backend/internal/modules/survey"
 	"github.com/dsmes/dsmes-backend/internal/pkg/response"
 )
 
@@ -137,6 +138,11 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	aiChatRepo := ai_chat.NewAIChatRepository(c.DB, c.Logger)
 	aiChatSvc := ai_chat.NewAIChatService(aiChatRepo, c.Config.AI, c.Logger)
 	aiChatHandler := ai_chat.NewAIChatHandler(aiChatSvc, c.Logger)
+
+	// 15. Survey Module
+	surveyRepo := survey.NewSurveyRepository(c.DB)
+	surveySvc := survey.NewSurveyService(surveyRepo, c.Logger)
+	surveyHandler := survey.NewSurveyHandler(surveySvc, c.Logger)
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
 	v1 := app.Group("/api/v1")
@@ -364,6 +370,9 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Delete("/ai/conversations/:id", aiChatHandler.DeleteConversation)
 		patientGroup.Post("/ai/chat", aiChatHandler.SendMessage)
 	}
+
+	// Register Survey Module Routes
+	survey.RegisterRoutes(admin, staff, patientGroup, surveyHandler)
 
 	// ── Protected: AI Group (/api/v1/ai) ──────────────────────────────────────
 	aiGroup := v1.Group("/ai",

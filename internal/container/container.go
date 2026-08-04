@@ -115,6 +115,10 @@ func Build() (*Container, error) {
 		&domain.QuestionOption{},
 		&domain.QuizAttempt{},
 		&domain.QuizAnswer{},
+		&domain.Survey{},
+		&domain.SurveyQuestion{},
+		&domain.SurveyResponse{},
+		&domain.SurveyAnswer{},
 	); err != nil {
 		logger.Warn("container: failed to auto-migrate models", zap.Error(err))
 	}
