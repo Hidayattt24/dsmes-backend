@@ -396,19 +396,25 @@ func (r *dashboardRepository) GetActivityChart(ctx context.Context) ([]ActivityC
 	}
 	var raw []tempRes
 	err := r.db.WithContext(ctx).Raw(`
-		SELECT TO_CHAR(d, 'Dy') as day, COALESCE(SUM(cnt), 0) as value
+		SELECT TO_CHAR(days.d, 'Dy') as day, COALESCE(COUNT(DISTINCT activity.patient_id), 0) as value
 		FROM (
 			SELECT generate_series(NOW() - INTERVAL '6 days', NOW(), '1 day')::date as d
 		) days
 		LEFT JOIN (
-			SELECT DATE(measured_at) as dt, COUNT(*) as cnt FROM blood_sugar_logs WHERE deleted_at IS NULL GROUP BY dt
-			UNION ALL
-			SELECT DATE(logged_at) as dt, COUNT(*) as cnt FROM meal_logs WHERE deleted_at IS NULL GROUP BY dt
-			UNION ALL
-			SELECT DATE(logged_at) as dt, COUNT(*) as cnt FROM routine_log_entries WHERE deleted_at IS NULL GROUP BY dt
+			SELECT id AS patient_id, DATE(last_active_at) AS dt FROM patients WHERE deleted_at IS NULL AND last_active_at IS NOT NULL
+			UNION
+			SELECT patient_id, DATE(measured_at) AS dt FROM blood_sugar_logs WHERE deleted_at IS NULL
+			UNION
+			SELECT patient_id, DATE(logged_at) AS dt FROM meal_logs WHERE deleted_at IS NULL
+			UNION
+			SELECT patient_id, DATE(logged_at) AS dt FROM routine_log_entries WHERE deleted_at IS NULL
+			UNION
+			SELECT patient_id, DATE(completed_at) AS dt FROM quiz_attempts WHERE deleted_at IS NULL
+			UNION
+			SELECT patient_id, DATE(viewed_at) AS dt FROM article_views WHERE deleted_at IS NULL
 		) activity ON activity.dt = days.d
-		GROUP BY d
-		ORDER BY d ASC
+		GROUP BY days.d
+		ORDER BY days.d ASC
 	`).Scan(&raw).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch activity chart", err)
