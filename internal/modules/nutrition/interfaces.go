@@ -13,6 +13,9 @@ type NutritionRepository interface {
 	UpdateFood(ctx context.Context, f *domain.Food) error
 
 	CreateMealLog(ctx context.Context, log *domain.MealLog) error
+	FindMealLogByID(ctx context.Context, patientID string, id string) (*domain.MealLog, error)
+	UpdateMealLog(ctx context.Context, log *domain.MealLog) error
+	DeleteMealLog(ctx context.Context, patientID string, id string) error
 	FindMealsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.MealLog, error)
 	GetDailyCalorieTarget(ctx context.Context, patientID string) (int, error)
 
@@ -26,8 +29,9 @@ type NutritionService interface {
 	LogMeal(ctx context.Context, patientID string, req LogMealRequest) (*MealLogResponse, error)
 	GetDailyNutritionSummary(ctx context.Context, patientID string, dateStr string) (*DailyNutritionSummaryResponse, error)
 	GetPatientMealLogs(ctx context.Context, patientID string, dateStr string) ([]MealLogResponse, error)
+	UpdateMealLog(ctx context.Context, patientID string, id string, req UpdateMealLogRequest) (*MealLogResponse, error)
+	DeleteMealLog(ctx context.Context, patientID string, id string) error
 	CreateFood(ctx context.Context, req CreateFoodRequest) (*FoodResponse, error)
 	UpdateFood(ctx context.Context, id string, req CreateFoodRequest) (*FoodResponse, error)
 	CalculateCalories(ctx context.Context, req CalorieCalculationRequest) (*CalorieCalculationResponse, error)
 }
-

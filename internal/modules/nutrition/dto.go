@@ -18,6 +18,11 @@ type LogMealRequest struct {
 	PortionMultiplier float64         `json:"portion_multiplier" validate:"required,gt=0"`
 }
 
+type UpdateMealLogRequest struct {
+	MealType          domain.MealType `json:"meal_type"          validate:"omitempty,oneof=sarapan makan_siang makan_malam camilan"`
+	PortionMultiplier float64         `json:"portion_multiplier" validate:"omitempty,gt=0"`
+}
+
 type FoodResponse struct {
 	ID                  string  `json:"id"`
 	Name                string  `json:"name"`
@@ -41,6 +46,7 @@ type DailyNutritionSummaryResponse struct {
 	CaloriesConsumed   float64 `json:"calories_consumed"`
 	DailyCalorieTarget int     `json:"daily_calorie_target"`
 	CaloriesRemaining  float64 `json:"calories_remaining"`
+	TotalFoodMeal      int     `json:"total_food_today"`
 	TotalCarbsG        float64 `json:"total_carbs_g"`
 	TotalProteinG      float64 `json:"total_protein_g"`
 	TotalFatG          float64 `json:"total_fat_g"`
@@ -115,4 +121,3 @@ type CalorieCalculationResponse struct {
 	RecommendedCalories RecommendedCalories    `json:"recommendedCalories"`
 	Recommendations     CalorieRecommendations `json:"recommendations"`
 }
-

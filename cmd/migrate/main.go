@@ -54,6 +54,8 @@ func main() {
 		"000013_pre_test_dmses_refactor.up.sql",
 		"000014_add_notif_type_to_notification_logs.up.sql",
 		"000015_create_education_reviews.up.sql",
+		"000017_update_foods_table_schema.up.sql",
+		"000018_add_nutrition_basis_to_foods.up.sql",
 	}
 
 	for _, fileName := range migrationFiles {

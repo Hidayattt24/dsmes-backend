@@ -24,6 +24,7 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/modules/dashboard"
 	"github.com/dsmes/dsmes-backend/internal/modules/education"
 	"github.com/dsmes/dsmes-backend/internal/modules/education_progress"
+	"github.com/dsmes/dsmes-backend/internal/modules/food"
 	"github.com/dsmes/dsmes-backend/internal/modules/history"
 	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
 	"github.com/dsmes/dsmes-backend/internal/modules/patient"
@@ -144,6 +145,11 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	surveySvc := survey.NewSurveyService(surveyRepo, c.Logger)
 	surveyHandler := survey.NewSurveyHandler(surveySvc, c.Logger)
 
+	// 16. Food Master Module
+	foodRepo := food.NewFoodRepository(c.DB, c.Logger)
+	foodSvc := food.NewFoodService(foodRepo, c.Logger)
+	foodHandler := food.NewFoodHandler(foodSvc, c.Logger)
+
 	// ── API v1 ────────────────────────────────────────────────────────────────
 	v1 := app.Group("/api/v1")
 
@@ -214,7 +220,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Post("/education/:id/progress/read-article", eduProgressHandler.MarkArticleReadAdmin)
 		admin.Post("/education/:id/progress/watch-video", eduProgressHandler.MarkVideoWatchedAdmin)
 		admin.Get("/education/:id/reviews", eduHandler.GetAdminReviews)
-
 
 		// Quiz / Questionnaire Management
 		admin.Get("/quiz/stats", quizHandler.GetStats)
@@ -310,6 +315,8 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Get("/foods/recent", nutritionHandler.GetRecent)
 		patientGroup.Post("/meals", nutritionHandler.LogMeal)
 		patientGroup.Get("/meals/summary", nutritionHandler.GetSummary)
+		patientGroup.Put("/meals/:id", nutritionHandler.UpdateMeal)
+		patientGroup.Delete("/meals/:id", nutritionHandler.DeleteMeal)
 
 		// Personal reminders
 		patientGroup.Get("/reminders", reminderHandler.List)
@@ -340,7 +347,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Post("/education/:id/review", eduHandler.SubmitReview)
 		patientGroup.Get("/education/:id/review", eduHandler.GetReview)
 		patientGroup.Get("/education/:id/rating", eduHandler.GetRatingSummary)
-
 
 		// Weekly analytical summary cards
 		patientGroup.Get("/summary/weekly", summaryHandler.GetLatest)
@@ -374,9 +380,15 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	// Register Survey Module Routes
 	survey.RegisterRoutes(admin, staff, patientGroup, surveyHandler)
 
-	// ── Protected: AI Group (/api/v1/ai) ──────────────────────────────────────
+	// ── Authenticated Shared Group (any authenticated role) ───────────────────
+	jwtAuth := middleware.JWT(c.Config)
+	sharedGroup := v1.Group("", jwtAuth)
+
+	// Register Food Master Module Routes
+	food.RegisterRoutes(admin, sharedGroup, foodHandler)
+
 	aiGroup := v1.Group("/ai",
-		middleware.JWT(c.Config),
+		jwtAuth,
 		middleware.RequireRole("user"),
 	)
 	{
@@ -387,8 +399,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		aiGroup.Post("/chat", aiChatHandler.SendMessage)
 	}
 
-	// ── Authenticated Shared Group (any authenticated role) ───────────────────
-	jwtAuth := middleware.JWT(c.Config)
 	v1.Get("/foods", jwtAuth, nutritionHandler.Search)
 	v1.Get("/faqs", jwtAuth, settingsHandler.GetFAQs)
 	v1.Get("/education/categories", jwtAuth, eduHandler.ListCategories)
@@ -397,7 +407,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	v1.Post("/education/:id/review", jwtAuth, eduHandler.SubmitReview)
 	v1.Get("/education/:id/review", jwtAuth, eduHandler.GetReview)
 	v1.Get("/education/:id/rating", jwtAuth, eduHandler.GetRatingSummary)
-
 
 	// ── Internal / Cron Group ─────────────────────────────────────────────────
 	internal := v1.Group("/internal")

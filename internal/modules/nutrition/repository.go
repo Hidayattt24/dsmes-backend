@@ -2,7 +2,6 @@ package nutrition
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"go.uber.org/zap"
@@ -37,13 +36,26 @@ func (r *nutritionRepository) SearchFoods(ctx context.Context, query string) ([]
 func (r *nutritionRepository) FindFoodByID(ctx context.Context, id string) (*domain.Food, error) {
 	var f domain.Food
 	err := r.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", id).First(&f).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errs.NewNotFound("food item not found")
-		}
-		return nil, errs.NewInternal("failed to fetch food item", err)
+	if err == nil {
+		return &f, nil
 	}
-	return &f, nil
+
+	var fm domain.FoodMaster
+	errMaster := r.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", id).First(&fm).Error
+	if errMaster == nil {
+		return &domain.Food{
+			BaseModel:           fm.BaseModel,
+			Name:                fm.Name,
+			DefaultServingUnit:  fm.ServingSize,
+			DefaultServingGrams: 100,
+			Calories:            fm.EnergyKcal,
+			CarbsG:              fm.CarbohydrateG,
+			ProteinG:            fm.ProteinG,
+			FatG:                fm.FatG,
+		}, nil
+	}
+
+	return nil, errs.NewNotFound("food item not found")
 }
 
 func (r *nutritionRepository) CreateFood(ctx context.Context, f *domain.Food) error {
@@ -64,6 +76,34 @@ func (r *nutritionRepository) UpdateFood(ctx context.Context, f *domain.Food) er
 func (r *nutritionRepository) CreateMealLog(ctx context.Context, log *domain.MealLog) error {
 	if err := r.db.WithContext(ctx).Create(log).Error; err != nil {
 		return errs.NewInternal("failed to log meal", err)
+	}
+	return nil
+}
+
+func (r *nutritionRepository) FindMealLogByID(ctx context.Context, patientID string, id string) (*domain.MealLog, error) {
+	var log domain.MealLog
+	err := r.db.WithContext(ctx).
+		Preload("Food").
+		Where("id = ? AND patient_id = ? AND deleted_at IS NULL", id, patientID).
+		First(&log).Error
+	if err != nil {
+		return nil, errs.NewNotFound("meal log not found")
+	}
+	return &log, nil
+}
+
+func (r *nutritionRepository) UpdateMealLog(ctx context.Context, log *domain.MealLog) error {
+	result := r.db.WithContext(ctx).Save(log)
+	if result.Error != nil {
+		return errs.NewInternal("failed to update meal log", result.Error)
+	}
+	return nil
+}
+
+func (r *nutritionRepository) DeleteMealLog(ctx context.Context, patientID string, id string) error {
+	result := r.db.WithContext(ctx).Where("id = ? AND patient_id = ?", id, patientID).Delete(&domain.MealLog{})
+	if result.Error != nil {
+		return errs.NewInternal("failed to delete meal log", result.Error)
 	}
 	return nil
 }
