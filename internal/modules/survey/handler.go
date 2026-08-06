@@ -72,7 +72,7 @@ func (h *SurveyHandler) Delete(c fiber.Ctx) error {
 	if err := h.svc.DeleteSurvey(c.Context(), id); err != nil {
 		return err
 	}
-	return response.Success(c, "survey deleted successfully", nil)
+	return response.NoContent(c)
 }
 
 func (h *SurveyHandler) GetByID(c fiber.Ctx) error {

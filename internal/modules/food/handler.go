@@ -130,6 +130,10 @@ func (h *FoodHandler) Update(c fiber.Ctx) error {
 		return errs.NewBadRequest("invalid request body")
 	}
 
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
 	res, err := h.svc.Update(c.Context(), id, req)
 	if err != nil {
 		return err
@@ -143,7 +147,7 @@ func (h *FoodHandler) Delete(c fiber.Ctx) error {
 	if err := h.svc.Delete(c.Context(), id); err != nil {
 		return err
 	}
-	return response.Success(c, "food item deleted", nil)
+	return response.NoContent(c)
 }
 
 // PreviewImport handles POST /api/v1/admin/foods/import/preview
@@ -179,11 +183,15 @@ func (h *FoodHandler) ConfirmImport(c fiber.Ctx) error {
 		return errs.NewBadRequest("invalid request body")
 	}
 
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
 	res, err := h.svc.ConfirmExcelImport(c.Context(), req)
 	if err != nil {
 		return err
 	}
-	return response.Success(c, fmt.Sprintf("imported %d foods successfully", res.SuccessCount), res)
+	return response.Created(c, fmt.Sprintf("imported %d foods successfully", res.SuccessCount), res)
 }
 
 // ExportHandles handles GET /api/v1/admin/foods/export

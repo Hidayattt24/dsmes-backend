@@ -119,17 +119,22 @@ func (s *aiChatService) SendMessage(ctx context.Context, patientID uuid.UUID, re
 	// Sanitize output: remove any markdown symbols so clean plain text is stored and sent to client
 	assistantText = SanitizeAIResponse(assistantText)
 
-	// 7. Audit Log prompt generation
-	_ = s.repo.CreatePromptLog(ctx, &AIPromptLog{
+	// 7. Audit Log prompt generation.
+	// The full prompt (which may embed patient health data) is only persisted
+	// when AI_LOG_PROMPTS=true; otherwise only metadata is logged (privacy).
+	promptLog := &AIPromptLog{
 		ID:              uuid.New(),
 		PatientID:       patientID,
 		ConversationID:  &convID,
-		GeneratedPrompt: systemPrompt,
 		Model:           s.config.Model,
 		ExecutionTimeMS: int(execTime),
 		Status:          status,
 		ErrorMessage:    errMsg,
-	})
+	}
+	if s.config.LogPrompts {
+		promptLog.GeneratedPrompt = systemPrompt
+	}
+	_ = s.repo.CreatePromptLog(ctx, promptLog)
 
 	// 8. Save Assistant Message to DB
 	assistantMsg := &AIMessage{

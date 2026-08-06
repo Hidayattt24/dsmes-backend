@@ -34,13 +34,13 @@ func (s *bloodSugarService) LogBloodSugar(ctx context.Context, patientID string,
 		GlucoseValue:        req.GlucoseValue,
 		MeasurementTimeType: normType,
 		MeasuredAt:          measuredAt,
-		Status:              medRes.Classification,
+		Category:            medRes.Category,
 		Severity:            medRes.Severity,
 		ReferenceMin:        medRes.ReferenceMin,
 		ReferenceMax:        medRes.ReferenceMax,
-		ReferenceRangeText:  medRes.ReferenceRangeText,
+		ReferenceRange:      medRes.ReferenceRange,
 		Recommendation:      medRes.Recommendation,
-		ColorIndicator:      medRes.ColorIndicator,
+		Color:               medRes.Color,
 	}
 
 	if err = s.repo.Create(ctx, log); err != nil {
@@ -72,13 +72,13 @@ func (s *bloodSugarService) UpdateBloodSugar(ctx context.Context, patientID, id 
 	existing.GlucoseValue = req.GlucoseValue
 	existing.MeasurementTimeType = normType
 	existing.MeasuredAt = measuredAt
-	existing.Status = medRes.Classification
+	existing.Category = medRes.Category
 	existing.Severity = medRes.Severity
 	existing.ReferenceMin = medRes.ReferenceMin
 	existing.ReferenceMax = medRes.ReferenceMax
-	existing.ReferenceRangeText = medRes.ReferenceRangeText
+	existing.ReferenceRange = medRes.ReferenceRange
 	existing.Recommendation = medRes.Recommendation
-	existing.ColorIndicator = medRes.ColorIndicator
+	existing.Color = medRes.Color
 
 	if err = s.repo.Update(ctx, existing); err != nil {
 		return nil, err

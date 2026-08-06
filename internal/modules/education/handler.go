@@ -128,7 +128,7 @@ func (h *EducationHandler) Complete(c fiber.Ctx) error {
 	if err := h.svc.CompleteArticle(c.Context(), claims.UserID, id); err != nil {
 		return err
 	}
-	return response.Success(c, "article completed", nil)
+	return response.Created(c, "article completed", nil)
 }
 
 // Save handles POST /api/v1/patient/education/:id/save
@@ -150,7 +150,7 @@ func (h *EducationHandler) Save(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "article saved", map[string]bool{"saved": true})
+	return response.Created(c, "article saved", map[string]bool{"saved": true})
 }
 
 // Unsave handles DELETE /api/v1/patient/education/:id/save
@@ -172,7 +172,7 @@ func (h *EducationHandler) Unsave(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "article unsaved", map[string]bool{"saved": false})
+	return response.NoContent(c)
 }
 
 // ListSaved handles GET /api/v1/patient/education/saved
@@ -359,7 +359,7 @@ func (h *EducationHandler) SubmitReview(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "review submitted successfully", res)
+	return response.Created(c, "review submitted successfully", res)
 }
 
 func (h *EducationHandler) GetReview(c fiber.Ctx) error {
@@ -399,4 +399,3 @@ func (h *EducationHandler) GetAdminReviews(c fiber.Ctx) error {
 	}
 	return response.Success(c, "admin article reviews retrieved", res)
 }
-

@@ -261,6 +261,10 @@ func (h *PatientHandler) UpdatePatientByAdmin(c fiber.Ctx) error {
 		return errs.NewBadRequest("invalid payload", err)
 	}
 
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
 	res, err := h.svc.UpdatePatientByAdmin(c.Context(), id, req)
 	if err != nil {
 		return err
@@ -291,6 +295,10 @@ func (h *PatientHandler) CreateMeasurement(c fiber.Ctx) error {
 	var req CreateMeasurementRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return errs.NewBadRequest("invalid payload", err)
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
 	}
 
 	res, err := h.svc.CreateMeasurement(c.Context(), patientID, req, recByID, recByName, recByRole)
@@ -325,6 +333,10 @@ func (h *PatientHandler) UpdateMeasurement(c fiber.Ctx) error {
 	var req UpdateMeasurementRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return errs.NewBadRequest("invalid payload", err)
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
 	}
 
 	res, err := h.svc.UpdateMeasurement(c.Context(), patientID, measurementID, req)

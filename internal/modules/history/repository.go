@@ -3,6 +3,7 @@ package history
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -19,7 +20,9 @@ func NewHistoryRepository(db *gorm.DB, log *zap.Logger) HistoryRepository {
 	return &historyRepository{db: db, log: log}
 }
 
-const historyUnionSQL = `
+// historyUnionSQLTemplate is filled in via replaceHistorySQL with the WIB
+// timezone/offset so the history timeline uses APP_TIMEZONE consistently.
+var historyUnionSQLTemplate = `
 SELECT
 	bs.id,
 	bs.patient_id,
@@ -31,9 +34,9 @@ SELECT
 	'mg/dL'::text AS unit,
 	CAST(bs.status AS VARCHAR) AS status,
 	''::text AS notes,
-	to_char(bs.measured_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS measured_at,
-	to_char(bs.created_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS created_at,
-	to_char(bs.updated_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS updated_at,
+	to_char(bs.measured_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS measured_at,
+	to_char(bs.created_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS created_at,
+	to_char(bs.updated_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS updated_at,
 	''::text AS recorded_by,
 	'water_drop'::text AS icon,
 	COALESCE(bs.color_indicator, '#00695C')::text AS color,
@@ -64,9 +67,9 @@ SELECT
 	'kcal'::text AS unit,
 	'Selesai'::text AS status,
 	''::text AS notes,
-	to_char(ml.logged_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS measured_at,
-	to_char(ml.created_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS created_at,
-	to_char(ml.updated_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS updated_at,
+	to_char(ml.logged_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS measured_at,
+	to_char(ml.created_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS created_at,
+	to_char(ml.updated_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS updated_at,
 	''::text AS recorded_by,
 	'restaurant'::text AS icon,
 	'#E65100'::text AS color,
@@ -98,9 +101,9 @@ SELECT
 	'aktivitas'::text AS unit,
 	CAST(rle.status AS VARCHAR) AS status,
 	''::text AS notes,
-	to_char(rle.logged_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS measured_at,
-	to_char(rle.created_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS created_at,
-	to_char(rle.updated_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS updated_at,
+	to_char(rle.logged_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS measured_at,
+	to_char(rle.created_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS created_at,
+	to_char(rle.updated_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS updated_at,
 	''::text AS recorded_by,
 	'directions_run'::text AS icon,
 	'#0284C7'::text AS color,
@@ -133,9 +136,9 @@ SELECT
 	'dosis'::text AS unit,
 	CAST(drl.status AS VARCHAR) AS status,
 	COALESCE(rm.notes, '')::text AS notes,
-	to_char((drl.log_date::text || ' ' || COALESCE(NULLIF(rm.scheduled_time::text, ''), to_char(drl.created_at AT TIME ZONE 'Asia/Jakarta', 'HH24:MI:SS')))::timestamp, 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS measured_at,
-	to_char(drl.created_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS created_at,
-	to_char(drl.updated_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS updated_at,
+	to_char((drl.log_date::text || ' ' || COALESCE(NULLIF(rm.scheduled_time::text, ''), to_char(drl.created_at AT TIME ZONE '{{TIMEZONE}}', 'HH24:MI:SS')))::timestamp, 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS measured_at,
+	to_char(drl.created_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS created_at,
+	to_char(drl.updated_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS updated_at,
 	''::text AS recorded_by,
 	'medication'::text AS icon,
 	'#6B21A8'::text AS color,
@@ -167,9 +170,9 @@ SELECT
 	CASE WHEN pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 THEN 'mg/dL'::text ELSE ''::text END AS unit,
 	'Selesai'::text AS status,
 	COALESCE(pm.notes, '')::text AS notes,
-	to_char(pm.measured_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS measured_at,
-	to_char(pm.created_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS created_at,
-	to_char(pm.updated_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS updated_at,
+	to_char(pm.measured_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS measured_at,
+	to_char(pm.created_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS created_at,
+	to_char(pm.updated_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS updated_at,
 	COALESCE(pm.recorded_by_name, '')::text AS recorded_by,
 	'monitor_heart'::text AS icon,
 	'#475569'::text AS color,
@@ -200,9 +203,9 @@ SELECT
 	'menit'::text AS unit,
 	'Selesai'::text AS status,
 	COALESCE(pal.notes, '')::text AS notes,
-	to_char(pal.logged_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS measured_at,
-	to_char(pal.created_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS created_at,
-	to_char(pal.updated_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS"+07:00"') AS updated_at,
+	to_char(pal.logged_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS measured_at,
+	to_char(pal.created_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS created_at,
+	to_char(pal.updated_at AT TIME ZONE '{{TIMEZONE}}', 'YYYY-MM-DD"T"HH24:MI:SS"{{OFFSET}}"') AS updated_at,
 	''::text AS recorded_by,
 	'directions_walk'::text AS icon,
 	'#388E3C'::text AS color,
@@ -220,6 +223,19 @@ SELECT
 FROM patient_activity_logs pal
 WHERE pal.patient_id = ? AND pal.deleted_at IS NULL
 `
+
+// wibTimeZone / wibOffset are the canonical WIB (Asia/Jakarta, UTC+7) values
+// used when formatting the history timeline. They must match APP_TIMEZONE.
+const (
+	wibTimeZone = "Asia/Jakarta"
+	wibOffset   = "+07:00"
+)
+
+// historyUnionSQL is the final history query with the timezone/offset filled in.
+var historyUnionSQL = strings.NewReplacer(
+	"{{TIMEZONE}}", wibTimeZone,
+	"{{OFFSET}}", wibOffset,
+).Replace(historyUnionSQLTemplate)
 
 func (r *historyRepository) FindAll(ctx context.Context, patientID string, page, limit int) ([]historyRawItem, int64, error) {
 	offset := (page - 1) * limit
@@ -245,32 +261,39 @@ func (r *historyRepository) FindAll(ctx context.Context, patientID string, page,
 }
 
 func (r *historyRepository) DeleteHistoryItem(ctx context.Context, patientID string, activityType string, id string) error {
-	switch activityType {
-	case "blood_sugar":
-		result := r.db.WithContext(ctx).Exec("DELETE FROM blood_sugar_logs WHERE id = ? AND patient_id = ?", id, patientID)
-		if result.Error != nil {
-			return errs.NewInternal("failed to delete blood sugar log", result.Error)
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		switch activityType {
+		case "blood_sugar":
+			result := tx.Exec("UPDATE blood_sugar_logs SET deleted_at = NOW() WHERE id = ? AND patient_id = ? AND deleted_at IS NULL", id, patientID)
+			if result.Error != nil {
+				return errs.NewInternal("failed to delete blood sugar log", result.Error)
+			}
+		case "meal":
+			result := tx.Exec("UPDATE meal_logs SET deleted_at = NOW() WHERE id = ? AND patient_id = ? AND deleted_at IS NULL", id, patientID)
+			if result.Error != nil {
+				return errs.NewInternal("failed to delete meal log", result.Error)
+			}
+		case "activity":
+			// The activity log may live in either table; soft-delete both atomically.
+			if err := tx.Exec("UPDATE patient_activity_logs SET deleted_at = NOW() WHERE id = ? AND patient_id = ? AND deleted_at IS NULL", id, patientID).Error; err != nil {
+				return errs.NewInternal("failed to delete activity log", err)
+			}
+			if err := tx.Exec("UPDATE routine_log_entries SET deleted_at = NOW() WHERE id = ? AND patient_id = ? AND deleted_at IS NULL", id, patientID).Error; err != nil {
+				return errs.NewInternal("failed to delete routine log", err)
+			}
+		case "medication":
+			result := tx.Exec("UPDATE daily_reminder_logs SET deleted_at = NOW() WHERE id = ? AND reminder_id IN (SELECT id FROM reminders WHERE patient_id = ?) AND deleted_at IS NULL", id, patientID)
+			if result.Error != nil {
+				return errs.NewInternal("failed to delete medication log", result.Error)
+			}
+		case "measurement":
+			result := tx.Exec("UPDATE patient_measurements SET deleted_at = NOW() WHERE id = ? AND patient_id = ? AND deleted_at IS NULL", id, patientID)
+			if result.Error != nil {
+				return errs.NewInternal("failed to delete measurement", result.Error)
+			}
+		default:
+			return errs.NewBadRequest("invalid activity type")
 		}
-	case "meal":
-		result := r.db.WithContext(ctx).Exec("DELETE FROM meal_logs WHERE id = ? AND patient_id = ?", id, patientID)
-		if result.Error != nil {
-			return errs.NewInternal("failed to delete meal log", result.Error)
-		}
-	case "activity":
-		r.db.WithContext(ctx).Exec("DELETE FROM patient_activity_logs WHERE id = ? AND patient_id = ?", id, patientID)
-		r.db.WithContext(ctx).Exec("DELETE FROM routine_log_entries WHERE id = ? AND patient_id = ?", id, patientID)
-	case "medication":
-		result := r.db.WithContext(ctx).Exec("DELETE FROM daily_reminder_logs WHERE id = ? AND reminder_id IN (SELECT id FROM reminders WHERE patient_id = ?)", id, patientID)
-		if result.Error != nil {
-			return errs.NewInternal("failed to delete medication log", result.Error)
-		}
-	case "measurement":
-		result := r.db.WithContext(ctx).Exec("DELETE FROM patient_measurements WHERE id = ? AND patient_id = ?", id, patientID)
-		if result.Error != nil {
-			return errs.NewInternal("failed to delete measurement", result.Error)
-		}
-	default:
-		return errs.NewBadRequest("invalid activity type")
-	}
-	return nil
+		return nil
+	})
 }

@@ -192,7 +192,7 @@ func (h *BloodSugarHandler) Delete(c fiber.Ctx) error {
 	if err := h.svc.DeleteBloodSugar(c.Context(), claims.UserID, id); err != nil {
 		return err
 	}
-	return response.Success(c, "blood sugar log deleted successfully", nil)
+	return response.NoContent(c)
 }
 
 // GetDashboard handles GET /api/v1/staff/dashboard/blood-sugar

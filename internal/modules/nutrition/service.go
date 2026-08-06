@@ -94,7 +94,7 @@ func (s *nutritionService) GetDailyNutritionSummary(ctx context.Context, patient
 
 	target, err := s.repo.GetDailyCalorieTarget(ctx, patientID)
 	if err != nil {
-		target = 2000
+		target = domain.DefaultDailyCalorieTarget
 	}
 
 	var consumed float64

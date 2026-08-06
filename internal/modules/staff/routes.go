@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/dsmes/dsmes-backend/internal/container"
+	"github.com/dsmes/dsmes-backend/internal/modules/auth"
 )
 
 // RegisterRoutes registers endpoints.
@@ -13,7 +14,8 @@ import (
 //	staff.RegisterRoutes(adminGroup, c)
 func RegisterRoutes(router fiber.Router, c *container.Container) {
 	repo := NewStaffRepository(c.DB, c.Logger)
-	svc := NewStaffService(repo, c.Logger)
+	authRepo := auth.NewAuthRepository(c.DB, c.Logger)
+	svc := NewStaffService(repo, authRepo, c.Logger)
 	h := NewStaffHandler(svc, c.Logger)
 
 	// Since the caller already applies JWT and RequireRole("admin"),

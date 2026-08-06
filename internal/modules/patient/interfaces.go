@@ -21,9 +21,11 @@ type PatientRepository interface {
 	GetPatientSummaries(ctx context.Context, patientIDs []string) (map[string]*PatientSummaryData, error)
 	GetPatientActivityAnalytics(ctx context.Context, patientID string, days int) (*PatientActivityAnalyticsResponse, error)
 	GetPatientDailyLogsAggregate(ctx context.Context, patientID string, startDate, endDate time.Time) (map[string]*DailyLogsAggregate, error)
+	GetPatientDailyLogsAggregates(ctx context.Context, patientIDs []string, startDate, endDate time.Time) (map[string]map[string]*DailyLogsAggregate, error)
 
 	// Health Measurements
 	CreateMeasurement(ctx context.Context, m *domain.PatientMeasurement) error
+	CreateMeasurementWithSync(ctx context.Context, patient *domain.Patient, m *domain.PatientMeasurement, bsLog *domain.BloodSugarLog) error
 	GetPatientMeasurements(ctx context.Context, patientID string) ([]domain.PatientMeasurement, error)
 	GetLatestMeasurement(ctx context.Context, patientID string) (*domain.PatientMeasurement, error)
 	FindMeasurementByID(ctx context.Context, measurementID string) (*domain.PatientMeasurement, error)

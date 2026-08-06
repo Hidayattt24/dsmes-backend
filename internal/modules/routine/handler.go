@@ -92,11 +92,15 @@ func (h *RoutineHandler) BulkSetup(c fiber.Ctx) error {
 		return errs.NewBadRequest("invalid request body")
 	}
 
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
 	res, err := h.svc.BulkSetupRoutines(c.Context(), claims.UserID, req)
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "daily routines configured successfully", res)
+	return response.Created(c, "daily routines configured successfully", res)
 }
 
 // Log handles POST /api/v1/patient/routines/log
@@ -127,7 +131,7 @@ func (h *RoutineHandler) Log(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "routine tracked successfully", res)
+	return response.Created(c, "routine tracked successfully", res)
 }
 
 // LogActivity handles POST /api/v1/patient/activities/log

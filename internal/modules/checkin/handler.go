@@ -50,7 +50,7 @@ func (h *CheckinHandler) Checkin(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "daily check-in completed", res)
+	return response.Created(c, "daily check-in completed", res)
 }
 
 // GetCalendar handles GET /api/v1/patient/checkin/calendar

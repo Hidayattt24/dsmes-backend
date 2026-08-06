@@ -65,7 +65,9 @@ func (r *routineRepository) FindLogsByPatientAndDate(ctx context.Context, patien
 	var logs []domain.RoutineLogEntry
 	q := r.db.WithContext(ctx).Preload("RoutineTime").Preload("RoutineTime.Routine").Where("patient_id = ? AND deleted_at IS NULL", patientID)
 	if dateStr != "" {
-		q = q.Where("DATE(logged_at) = ?", dateStr)
+		// Range predicate instead of DATE(col) = ? so the (patient_id, logged_at)
+		// index can be used.
+		q = q.Where("logged_at >= ?::date AND logged_at < (?::date + INTERVAL '1 day')", dateStr, dateStr)
 	} else {
 		q = q.Where("logged_at >= NOW() - INTERVAL '30 days'")
 	}
@@ -80,7 +82,7 @@ func (r *routineRepository) FindFreeActivityLogsByPatientAndDate(ctx context.Con
 	var logs []domain.PatientActivityLog
 	q := r.db.WithContext(ctx).Where("patient_id = ? AND deleted_at IS NULL", patientID)
 	if dateStr != "" {
-		q = q.Where("DATE(logged_at) = ?", dateStr)
+		q = q.Where("logged_at >= ?::date AND logged_at < (?::date + INTERVAL '1 day')", dateStr, dateStr)
 	}
 	err := q.Order("logged_at DESC").Find(&logs).Error
 	if err != nil {

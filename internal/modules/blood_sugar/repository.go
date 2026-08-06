@@ -23,90 +23,96 @@ func NewBloodSugarRepository(db *gorm.DB, log *zap.Logger) BloodSugarRepository 
 }
 
 func (r *bloodSugarRepository) Create(ctx context.Context, log *domain.BloodSugarLog) error {
-	if err := r.db.WithContext(ctx).Create(log).Error; err != nil {
-		return errs.NewInternal("failed to log blood sugar", err)
-	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(log).Error; err != nil {
+			return errs.NewInternal("failed to log blood sugar", err)
+		}
 
-	// Create an immutable snapshot in patient_measurements (INSERT ONLY)
-	var patient domain.Patient
-	var weight *float64
-	var height *float64
-	var bmi *float64
-	var waist *float64
-	var calorieTarget *int
-	var patientName string = "Pasien"
+		// Create an immutable snapshot in patient_measurements (INSERT ONLY)
+		var patient domain.Patient
+		var weight *float64
+		var height *float64
+		var bmi *float64
+		var waist *float64
+		var calorieTarget *int
+		var patientName string = "Pasien"
 
-	if pErr := r.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", log.PatientID).First(&patient).Error; pErr == nil {
-		if patient.FullName != "" {
-			patientName = patient.FullName
+		if pErr := tx.Where("id = ? AND deleted_at IS NULL", log.PatientID).Limit(1).Find(&patient).Error; pErr == nil {
+			if patient.FullName != "" {
+				patientName = patient.FullName
+			}
+			if patient.WeightKg > 0 {
+				w := patient.WeightKg
+				weight = &w
+			}
+			if patient.HeightCm > 0 {
+				h := patient.HeightCm
+				height = &h
+			}
+			if patient.WeightKg > 0 && patient.HeightCm > 0 {
+				hM := patient.HeightCm / 100.0
+				val := math.Round((patient.WeightKg/(hM*hM))*10) / 10
+				bmi = &val
+			}
+			if patient.DailyCalorieTarget > 0 {
+				t := patient.DailyCalorieTarget
+				calorieTarget = &t
+			}
 		}
-		if patient.WeightKg > 0 {
-			w := patient.WeightKg
-			weight = &w
-		}
-		if patient.HeightCm > 0 {
-			h := patient.HeightCm
-			height = &h
-		}
-		if patient.WeightKg > 0 && patient.HeightCm > 0 {
-			hM := patient.HeightCm / 100.0
-			val := math.Round((patient.WeightKg/(hM*hM))*10) / 10
-			bmi = &val
-		}
-		if patient.DailyCalorieTarget > 0 {
-			t := patient.DailyCalorieTarget
-			calorieTarget = &t
-		}
-	}
 
-	// Fetch latest patient_measurement to get latest waist circumference or blood pressure if patient profile didn't store it
-	var latestM domain.PatientMeasurement
-	if mErr := r.db.WithContext(ctx).
-		Where("patient_id = ? AND deleted_at IS NULL", log.PatientID).
-		Order("measured_at DESC, created_at DESC").
-		First(&latestM).Error; mErr == nil {
-		if weight == nil && latestM.WeightKg != nil {
-			weight = latestM.WeightKg
+		// Fetch latest patient_measurement to get latest waist circumference or blood pressure if patient profile didn't store it
+		var latestM domain.PatientMeasurement
+		if mErr := tx.
+			Where("patient_id = ? AND deleted_at IS NULL", log.PatientID).
+			Order("measured_at DESC, created_at DESC").
+			Limit(1).
+			Find(&latestM).Error; mErr == nil {
+			if weight == nil && latestM.WeightKg != nil {
+				weight = latestM.WeightKg
+			}
+			if height == nil && latestM.HeightCm != nil {
+				height = latestM.HeightCm
+			}
+			if bmi == nil && latestM.BMI != nil {
+				bmi = latestM.BMI
+			}
+			if calorieTarget == nil && latestM.DailyCalorieTarget != nil {
+				calorieTarget = latestM.DailyCalorieTarget
+			}
+			if latestM.WaistCircumferenceCm != nil {
+				waist = latestM.WaistCircumferenceCm
+			}
 		}
-		if height == nil && latestM.HeightCm != nil {
-			height = latestM.HeightCm
-		}
-		if bmi == nil && latestM.BMI != nil {
-			bmi = latestM.BMI
-		}
-		if calorieTarget == nil && latestM.DailyCalorieTarget != nil {
-			calorieTarget = latestM.DailyCalorieTarget
-		}
-		if latestM.WaistCircumferenceCm != nil {
-			waist = latestM.WaistCircumferenceCm
-		}
-	}
 
-	val := log.GlucoseValue
-	mTypeStr := string(log.MeasurementTimeType)
+		val := log.GlucoseValue
+		mTypeStr := string(log.MeasurementTimeType)
 
-	snapshot := &domain.PatientMeasurement{
-		BaseModel: domain.BaseModel{
-			ID: log.ID,
-		},
-		PatientID:            log.PatientID,
-		WeightKg:             weight,
-		HeightCm:             height,
-		BMI:                  bmi,
-		BloodSugar:           &val,
-		BloodSugarTimeType:   &mTypeStr,
-		WaistCircumferenceCm: waist,
-		DailyCalorieTarget:   calorieTarget,
-		Notes:                "Pencatatan Mandiri Gula Darah Pasien",
-		RecordedByID:         &log.PatientID,
-		RecordedByName:       patientName,
-		RecordedByRole:       "patient",
-		MeasuredAt:           log.MeasuredAt,
-	}
+		snapshot := &domain.PatientMeasurement{
+			BaseModel: domain.BaseModel{
+				ID: log.ID,
+			},
+			PatientID:            log.PatientID,
+			WeightKg:             weight,
+			HeightCm:             height,
+			BMI:                  bmi,
+			BloodSugar:           &val,
+			BloodSugarTimeType:   &mTypeStr,
+			WaistCircumferenceCm: waist,
+			DailyCalorieTarget:   calorieTarget,
+			Notes:                "Pencatatan Mandiri Gula Darah Pasien",
+			RecordedByID:         &log.PatientID,
+			RecordedByName:       patientName,
+			RecordedByRole:       "patient",
+			MeasuredAt:           log.MeasuredAt,
+		}
 
-	_ = r.db.WithContext(ctx).Create(snapshot).Error
-
-	return nil
+		// The log and its measurement snapshot must be created atomically; a
+		// snapshot failure now rolls the whole transaction back.
+		if err := tx.Create(snapshot).Error; err != nil {
+			return errs.NewInternal("failed to create measurement snapshot", err)
+		}
+		return nil
+	})
 }
 
 func (r *bloodSugarRepository) FindByID(ctx context.Context, id string) (*domain.BloodSugarLog, error) {
@@ -129,7 +135,10 @@ func (r *bloodSugarRepository) Update(ctx context.Context, log *domain.BloodSuga
 }
 
 func (r *bloodSugarRepository) Delete(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Exec("DELETE FROM blood_sugar_logs WHERE id = ?", id)
+	result := r.db.WithContext(ctx).
+		Model(&domain.BloodSugarLog{}).
+		Where("id = ? AND deleted_at IS NULL", id).
+		Update("deleted_at", time.Now())
 	if result.Error != nil {
 		return errs.NewInternal("failed to delete blood sugar log", result.Error)
 	}
@@ -175,7 +184,7 @@ func (r *bloodSugarRepository) FindAllByPatientID(ctx context.Context, patientID
 						GlucoseValue:        *m.BloodSugar,
 						MeasurementTimeType: domain.TimeSewaktu,
 						MeasuredAt:          m.MeasuredAt,
-						Status:              status,
+						Category:            status,
 					})
 				}
 			}

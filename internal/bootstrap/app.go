@@ -41,8 +41,8 @@ func NewFiberApp(cfg *config.Config, log *zap.Logger) *fiber.App {
 	})
 
 	// ── Global middleware (order matters) ─────────────────────────────────────
-	app.Use(middleware.Recover())
-	app.Use(middleware.RequestLogger(log))
+	app.Use(middleware.Recover(cfg.IsProduction()))
+	app.Use(middleware.RequestLogger(log, cfg.App.Timezone))
 	app.Use(middleware.CORS(cfg))
 	app.Use(middleware.RateLimiter())
 

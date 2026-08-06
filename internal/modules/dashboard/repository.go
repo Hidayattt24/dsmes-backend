@@ -68,13 +68,13 @@ func (r *dashboardRepository) GetAdminStats(ctx context.Context) (*AdminDashboar
 	var todaySugarLogs int64
 	var todayMealLogs int64
 	var todayCheckins int64
-	_ = r.db.WithContext(ctx).Model(&domain.BloodSugarLog{}).Where("DATE(measured_at) = CURRENT_DATE AND deleted_at IS NULL").Count(&todaySugarLogs)
-	_ = r.db.WithContext(ctx).Model(&domain.MealLog{}).Where("DATE(logged_at) = CURRENT_DATE AND deleted_at IS NULL").Count(&todayMealLogs)
-	_ = r.db.WithContext(ctx).Model(&domain.RoutineLogEntry{}).Where("DATE(logged_at) = CURRENT_DATE AND deleted_at IS NULL").Count(&todayCheckins)
+	_ = r.db.WithContext(ctx).Model(&domain.BloodSugarLog{}).Where("measured_at >= CURRENT_DATE AND measured_at < (CURRENT_DATE + INTERVAL '1 day') AND deleted_at IS NULL").Count(&todaySugarLogs)
+	_ = r.db.WithContext(ctx).Model(&domain.MealLog{}).Where("logged_at >= CURRENT_DATE AND logged_at < (CURRENT_DATE + INTERVAL '1 day') AND deleted_at IS NULL").Count(&todayMealLogs)
+	_ = r.db.WithContext(ctx).Model(&domain.RoutineLogEntry{}).Where("logged_at >= CURRENT_DATE AND logged_at < (CURRENT_DATE + INTERVAL '1 day') AND deleted_at IS NULL").Count(&todayCheckins)
 	todayRecords := todaySugarLogs + todayMealLogs + todayCheckins
 
 	var newRegistrations int64
-	if err := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("DATE(created_at) = CURRENT_DATE AND deleted_at IS NULL").Count(&newRegistrations).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("created_at >= CURRENT_DATE AND created_at < (CURRENT_DATE + INTERVAL '1 day') AND deleted_at IS NULL").Count(&newRegistrations).Error; err != nil {
 		r.log.Warn("failed to fetch today new registrations", zap.Error(err))
 	}
 
@@ -170,19 +170,21 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	}
 
 	var glucoseStats struct {
-		AvgBloodSugar     float64
-		NormalCount       int64
-		TinggiCount       int64
-		SangatTinggiCount int64
-		RendahCount       int64
+		AvgBloodSugar      float64
+		HypoglycemiaCount  int64
+		NormalCount        int64
+		PrediabetesCount   int64
+		ElevatedCount      int64
+		HyperglycemiaCount int64
 	}
 	err = r.db.WithContext(ctx).Raw(`
 		SELECT 
 			COALESCE(AVG(b.glucose_value), 0) AS avg_blood_sugar,
+			COALESCE(COUNT(*) FILTER (WHERE b.status = 'hypoglycemia'), 0) AS hypoglycemia_count,
 			COALESCE(COUNT(*) FILTER (WHERE b.status = 'normal'), 0) AS normal_count,
-			COALESCE(COUNT(*) FILTER (WHERE b.status = 'tinggi'), 0) AS tinggi_count,
-			COALESCE(COUNT(*) FILTER (WHERE b.status = 'sangat_tinggi'), 0) AS sangat_tinggi_count,
-			COALESCE(COUNT(*) FILTER (WHERE b.status = 'rendah'), 0) AS rendah_count
+			COALESCE(COUNT(*) FILTER (WHERE b.status = 'prediabetes'), 0) AS prediabetes_count,
+			COALESCE(COUNT(*) FILTER (WHERE b.status = 'elevated'), 0) AS elevated_count,
+			COALESCE(COUNT(*) FILTER (WHERE b.status = 'hyperglycemia'), 0) AS hyperglycemia_count
 		FROM blood_sugar_logs b
 		JOIN patients p ON p.id = b.patient_id
 		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND b.deleted_at IS NULL AND p.deleted_at IS NULL
@@ -192,13 +194,14 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	}
 	avgBloodSugar = glucoseStats.AvgBloodSugar
 	dist = GlucoseDistribution{
-		NormalCount:       glucoseStats.NormalCount,
-		TinggiCount:       glucoseStats.TinggiCount,
-		SangatTinggiCount: glucoseStats.SangatTinggiCount,
-		RendahCount:       glucoseStats.RendahCount,
+		HypoglycemiaCount:  glucoseStats.HypoglycemiaCount,
+		NormalCount:        glucoseStats.NormalCount,
+		PrediabetesCount:   glucoseStats.PrediabetesCount,
+		ElevatedCount:      glucoseStats.ElevatedCount,
+		HyperglycemiaCount: glucoseStats.HyperglycemiaCount,
 	}
 
-	totalGlucose := dist.NormalCount + dist.TinggiCount + dist.SangatTinggiCount + dist.RendahCount
+	totalGlucose := dist.NormalCount + dist.PrediabetesCount + dist.ElevatedCount + dist.HyperglycemiaCount + dist.HypoglycemiaCount
 	var stabilityPct float64
 	if totalGlucose > 0 {
 		stabilityPct = float64(dist.NormalCount) / float64(totalGlucose) * 100.0
@@ -226,21 +229,16 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 		JOIN (
 			SELECT bs.patient_id, bs.glucose_value, bs.measured_at, bs.status::text
 			FROM blood_sugar_logs bs
-			WHERE bs.deleted_at IS NULL
+			WHERE bs.deleted_at IS NULL AND bs.measured_at >= NOW() - INTERVAL '7 days'
 			UNION ALL
 			SELECT pm.patient_id, pm.blood_sugar AS glucose_value, pm.measured_at,
-				CASE
-					WHEN pm.blood_sugar >= 200 THEN 'sangat_tinggi'
-					WHEN pm.blood_sugar >= 140 THEN 'tinggi'
-					WHEN pm.blood_sugar < 70 THEN 'rendah'
-					ELSE 'waspada'
-				END AS status
+				COALESCE(pm.status, 'normal')
 			FROM patient_measurements pm
-			WHERE pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 AND pm.deleted_at IS NULL
+			WHERE pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 AND pm.deleted_at IS NULL AND pm.measured_at >= NOW() - INTERVAL '7 days'
 		) combined ON combined.patient_id = p.id
 		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR p.assigned_staff_id IS NULL OR NULLIF(?, '') IS NULL) 
 		  AND p.deleted_at IS NULL 
-		  AND (LOWER(combined.status) IN ('sangat_tinggi', 'tinggi', 'rendah', 'sangat_rendah', 'waspada', 'berbahaya') OR combined.glucose_value >= 140 OR combined.glucose_value <= 70)
+		  AND (combined.status IN ('hypoglycemia', 'prediabetes', 'elevated', 'hyperglycemia') OR combined.glucose_value >= 140 OR combined.glucose_value <= 70)
 		ORDER BY combined.patient_id, combined.measured_at DESC
 	`, staffID, staffID).Scan(&priorityPatientsRaw).Error
 
@@ -401,17 +399,17 @@ func (r *dashboardRepository) GetActivityChart(ctx context.Context) ([]ActivityC
 			SELECT generate_series(NOW() - INTERVAL '6 days', NOW(), '1 day')::date as d
 		) days
 		LEFT JOIN (
-			SELECT id AS patient_id, DATE(last_active_at) AS dt FROM patients WHERE deleted_at IS NULL AND last_active_at IS NOT NULL
+			SELECT id AS patient_id, DATE(last_active_at) AS dt FROM patients WHERE deleted_at IS NULL AND last_active_at IS NOT NULL AND last_active_at >= NOW() - INTERVAL '7 days'
 			UNION
-			SELECT patient_id, DATE(measured_at) AS dt FROM blood_sugar_logs WHERE deleted_at IS NULL
+			SELECT patient_id, DATE(measured_at) AS dt FROM blood_sugar_logs WHERE deleted_at IS NULL AND measured_at >= NOW() - INTERVAL '7 days'
 			UNION
-			SELECT patient_id, DATE(logged_at) AS dt FROM meal_logs WHERE deleted_at IS NULL
+			SELECT patient_id, DATE(logged_at) AS dt FROM meal_logs WHERE deleted_at IS NULL AND logged_at >= NOW() - INTERVAL '7 days'
 			UNION
-			SELECT patient_id, DATE(logged_at) AS dt FROM routine_log_entries WHERE deleted_at IS NULL
+			SELECT patient_id, DATE(logged_at) AS dt FROM routine_log_entries WHERE deleted_at IS NULL AND logged_at >= NOW() - INTERVAL '7 days'
 			UNION
-			SELECT patient_id, DATE(completed_at) AS dt FROM quiz_attempts WHERE deleted_at IS NULL
+			SELECT patient_id, DATE(completed_at) AS dt FROM quiz_attempts WHERE deleted_at IS NULL AND completed_at >= NOW() - INTERVAL '7 days'
 			UNION
-			SELECT patient_id, DATE(viewed_at) AS dt FROM article_views WHERE deleted_at IS NULL
+			SELECT patient_id, DATE(viewed_at) AS dt FROM article_views WHERE deleted_at IS NULL AND viewed_at >= NOW() - INTERVAL '7 days'
 		) activity ON activity.dt = days.d
 		GROUP BY days.d
 		ORDER BY days.d ASC
@@ -520,14 +518,21 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID 
 	}
 	var activityRows []activityRow
 	sqlActivity := fmt.Sprintf(`
-		SELECT COALESCE(NULLIF(p.physical_activity_level, ''), 'Tidak Diketahui') AS level, COUNT(DISTINCT p.id) AS count
-		FROM patients p
-		JOIN routine_log_entries rle ON rle.patient_id = p.id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL AND rle.deleted_at IS NULL
-		AND rle.logged_at >= NOW() - INTERVAL '%d days'
-		GROUP BY p.physical_activity_level
+		SELECT level, COUNT(*) AS count
+		FROM (
+			SELECT pal.patient_id, pal.intensity AS level
+			FROM patient_activity_logs pal
+			WHERE pal.deleted_at IS NULL AND pal.logged_at >= NOW() - INTERVAL '%d days'
+			UNION ALL
+			SELECT rle.patient_id, 'Rutinitas' AS level
+			FROM routine_log_entries rle
+			WHERE rle.deleted_at IS NULL AND rle.status = 'Completed' AND rle.logged_at >= NOW() - INTERVAL '%d days'
+		) act
+		JOIN patients p ON p.id = act.patient_id
+		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL
+		GROUP BY level
 		ORDER BY count DESC
-	`, rangeDays)
+	`, rangeDays, rangeDays)
 	if err := r.db.WithContext(ctx).Raw(sqlActivity, staffID, staffID).Scan(&activityRows).Error; err != nil {
 		return nil, errs.NewInternal("failed to fetch physical activity distribution", err)
 	}
@@ -597,11 +602,76 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID 
 		})
 	}
 
+	// Per-patient contributions so each card can list which patients have data.
+	foodPatientSQL := fmt.Sprintf(`
+		SELECT p.id AS patient_id, p.full_name, COUNT(*) AS count
+		FROM meal_logs ml
+		JOIN patients p ON p.id = ml.patient_id
+		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND ml.deleted_at IS NULL AND p.deleted_at IS NULL
+		AND ml.logged_at >= NOW() - INTERVAL '%d days'
+		GROUP BY p.id, p.full_name
+		ORDER BY count DESC
+	`, rangeDays)
+	foodPatients, err := r.scanPatientContributions(ctx, staffID, foodPatientSQL)
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch food patient contributions", err)
+	}
+
+	activityPatientSQL := fmt.Sprintf(`
+		SELECT p.id AS patient_id, p.full_name, COUNT(*) AS count
+		FROM (
+			SELECT pal.patient_id
+			FROM patient_activity_logs pal
+			WHERE pal.deleted_at IS NULL AND pal.logged_at >= NOW() - INTERVAL '%d days'
+			UNION ALL
+			SELECT rle.patient_id
+			FROM routine_log_entries rle
+			WHERE rle.deleted_at IS NULL AND rle.status = 'Completed' AND rle.logged_at >= NOW() - INTERVAL '%d days'
+		) act
+		JOIN patients p ON p.id = act.patient_id
+		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL
+		GROUP BY p.id, p.full_name
+		ORDER BY count DESC
+	`, rangeDays, rangeDays)
+	activityPatients, err := r.scanPatientContributions(ctx, staffID, activityPatientSQL)
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch activity patient contributions", err)
+	}
+
+	medicationPatientSQL := fmt.Sprintf(`
+		SELECT p.id AS patient_id, p.full_name, COUNT(*) AS count
+		FROM daily_reminder_logs drl
+		JOIN reminders r ON r.id = drl.reminder_id
+		JOIN patients p ON p.id = r.patient_id
+		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND drl.deleted_at IS NULL AND p.deleted_at IS NULL
+		AND drl.log_date >= CURRENT_DATE - INTERVAL '%d days'
+		GROUP BY p.id, p.full_name
+		ORDER BY count DESC
+	`, rangeDays)
+	medicationPatients, err := r.scanPatientContributions(ctx, staffID, medicationPatientSQL)
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch medication patient contributions", err)
+	}
+
 	return &PopulationMetricsResponse{
 		FoodIntake:          foodIntake,
 		PhysicalActivity:    physicalActivity,
 		MedicationAdherence: adherence,
+		FoodPatients:        foodPatients,
+		ActivityPatients:    activityPatients,
+		MedicationPatients:  medicationPatients,
 	}, nil
+}
+
+// scanPatientContributions scans a per-patient GROUP BY query into a
+// []PatientContribution list. The SQL template must be fully formatted and
+// contain exactly two ? placeholders for the staffID filter.
+func (r *dashboardRepository) scanPatientContributions(ctx context.Context, staffID, sql string) ([]PatientContribution, error) {
+	var rows []PatientContribution
+	if err := r.db.WithContext(ctx).Raw(sql, staffID, staffID).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (r *dashboardRepository) GetPatientTrends(ctx context.Context, staffID string, rangeDays int) ([]TrendPatient, error) {

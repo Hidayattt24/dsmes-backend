@@ -200,7 +200,6 @@ func (r *patientRepository) FindByPhoneNumber(ctx context.Context, phone string)
 	return &p, nil
 }
 
-
 func (r *patientRepository) Create(ctx context.Context, p *domain.Patient) error {
 	if err := r.db.WithContext(ctx).Create(p).Error; err != nil {
 		return errs.NewInternal("failed to create patient", err)
@@ -307,7 +306,7 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 		val := latestBS.GlucoseValue
 		summary.LatestBloodSugar = &val
 		summary.LatestBloodSugarTime = &latestBS.MeasuredAt
-		statusStr := string(latestBS.Status)
+		statusStr := string(latestBS.Category)
 		summary.LatestBloodSugarStatus = &statusStr
 	} else {
 		// Fallback to patient_measurements table
@@ -702,132 +701,187 @@ func (r *patientRepository) GetPatientActivityAnalytics(ctx context.Context, pat
 }
 
 func (r *patientRepository) GetPatientDailyLogsAggregate(ctx context.Context, patientID string, startDate, endDate time.Time) (map[string]*DailyLogsAggregate, error) {
-	result := make(map[string]*DailyLogsAggregate)
+	all, err := r.GetPatientDailyLogsAggregates(ctx, []string{patientID}, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	return all[patientID], nil
+}
+
+// GetPatientDailyLogsAggregates computes daily logs aggregates for many patients
+// in a handful of GROUP BY queries (IN (...) + GROUP BY) instead of one query
+// per patient, eliminating the N+1 pattern in ListPatients.
+func (r *patientRepository) GetPatientDailyLogsAggregates(ctx context.Context, patientIDs []string, startDate, endDate time.Time) (map[string]map[string]*DailyLogsAggregate, error) {
+	result := make(map[string]map[string]*DailyLogsAggregate)
+	if len(patientIDs) == 0 {
+		return result, nil
+	}
+
+	getDay := func(patientID, dateStr string) *DailyLogsAggregate {
+		if result[patientID] == nil {
+			result[patientID] = make(map[string]*DailyLogsAggregate)
+		}
+		if result[patientID][dateStr] == nil {
+			result[patientID][dateStr] = &DailyLogsAggregate{}
+		}
+		return result[patientID][dateStr]
+	}
 
 	// 1. Blood sugar counts by day
 	type BSGroup struct {
-		DateStr string
-		Count   int
+		PatientID string
+		DateStr   string
+		Count     int
 	}
 	var bsGroups []BSGroup
-	r.db.WithContext(ctx).Raw(`
-		SELECT TO_CHAR(measured_at, 'YYYY-MM-DD') as date_str, COUNT(*) as count
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT patient_id, TO_CHAR(measured_at, 'YYYY-MM-DD') as date_str, COUNT(*) as count
 		FROM blood_sugar_logs
-		WHERE patient_id = ? AND measured_at >= ? AND measured_at <= ? AND deleted_at IS NULL
-		GROUP BY date_str
-	`, patientID, startDate, endDate).Scan(&bsGroups)
-
+		WHERE patient_id IN (?) AND measured_at >= ? AND measured_at <= ? AND deleted_at IS NULL
+		GROUP BY patient_id, date_str
+	`, patientIDs, startDate, endDate).Scan(&bsGroups).Error; err != nil {
+		return nil, errs.NewInternal("failed to aggregate blood sugar logs", err)
+	}
 	for _, g := range bsGroups {
-		if _, ok := result[g.DateStr]; !ok {
-			result[g.DateStr] = &DailyLogsAggregate{}
-		}
-		result[g.DateStr].BloodSugarCount = g.Count
+		getDay(g.PatientID, g.DateStr).BloodSugarCount = g.Count
 	}
 
 	// 2. Meal calories and counts by day
 	type MealGroup struct {
-		DateStr      string
-		TotalCal     float64
-		Count        int
+		PatientID string
+		DateStr   string
+		TotalCal  float64
+		Count     int
 	}
 	var mealGroups []MealGroup
-	r.db.WithContext(ctx).Raw(`
-		SELECT TO_CHAR(ml.logged_at, 'YYYY-MM-DD') as date_str,
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT ml.patient_id, TO_CHAR(ml.logged_at, 'YYYY-MM-DD') as date_str,
 			SUM(COALESCE(f.calories, 0) * COALESCE(ml.portion_multiplier, 1)) as total_cal,
 			COUNT(*) as count
 		FROM meal_logs ml
 		LEFT JOIN foods f ON f.id = ml.food_id
-		WHERE ml.patient_id = ? AND ml.logged_at >= ? AND ml.logged_at <= ? AND ml.deleted_at IS NULL
-		GROUP BY date_str
-	`, patientID, startDate, endDate).Scan(&mealGroups)
-
+		WHERE ml.patient_id IN (?) AND ml.logged_at >= ? AND ml.logged_at <= ? AND ml.deleted_at IS NULL
+		GROUP BY ml.patient_id, date_str
+	`, patientIDs, startDate, endDate).Scan(&mealGroups).Error; err != nil {
+		return nil, errs.NewInternal("failed to aggregate meal logs", err)
+	}
 	for _, g := range mealGroups {
-		if _, ok := result[g.DateStr]; !ok {
-			result[g.DateStr] = &DailyLogsAggregate{}
-		}
-		result[g.DateStr].TotalMealCalories = g.TotalCal
-		result[g.DateStr].MealCount = g.Count
+		day := getDay(g.PatientID, g.DateStr)
+		day.TotalMealCalories = g.TotalCal
+		day.MealCount = g.Count
 	}
 
 	// 3. Activity minutes by day
 	type ActGroup struct {
+		PatientID    string
 		DateStr      string
 		TotalMinutes int
 	}
 	var actGroups []ActGroup
-	r.db.WithContext(ctx).Raw(`
-		SELECT TO_CHAR(le.logged_at, 'YYYY-MM-DD') as date_str,
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT le.patient_id, TO_CHAR(le.logged_at, 'YYYY-MM-DD') as date_str,
 			COUNT(*) * 30 as total_minutes
 		FROM routine_log_entries le
 		JOIN routine_times rt ON rt.id = le.routine_time_id AND rt.deleted_at IS NULL
 		JOIN routines r ON r.id = rt.routine_id AND r.deleted_at IS NULL
-		WHERE le.patient_id = ? AND le.logged_at >= ? AND le.logged_at <= ? AND le.status = 'Completed' AND le.deleted_at IS NULL
-		GROUP BY date_str
-	`, patientID, startDate, endDate).Scan(&actGroups)
-
+		WHERE le.patient_id IN (?) AND le.logged_at >= ? AND le.logged_at <= ? AND le.status = 'Completed' AND le.deleted_at IS NULL
+		GROUP BY le.patient_id, date_str
+	`, patientIDs, startDate, endDate).Scan(&actGroups).Error; err != nil {
+		return nil, errs.NewInternal("failed to aggregate activity logs", err)
+	}
 	for _, g := range actGroups {
-		if _, ok := result[g.DateStr]; !ok {
-			result[g.DateStr] = &DailyLogsAggregate{}
-		}
-		result[g.DateStr].TotalActivityMinutes = g.TotalMinutes
+		getDay(g.PatientID, g.DateStr).TotalActivityMinutes = g.TotalMinutes
 	}
 
-	// 4. Medication completed & scheduled by day
+	// 4. Medication completed by day
 	type MedGroup struct {
+		PatientID      string
 		DateStr        string
 		CompletedCount int
 	}
 	var medGroups []MedGroup
-	r.db.WithContext(ctx).Raw(`
-		SELECT TO_CHAR(d.log_date, 'YYYY-MM-DD') as date_str, COUNT(*) as completed_count
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT r.patient_id, TO_CHAR(d.log_date, 'YYYY-MM-DD') as date_str, COUNT(*) as completed_count
 		FROM daily_reminder_logs d
 		JOIN reminders r ON r.id = d.reminder_id AND r.deleted_at IS NULL
-		WHERE r.patient_id = ? AND d.log_date >= ? AND d.log_date <= ? AND d.status = 'selesai' AND d.deleted_at IS NULL
-		GROUP BY date_str
-	`, patientID, startDate, endDate).Scan(&medGroups)
-
+		WHERE r.patient_id IN (?) AND d.log_date >= ? AND d.log_date <= ? AND d.status = 'selesai' AND d.deleted_at IS NULL
+		GROUP BY r.patient_id, date_str
+	`, patientIDs, startDate, endDate).Scan(&medGroups).Error; err != nil {
+		return nil, errs.NewInternal("failed to aggregate medication logs", err)
+	}
 	for _, g := range medGroups {
-		if _, ok := result[g.DateStr]; !ok {
-			result[g.DateStr] = &DailyLogsAggregate{}
-		}
-		result[g.DateStr].MedicationCompletedCount = g.CompletedCount
+		getDay(g.PatientID, g.DateStr).MedicationCompletedCount = g.CompletedCount
 	}
 
-	// 5. Total active medication reminders count for this patient
-	var activeRemindersCount int64
-	r.db.WithContext(ctx).Table("reminders").
-		Where("patient_id = ? AND is_active = true AND category = 'medis_obat' AND deleted_at IS NULL", patientID).
-		Count(&activeRemindersCount)
-
-	for _, agg := range result {
-		agg.MedicationScheduledCount = int(activeRemindersCount)
+	// 5. Total active medication reminders count per patient
+	type RemGroup struct {
+		PatientID string
+		Count     int64
+	}
+	var remGroups []RemGroup
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT patient_id, COUNT(*) as count
+		FROM reminders
+		WHERE patient_id IN (?) AND is_active = true AND category = 'medis_obat' AND deleted_at IS NULL
+		GROUP BY patient_id
+	`, patientIDs).Scan(&remGroups).Error; err != nil {
+		return nil, errs.NewInternal("failed to count active reminders", err)
+	}
+	reminderCount := make(map[string]int, len(remGroups))
+	for _, g := range remGroups {
+		reminderCount[g.PatientID] = int(g.Count)
+	}
+	for pid, days := range result {
+		for _, agg := range days {
+			agg.MedicationScheduledCount = reminderCount[pid]
+		}
 	}
 
 	return result, nil
 }
 
 func (r *patientRepository) CreateMeasurement(ctx context.Context, m *domain.PatientMeasurement) error {
-	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
-		return errs.NewInternal("failed to create measurement record", err)
-	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(m).Error; err != nil {
+			return errs.NewInternal("failed to create measurement record", err)
+		}
 
-	// Update patient summary fields (weight_kg, height_cm, daily_calorie_target) with latest measurement
-	updates := map[string]interface{}{}
-	if m.WeightKg != nil && *m.WeightKg > 0 {
-		updates["weight_kg"] = *m.WeightKg
-	}
-	if m.HeightCm != nil && *m.HeightCm > 0 {
-		updates["height_cm"] = *m.HeightCm
-	}
-	if m.DailyCalorieTarget != nil && *m.DailyCalorieTarget > 0 {
-		updates["daily_calorie_target"] = *m.DailyCalorieTarget
-	}
+		// Update patient summary fields (weight_kg, height_cm, daily_calorie_target) with latest measurement
+		updates := map[string]interface{}{}
+		if m.WeightKg != nil && *m.WeightKg > 0 {
+			updates["weight_kg"] = *m.WeightKg
+		}
+		if m.HeightCm != nil && *m.HeightCm > 0 {
+			updates["height_cm"] = *m.HeightCm
+		}
+		if m.DailyCalorieTarget != nil && *m.DailyCalorieTarget > 0 {
+			updates["daily_calorie_target"] = *m.DailyCalorieTarget
+		}
 
-	if len(updates) > 0 {
-		_ = r.db.WithContext(ctx).Model(&domain.Patient{}).Where("id = ?", m.PatientID).Updates(updates).Error
-	}
+		if len(updates) > 0 {
+			if err := tx.Model(&domain.Patient{}).Where("id = ?", m.PatientID).Updates(updates).Error; err != nil {
+				return errs.NewInternal("failed to update patient summary", err)
+			}
+		}
+		return nil
+	})
+}
 
-	return nil
+func (r *patientRepository) CreateMeasurementWithSync(ctx context.Context, patient *domain.Patient, m *domain.PatientMeasurement, bsLog *domain.BloodSugarLog) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(patient).Error; err != nil {
+			return errs.NewInternal("failed to update patient profile", err)
+		}
+		if err := tx.Create(m).Error; err != nil {
+			return errs.NewInternal("failed to create measurement record", err)
+		}
+		if bsLog != nil {
+			if err := tx.Create(bsLog).Error; err != nil {
+				return errs.NewInternal("failed to create blood sugar log", err)
+			}
+		}
+		return nil
+	})
 }
 
 func (r *patientRepository) GetPatientMeasurements(ctx context.Context, patientID string) ([]domain.PatientMeasurement, error) {
@@ -835,6 +889,7 @@ func (r *patientRepository) GetPatientMeasurements(ctx context.Context, patientI
 	err := r.db.WithContext(ctx).
 		Where("patient_id = ? AND deleted_at IS NULL", patientID).
 		Order("measured_at DESC, created_at DESC").
+		Limit(200). // server-side cap
 		Find(&items).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch patient measurements history", err)
@@ -845,6 +900,7 @@ func (r *patientRepository) GetPatientMeasurements(ctx context.Context, patientI
 	_ = r.db.WithContext(ctx).
 		Where("patient_id = ? AND deleted_at IS NULL", patientID).
 		Order("measured_at DESC").
+		Limit(200). // server-side cap
 		Find(&bsLogs).Error
 
 	if len(bsLogs) > 0 {

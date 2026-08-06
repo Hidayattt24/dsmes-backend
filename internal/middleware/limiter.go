@@ -14,11 +14,27 @@
 package middleware
 
 import (
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 )
+
+// clientIP extracts the original client IP. When behind a reverse proxy it uses
+// the left-most (original) entry of X-Forwarded-For; otherwise the socket peer.
+// Parsing only the first element prevents a spoofed multi-IP header from being
+// used verbatim as the rate-limit key.
+func clientIP(c fiber.Ctx) string {
+	forwarded := c.Get("X-Forwarded-For")
+	if forwarded != "" {
+		if i := strings.Index(forwarded, ","); i != -1 {
+			forwarded = forwarded[:i]
+		}
+		return strings.TrimSpace(forwarded)
+	}
+	return c.IP()
+}
 
 // RateLimiter returns the global rate limiting middleware.
 func RateLimiter() fiber.Handler {
@@ -30,14 +46,8 @@ func RateLimiter() fiber.Handler {
 		Expiration: 1 * time.Minute,
 
 		// KeyGenerator identifies unique clients by their IP address.
-		// In production behind a reverse proxy, use X-Forwarded-For.
 		KeyGenerator: func(c fiber.Ctx) string {
-			// Prefer the forwarded IP when behind nginx / Cloudflare.
-			forwarded := c.Get("X-Forwarded-For")
-			if forwarded != "" {
-				return forwarded
-			}
-			return c.IP()
+			return clientIP(c)
 		},
 
 		// LimitReached returns a structured JSON 429 response.
@@ -45,6 +55,24 @@ func RateLimiter() fiber.Handler {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
 				"success": false,
 				"message": "too many requests — please slow down and try again later",
+			})
+		},
+	})
+}
+
+// StrictRateLimiter returns a tighter limiter for sensitive endpoints such as
+// authentication/OTP, where 100 requests/minute would allow brute force.
+func StrictRateLimiter() fiber.Handler {
+	return limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return clientIP(c)
+		},
+		LimitReached: func(c fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"success": false,
+				"message": "too many requests — please try again later",
 			})
 		},
 	})

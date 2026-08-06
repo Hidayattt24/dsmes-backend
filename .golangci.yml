@@ -1,0 +1,16 @@
+# golangci-lint configuration for the DSMES backend.
+# Keep the enabled set conservative so CI stays green while catching real issues.
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - govet       # reports suspicious constructs (also caught by go vet)
+    - ineffassign # detects assignments to variables that are never used
+    - unused      # reports unused constants, variables, functions and types
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

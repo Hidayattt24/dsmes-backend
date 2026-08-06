@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
@@ -197,10 +198,21 @@ func (s *reminderService) MarkAllRead(ctx context.Context, patientID string) err
 }
 
 func (s *reminderService) MarkReadByID(ctx context.Context, patientID string, notifID string) error {
+	// Guard against non-UUID ids (e.g. locally generated mobile ids) which
+	// would cause a PostgreSQL type error instead of a clean "not found".
+	if _, err := uuid.Parse(notifID); err != nil {
+		return errs.NewNotFound("notification not found")
+	}
 	return s.repo.MarkNotificationReadByID(ctx, patientID, notifID)
 }
 
 func (s *reminderService) DeleteNotificationByID(ctx context.Context, patientID string, notifID string) error {
+	if notifID == "all" || notifID == "" {
+		return s.repo.DeleteNotificationByID(ctx, patientID, notifID)
+	}
+	if _, err := uuid.Parse(notifID); err != nil {
+		return errs.NewNotFound("notification not found")
+	}
 	return s.repo.DeleteNotificationByID(ctx, patientID, notifID)
 }
 

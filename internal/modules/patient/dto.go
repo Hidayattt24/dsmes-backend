@@ -365,14 +365,14 @@ type ChangePasswordRequest struct {
 }
 
 type CreateMeasurementRequest struct {
-	WeightKg               *float64               `json:"weight_kg"`
-	HeightCm               *float64               `json:"height_cm"`
-	BloodPressureSystolic  *int                   `json:"blood_pressure_systolic"`
-	BloodPressureDiastolic *int                   `json:"blood_pressure_diastolic"`
-	BloodSugar             *int                   `json:"blood_sugar"`
+	WeightKg               *float64               `json:"weight_kg"                 validate:"omitempty,gt=0"`
+	HeightCm               *float64               `json:"height_cm"                 validate:"omitempty,gt=0"`
+	BloodPressureSystolic  *int                   `json:"blood_pressure_systolic"   validate:"omitempty,gt=0"`
+	BloodPressureDiastolic *int                   `json:"blood_pressure_diastolic"  validate:"omitempty,gt=0"`
+	BloodSugar             *int                   `json:"blood_sugar"               validate:"omitempty,gt=0"`
 	BloodSugarTimeType     domain.MeasurementTime `json:"blood_sugar_time_type"`
-	WaistCircumferenceCm   *float64               `json:"waist_circumference_cm"`
-	DailyCalorieTarget     *int                   `json:"daily_calorie_target"`
+	WaistCircumferenceCm   *float64               `json:"waist_circumference_cm"    validate:"omitempty,gt=0"`
+	DailyCalorieTarget     *int                   `json:"daily_calorie_target"      validate:"omitempty,gt=0"`
 	Gender                 string                 `json:"gender"`
 	BloodType              string                 `json:"blood_type"`
 	PhysicalActivityLevel  string                 `json:"physical_activity_level"`
@@ -381,13 +381,13 @@ type CreateMeasurementRequest struct {
 }
 
 type UpdateMeasurementRequest struct {
-	WeightKg               *float64 `json:"weight_kg"`
-	HeightCm               *float64 `json:"height_cm"`
-	BloodPressureSystolic  *int     `json:"blood_pressure_systolic"`
-	BloodPressureDiastolic *int     `json:"blood_pressure_diastolic"`
-	BloodSugar             *int     `json:"blood_sugar"`
-	WaistCircumferenceCm   *float64 `json:"waist_circumference_cm"`
-	DailyCalorieTarget     *int     `json:"daily_calorie_target"`
+	WeightKg               *float64 `json:"weight_kg"                  validate:"omitempty,gt=0"`
+	HeightCm               *float64 `json:"height_cm"                  validate:"omitempty,gt=0"`
+	BloodPressureSystolic  *int     `json:"blood_pressure_systolic"    validate:"omitempty,gt=0"`
+	BloodPressureDiastolic *int     `json:"blood_pressure_diastolic"   validate:"omitempty,gt=0"`
+	BloodSugar             *int     `json:"blood_sugar"                validate:"omitempty,gt=0"`
+	WaistCircumferenceCm   *float64 `json:"waist_circumference_cm"     validate:"omitempty,gt=0"`
+	DailyCalorieTarget     *int     `json:"daily_calorie_target"       validate:"omitempty,gt=0"`
 	Notes                  string   `json:"notes"`
 }
 
@@ -403,9 +403,9 @@ type UpdatePatientRequest struct {
 	EmergencyName         string   `json:"emergency_name"`
 	EmergencyRelation     string   `json:"emergency_relation"`
 	EmergencyPhone        string   `json:"emergency_phone"`
-	HeightCm              *float64 `json:"height_cm"`
-	WeightKg              *float64 `json:"weight_kg"`
-	DailyCalorieTarget    *int     `json:"daily_calorie_target"`
+	HeightCm              *float64 `json:"height_cm"              validate:"omitempty,gt=0"`
+	WeightKg              *float64 `json:"weight_kg"              validate:"omitempty,gt=0"`
+	DailyCalorieTarget    *int     `json:"daily_calorie_target"   validate:"omitempty,gt=0"`
 	DiagnosisDate         string   `json:"diagnosis_date"`
 	CurrentMedication     string   `json:"current_medication"`
 	Allergies             string   `json:"allergies"`

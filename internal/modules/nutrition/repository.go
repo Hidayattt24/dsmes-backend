@@ -112,7 +112,8 @@ func (r *nutritionRepository) FindMealsByPatientAndDate(ctx context.Context, pat
 	var items []domain.MealLog
 	q := r.db.WithContext(ctx).Preload("Food").Where("patient_id = ? AND deleted_at IS NULL", patientID)
 	if dateStr != "" {
-		q = q.Where("DATE(logged_at) = ?", dateStr)
+		// Range predicate so the (patient_id, logged_at) index can be used.
+		q = q.Where("logged_at >= ?::date AND logged_at < (?::date + INTERVAL '1 day')", dateStr, dateStr)
 	} else {
 		q = q.Where("logged_at >= NOW() - INTERVAL '30 days'")
 	}
@@ -132,7 +133,7 @@ func (r *nutritionRepository) GetDailyCalorieTarget(ctx context.Context, patient
 		Row().
 		Scan(&target)
 	if err != nil {
-		return 2000, nil // default fallback
+		return domain.DefaultDailyCalorieTarget, nil // default fallback
 	}
 	return target, nil
 }

@@ -89,7 +89,7 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		age = time.Now().Year() - dob.Year()
 	}
 
-	dailyCalorie := 2000
+	dailyCalorie := domain.DefaultDailyCalorieTarget
 	if req.WeightKg > 0 && req.HeightCm > 0 {
 		dailyCalorie = CalculateDSMESCalorieTarget(string(gender), req.WeightKg, req.HeightCm, age)
 	}
@@ -203,7 +203,7 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		OwnerType:    auth.OwnerTypePatient,
 		OwnerID:      patient.ID,
 		RefreshToken: tokens.RefreshToken,
-		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
+		ExpiresAt:    time.Now().Add(s.jwt.RefreshTTL()),
 	}
 	if err = s.authRepo.CreateSession(ctx, session); err != nil {
 		s.log.Warn("patient: failed to persist session on register", zap.Error(err), zap.String("patient_id", patient.ID))
@@ -281,7 +281,7 @@ func (s *patientService) SetupHealthProfile(ctx context.Context, patientID strin
 		ActivityLevel: activityLevel,
 	})
 
-	dailyCalorieTarget := 2000
+	dailyCalorieTarget := domain.DefaultDailyCalorieTarget
 	if calcErr == nil && calcRes != nil {
 		dailyCalorieTarget = calcRes.TDEE
 		patient.MaintenanceCalories = calcRes.Recommendations.Maintain.Calories
@@ -349,7 +349,7 @@ func (s *patientService) SetupHealthProfile(ctx context.Context, patientID strin
 
 func CalculateCalorieStatus(target int, consumed float64) *CalorieStatusInfo {
 	if target <= 0 {
-		target = 2000
+		target = domain.DefaultDailyCalorieTarget
 	}
 
 	achievement := (consumed / float64(target)) * 100.0
@@ -465,9 +465,17 @@ func (s *patientService) ListPatients(ctx context.Context, filter PatientFilterQ
 		s.log.Warn("patient: failed to batch fetch summaries", zap.Error(err))
 	}
 
+	// Batch fetch daily aggregates once for the whole page (avoids N+1 queries).
+	now := time.Now()
+	aggregates, aggErr := s.repo.GetPatientDailyLogsAggregates(ctx, patientIDs, now.AddDate(0, 0, -6), now)
+	if aggErr != nil {
+		s.log.Warn("patient: failed to batch fetch daily aggregates", zap.Error(aggErr))
+		aggregates = make(map[string]map[string]*DailyLogsAggregate)
+	}
+
 	for i := range items {
 		resp[i] = ToPatientResponse(&items[i])
-		score, label, _ := s.CalculateDynamicCompliance(ctx, items[i].ID, items[i].DailyCalorieTarget, items[i].CreatedAt)
+		score, label, _ := complianceFromAggregates(aggregates[items[i].ID], items[i].DailyCalorieTarget, items[i].CreatedAt, now)
 		resp[i].Compliance = score
 		resp[i].ComplianceLabel = label
 		if summary, ok := summaries[items[i].ID]; ok && summary != nil {
@@ -525,11 +533,20 @@ func (s *patientService) GetPatientActivityAnalytics(ctx context.Context, patien
 
 func (s *patientService) CalculateDynamicCompliance(ctx context.Context, patientID string, dailyTarget int, createdAt time.Time) (int, string, *ComplianceBreakdown) {
 	now := time.Now()
-	endDate := now
-	startDate := now.AddDate(0, 0, -6)
+	dailyAggs, err := s.repo.GetPatientDailyLogsAggregate(ctx, patientID, now.AddDate(0, 0, -6), now)
+	if err != nil {
+		s.log.Warn("patient: failed to fetch daily logs aggregate for compliance", zap.Error(err))
+		dailyAggs = make(map[string]*DailyLogsAggregate)
+	}
+	return complianceFromAggregates(dailyAggs, dailyTarget, createdAt, now)
+}
 
+// complianceFromAggregates scores a patient's compliance from pre-fetched daily
+// aggregates. Extracted so ListPatients can score all patients on a page from a
+// single batched repository call instead of issuing one query per patient.
+func complianceFromAggregates(dailyAggs map[string]*DailyLogsAggregate, dailyTarget int, createdAt time.Time, now time.Time) (int, string, *ComplianceBreakdown) {
 	if dailyTarget <= 0 {
-		dailyTarget = 2000
+		dailyTarget = domain.DefaultDailyCalorieTarget
 	}
 
 	daysSinceReg := int(now.Sub(createdAt).Hours()/24) + 1
@@ -539,12 +556,6 @@ func (s *patientService) CalculateDynamicCompliance(ctx context.Context, patient
 	}
 	if evalWindow < 1 {
 		evalWindow = 1
-	}
-
-	dailyAggs, err := s.repo.GetPatientDailyLogsAggregate(ctx, patientID, startDate, endDate)
-	if err != nil {
-		s.log.Warn("patient: failed to fetch daily logs aggregate for compliance", zap.Error(err))
-		dailyAggs = make(map[string]*DailyLogsAggregate)
 	}
 
 	var sumBS, sumFood, sumAct, sumMed float64
@@ -773,7 +784,12 @@ func (s *patientService) ChangePassword(ctx context.Context, patientID string, r
 	}
 
 	patient.PasswordHash = string(hash)
-	return s.repo.Update(ctx, patient)
+	if err := s.repo.Update(ctx, patient); err != nil {
+		return err
+	}
+
+	// Invalidate every active session so old refresh tokens stop working.
+	return s.authRepo.RevokeAllSessions(ctx, auth.OwnerTypePatient, patientID)
 }
 
 func (s *patientService) AssignStaff(ctx context.Context, id string, req AssignStaffRequest) (*PatientDetailResponse, error) {
@@ -906,8 +922,6 @@ func (s *patientService) CreateMeasurement(ctx context.Context, patientID string
 	if req.BloodType != "" {
 		patient.BloodType = domain.BloodType(req.BloodType)
 	}
-	_ = s.repo.Update(ctx, patient)
-
 	recRole := recordedByRole
 	if recRole == "" {
 		recRole = "admin"
@@ -934,18 +948,16 @@ func (s *patientService) CreateMeasurement(ctx context.Context, patientID string
 		MeasuredAt:             measuredAt,
 	}
 
-	if err := s.repo.CreateMeasurement(ctx, m); err != nil {
-		return nil, err
-	}
-
-	// Synchronize with global blood_sugar_logs so latest blood sugar & trends update automatically everywhere
+	// Synchronize with global blood_sugar_logs so latest blood sugar & trends
+	// update automatically everywhere (created atomically with the measurement).
+	var bsLog *domain.BloodSugarLog
 	if req.BloodSugar != nil && *req.BloodSugar > 0 {
 		bsTimeType := req.BloodSugarTimeType
 		if bsTimeType == "" {
 			bsTimeType = domain.TimeSewaktu
 		}
 		medRes := domain.CalculateBloodSugarMedicalResult(*req.BloodSugar, bsTimeType, &patient.DateOfBirth)
-		bsLog := &domain.BloodSugarLog{
+		bsLog = &domain.BloodSugarLog{
 			BaseModel: domain.BaseModel{
 				ID: m.ID,
 			},
@@ -953,17 +965,20 @@ func (s *patientService) CreateMeasurement(ctx context.Context, patientID string
 			GlucoseValue:        *req.BloodSugar,
 			MeasurementTimeType: bsTimeType,
 			MeasuredAt:          measuredAt,
-			Status:              medRes.Classification,
+			Category:            medRes.Category,
 			Severity:            medRes.Severity,
 			ReferenceMin:        medRes.ReferenceMin,
 			ReferenceMax:        medRes.ReferenceMax,
-			ReferenceRangeText:  medRes.ReferenceRangeText,
+			ReferenceRange:      medRes.ReferenceRange,
 			Recommendation:      medRes.Recommendation,
-			ColorIndicator:      medRes.ColorIndicator,
+			Color:               medRes.Color,
 		}
-		if err := s.repo.CreateBloodSugarLog(ctx, bsLog); err != nil {
-			s.log.Warn("patient: failed to sync blood sugar log", zap.Error(err), zap.String("patient_id", patient.ID))
-		}
+	}
+
+	// Patient profile + measurement + blood sugar log are written in one
+	// transaction; a failure rolls all of them back.
+	if err := s.repo.CreateMeasurementWithSync(ctx, patient, m, bsLog); err != nil {
+		return nil, err
 	}
 
 	resp := ToPatientMeasurementResponse(m)

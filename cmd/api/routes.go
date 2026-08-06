@@ -41,7 +41,8 @@ import (
 // registerRoutes mounts all routes on the Fiber application.
 func registerRoutes(app *fiber.App, c *container.Container) {
 	// ── Swagger UI (development / staging only) ───────────────────────────────
-	if c.Config.Swagger.Enabled {
+	// Swagger is never served in production to avoid exposing the API contract.
+	if c.Config.Swagger.Enabled && !c.Config.IsProduction() {
 		app.Use(swaggerui.New(swaggerui.Config{
 			BasePath: "/",
 			FilePath: "./docs/swagger.json",
@@ -64,13 +65,15 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	// We instantiate all repositories, services, and handlers here using GORM DB
 	// and Logger injected from the dependency container.
 
-	// 1. Staff
+	// 1. Auth (shared repo used for session revocation across modules)
+	authRepo := auth.NewAuthRepository(c.DB, c.Logger)
+
+	// 2. Staff
 	staffRepo := staff.NewStaffRepository(c.DB, c.Logger)
-	staffSvc := staff.NewStaffService(staffRepo, c.Logger)
+	staffSvc := staff.NewStaffService(staffRepo, authRepo, c.Logger)
 	staffHandler := staff.NewStaffHandler(staffSvc, c.Logger)
 
-	// 2. Patient
-	authRepo := auth.NewAuthRepository(c.DB, c.Logger)
+	// 3. Patient
 	patientRepo := patient.NewPatientRepository(c.DB, c.Logger)
 	patientSvc := patient.NewPatientService(patientRepo, authRepo, c.JWT, c.Email, c.Logger)
 	patientHandler := patient.NewPatientHandler(patientSvc, c.Logger)
@@ -201,10 +204,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Get("/patients/:id/activities/education", eduProgressHandler.GetPatientEducationActivities)
 		admin.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
 		admin.Get("/patients/:id/activity-analytics", patientHandler.GetPatientActivityAnalytics)
-
-		// Global Foods Management
-		admin.Post("/foods", nutritionHandler.CreateFood)
-		admin.Put("/foods/:id", nutritionHandler.UpdateFood)
 
 		// Education content CRUD
 		admin.Get("/education/stats", eduHandler.GetStats)
@@ -340,7 +339,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Get("/education/saved", eduHandler.ListSaved)
 
 		// Education Progress (Mobile-ready API)
-		admin.Get("/education/:id/progress", eduProgressHandler.GetPatientProgress)
 		patientGroup.Get("/education/:id/progress", eduProgressHandler.GetPatientProgress)
 		patientGroup.Post("/education/:id/read-article", eduProgressHandler.MarkArticleRead)
 		patientGroup.Post("/education/:id/watch-video", eduProgressHandler.MarkVideoWatched)
@@ -368,13 +366,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Get("/questionnaires/:id/my-attempt", quizHandler.GetMyAttempt)
 		patientGroup.Get("/questionnaires/:id/my-attempt/detail", quizHandler.GetMyAttemptDetail)
 		patientGroup.Post("/questionnaires/:id/submit", quizHandler.Submit)
-
-		// AI Personal Diabetes Assistant
-		patientGroup.Get("/ai/conversations", aiChatHandler.ListConversations)
-		patientGroup.Post("/ai/conversations", aiChatHandler.CreateConversation)
-		patientGroup.Get("/ai/conversations/:id/messages", aiChatHandler.GetMessages)
-		patientGroup.Delete("/ai/conversations/:id", aiChatHandler.DeleteConversation)
-		patientGroup.Post("/ai/chat", aiChatHandler.SendMessage)
 	}
 
 	// Register Survey Module Routes
@@ -399,7 +390,6 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		aiGroup.Post("/chat", aiChatHandler.SendMessage)
 	}
 
-	v1.Get("/foods", jwtAuth, nutritionHandler.Search)
 	v1.Get("/faqs", jwtAuth, settingsHandler.GetFAQs)
 	v1.Get("/education/categories", jwtAuth, eduHandler.ListCategories)
 	v1.Get("/education/articles", jwtAuth, eduHandler.ListPublished)
@@ -409,7 +399,11 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	v1.Get("/education/:id/rating", jwtAuth, eduHandler.GetRatingSummary)
 
 	// ── Internal / Cron Group ─────────────────────────────────────────────────
-	internal := v1.Group("/internal")
+	// Only authenticated admins may trigger internal jobs to prevent IDOR.
+	internal := v1.Group("/internal",
+		middleware.JWT(c.Config),
+		middleware.RequireRole("admin"),
+	)
 	{
 		internal.Post("/summary/generate", summaryHandler.Generate)
 	}

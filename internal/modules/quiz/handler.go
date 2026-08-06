@@ -162,7 +162,7 @@ func (h *QuizHandler) Delete(c fiber.Ctx) error {
 		return err
 	}
 
-	return response.Success(c, "questionnaire deleted successfully", nil)
+	return response.NoContent(c)
 }
 
 func (h *QuizHandler) GetStats(c fiber.Ctx) error {
@@ -198,7 +198,7 @@ func (h *QuizHandler) Submit(c fiber.Ctx) error {
 		return err
 	}
 
-	return response.Success(c, "questionnaire submitted successfully", res)
+	return response.Created(c, "questionnaire submitted successfully", res)
 }
 
 func (h *QuizHandler) ListParticipants(c fiber.Ctx) error {

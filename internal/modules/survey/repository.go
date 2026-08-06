@@ -124,7 +124,7 @@ func (r *surveyRepository) ListActiveSurveys(ctx context.Context, surveyType str
 	var surveys []domain.Survey
 	q := r.db.WithContext(ctx).Model(&domain.Survey{}).
 		Preload("Questions", func(db *gorm.DB) *gorm.DB {
-			return db.Order("display_order ASC")
+			return db.Where("deleted_at IS NULL").Order("display_order ASC")
 		}).
 		Where("status = ? AND is_active = ? AND deleted_at IS NULL", domain.SurveyStatusPublished, true)
 
@@ -243,6 +243,7 @@ func (r *surveyRepository) GetAllResponsesForExport(ctx context.Context, surveyI
 		Preload("Answers.Question").
 		Where("survey_id = ? AND deleted_at IS NULL", surveyID).
 		Order("completed_at ASC").
+		Limit(10000). // server-side cap to bound large exports
 		Find(&items).Error
 
 	if err != nil {
@@ -267,13 +268,13 @@ func (r *surveyRepository) GetAnalytics(ctx context.Context, surveyID string) (*
 
 	totalParticipants := len(responses)
 	res := &SurveyAnalyticsResponse{
-		SurveyID:            survey.ID,
-		SurveyTitle:         survey.Title,
-		Type:                survey.Type,
-		TotalParticipants:   totalParticipants,
-		CompletedCount:      totalParticipants,
-		CompletionRate:      100.0,
-		QuestionStatistics:  make([]QuestionAnalytic, 0, len(survey.Questions)),
+		SurveyID:           survey.ID,
+		SurveyTitle:        survey.Title,
+		Type:               survey.Type,
+		TotalParticipants:  totalParticipants,
+		CompletedCount:     totalParticipants,
+		CompletionRate:     100.0,
+		QuestionStatistics: make([]QuestionAnalytic, 0, len(survey.Questions)),
 	}
 
 	if totalParticipants == 0 {

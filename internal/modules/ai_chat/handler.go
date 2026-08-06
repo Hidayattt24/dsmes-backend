@@ -48,7 +48,7 @@ func (h *AIChatHandler) SendMessage(c fiber.Ctx) error {
 		return errs.NewInternal("failed to process chat request: " + err.Error())
 	}
 
-	return response.Success(c, "assistant response generated", res)
+	return response.Created(c, "assistant response generated", res)
 }
 
 // ListConversations handles GET /api/v1/ai/conversations
@@ -82,9 +82,13 @@ func (h *AIChatHandler) CreateConversation(c fiber.Ctx) error {
 	}
 
 	var req CreateConversationRequest
-	if err := c.Bind().Body(&req); err != nil {
-		// Default title if empty body
+	if err := c.Bind().Body(&req); err != nil || req.Title == "" {
+		// Default title when the body is empty or malformed.
 		req.Title = "Percakapan Baru"
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
 	}
 
 	res, err := h.svc.CreateConversation(c.Context(), patientID, req.Title)
@@ -141,5 +145,5 @@ func (h *AIChatHandler) DeleteConversation(c fiber.Ctx) error {
 		return errs.NewInternal("failed to delete conversation")
 	}
 
-	return response.Success(c, "conversation deleted successfully", nil)
+	return response.NoContent(c)
 }

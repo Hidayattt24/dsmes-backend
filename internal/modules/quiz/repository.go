@@ -281,6 +281,7 @@ func (r *quizRepository) FindAttemptsByQuestionnaireID(ctx context.Context, ques
 		Preload("Patient").
 		Where("quiz_id = ? AND deleted_at IS NULL", questionnaireID).
 		Order("completed_at DESC").
+		Limit(500). // server-side cap to bound unbounded admin queries
 		Find(&attempts).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch attempts", err)
@@ -456,7 +457,7 @@ func (r *quizRepository) FindMyHistory(ctx context.Context, patientID, qType str
 		q = q.Where("questionnaires.type = ?", qType)
 	}
 
-	if err := q.Order("quiz_attempts.completed_at DESC").Find(&attempts).Error; err != nil {
+	if err := q.Order("quiz_attempts.completed_at DESC").Limit(200).Find(&attempts).Error; err != nil {
 		return nil, errs.NewInternal("failed to fetch patient history", err)
 	}
 	return attempts, nil

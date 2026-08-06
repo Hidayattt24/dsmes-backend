@@ -127,7 +127,7 @@ func (r *aiChatRepository) GetPatientHealthContext(ctx context.Context, patientI
 	}
 	err := r.db.WithContext(ctx).Table("patients").
 		Select("full_name, date_of_birth, gender, diabetes_type, height_cm, weight_kg, daily_calorie_target").
-		Where("id = ?", patientID).
+		Where("id = ? AND deleted_at IS NULL", patientID).
 		Scan(&patientData).Error
 
 	if err == nil {

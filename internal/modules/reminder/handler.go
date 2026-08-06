@@ -239,7 +239,7 @@ func (h *ReminderHandler) LogMedication(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "medication logged successfully", res)
+	return response.Created(c, "medication logged successfully", res)
 }
 
 // GetPatientMedicationLogs handles GET /api/v1/admin/patients/:id/medications or /api/v1/staff/patients/:id/medications

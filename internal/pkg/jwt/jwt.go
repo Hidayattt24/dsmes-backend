@@ -112,6 +112,12 @@ func (m *Manager) GenerateTokenPair(userID, email, role string) (*TokenPair, err
 	}, nil
 }
 
+// RefreshTTL returns the configured refresh token time-to-live. Session rows in
+// auth_sessions use this value so their expiry always matches the JWT expiry.
+func (m *Manager) RefreshTTL() time.Duration {
+	return m.refreshTokenTTL
+}
+
 // ParseAccessToken validates and parses an access token string.
 // Returns the embedded Claims or an error if the token is invalid/expired.
 func (m *Manager) ParseAccessToken(tokenString string) (*Claims, error) {

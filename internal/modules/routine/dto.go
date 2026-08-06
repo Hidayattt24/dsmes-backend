@@ -44,7 +44,7 @@ type RoutineSetupItem struct {
 
 type BulkSetupRoutinesRequest struct {
 	UseReminder bool               `json:"use_reminder"`
-	Routines    []RoutineSetupItem `json:"routines"`
+	Routines    []RoutineSetupItem `json:"routines" validate:"min=1"`
 }
 
 type RoutineLogResponse struct {

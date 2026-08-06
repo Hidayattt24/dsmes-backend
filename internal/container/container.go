@@ -119,6 +119,7 @@ func Build() (*Container, error) {
 		&domain.SurveyQuestion{},
 		&domain.SurveyResponse{},
 		&domain.SurveyAnswer{},
+		&domain.PatientMeasurement{},
 		&domain.FoodMaster{},
 		&domain.MealLog{},
 	); err != nil {

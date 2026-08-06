@@ -110,7 +110,7 @@ func (p *GeminiProvider) GenerateResponse(ctx context.Context, systemPrompt stri
 		modelName = "gemini-1.5-flash-latest"
 	}
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", modelName, p.apiKey)
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", modelName)
 
 	reqBody := geminiRequest{
 		SystemInstruction: &geminiContent{
@@ -139,6 +139,9 @@ func (p *GeminiProvider) GenerateResponse(ctx context.Context, systemPrompt stri
 		return "", fmt.Errorf("gemini: failed to create http request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// Prefer the x-goog-api-key header over a query string so the key never
+	// leaks into URL/proxy/access logs.
+	req.Header.Set("x-goog-api-key", p.apiKey)
 
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -154,8 +157,8 @@ func (p *GeminiProvider) GenerateResponse(ctx context.Context, systemPrompt stri
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		p.logger.Error("Gemini API non-200 status", zap.String("model", modelName), zap.Int("status", resp.StatusCode), zap.String("body", string(bodyBytes)))
-		return "", fmt.Errorf("gemini API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		p.logger.Error("Gemini API non-200 status", zap.String("model", modelName), zap.Int("status", resp.StatusCode))
+		return "", fmt.Errorf("gemini API returned status %d", resp.StatusCode)
 	}
 
 	var gResp geminiResponse
@@ -170,16 +173,12 @@ func (p *GeminiProvider) GenerateResponse(ctx context.Context, systemPrompt stri
 	}
 
 	if len(gResp.Candidates) > 0 && len(gResp.Candidates[0].Content.Parts) > 0 {
-		keyPreview := p.apiKey
-		if len(keyPreview) > 4 {
-			keyPreview = keyPreview[:4]
-		}
-		p.logger.Info("Gemini response generated successfully", zap.String("model", modelName), zap.String("apiKey", keyPreview+"..."))
+		p.logger.Info("Gemini response generated successfully", zap.String("model", modelName))
 		return strings.TrimSpace(gResp.Candidates[0].Content.Parts[0].Text), nil
 	}
 
-	p.logger.Warn("Gemini API returned empty candidates or blocked output", zap.String("model", modelName), zap.String("body", string(bodyBytes)))
-	return "", fmt.Errorf("gemini API returned empty candidates: %s", string(bodyBytes))
+	p.logger.Warn("Gemini API returned empty candidates or blocked output", zap.String("model", modelName), zap.Int("bytes", len(bodyBytes)))
+	return "", fmt.Errorf("gemini API returned empty candidates")
 }
 
 // OpenAIProvider implements AIProvider via OpenAI Chat Completions REST API.

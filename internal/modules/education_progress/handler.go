@@ -53,13 +53,18 @@ func (h *EducationProgressHandler) MarkArticleRead(c fiber.Ctx) error {
 	}
 
 	var req MarkArticleReadRequest
-	_ = c.Bind().Body(&req)
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
 
 	articleID := c.Params("id")
 	if err := h.svc.MarkArticleRead(c.Context(), claims.UserID, articleID, req.ReadingDuration, req.LastScrollPosition, req.IsCompleted); err != nil {
 		return err
 	}
-	return response.Success(c, "article marked as read", nil)
+	return response.Created(c, "article marked as read", nil)
 }
 
 // MarkVideoWatched handles POST /api/v1/patient/education/:id/watch-video
@@ -71,13 +76,18 @@ func (h *EducationProgressHandler) MarkVideoWatched(c fiber.Ctx) error {
 	}
 
 	var req MarkVideoWatchedRequest
-	_ = c.Bind().Body(&req)
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
 
 	articleID := c.Params("id")
 	if err := h.svc.MarkVideoWatched(c.Context(), claims.UserID, articleID, req.WatchDuration, req.VideoLastTimestamp); err != nil {
 		return err
 	}
-	return response.Success(c, "video marked as watched", nil)
+	return response.Created(c, "video marked as watched", nil)
 }
 
 // GetPatientProgress handles GET /api/v1/patient/education/:id/progress
@@ -122,7 +132,7 @@ func (h *EducationProgressHandler) MarkArticleReadAdmin(c fiber.Ctx) error {
 	if err := h.svc.MarkArticleRead(c.Context(), req.PatientID, articleID, 0, 100, true); err != nil {
 		return err
 	}
-	return response.Success(c, "article marked as read", nil)
+	return response.Created(c, "article marked as read", nil)
 }
 
 // MarkVideoWatchedAdmin handles POST /api/v1/admin/education/:id/progress/watch-video
@@ -140,5 +150,5 @@ func (h *EducationProgressHandler) MarkVideoWatchedAdmin(c fiber.Ctx) error {
 	if err := h.svc.MarkVideoWatched(c.Context(), req.PatientID, articleID, 0, 0); err != nil {
 		return err
 	}
-	return response.Success(c, "video marked as watched", nil)
+	return response.Created(c, "video marked as watched", nil)
 }

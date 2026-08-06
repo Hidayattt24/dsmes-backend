@@ -20,18 +20,22 @@ import (
 // RequestLogger returns the HTTP request logging middleware.
 // The provided *zap.Logger is used as the underlying writer so all log output
 // is consistent with the application log format (JSON in prod / console in dev).
-func RequestLogger(log *zap.Logger) fiber.Handler {
+func RequestLogger(log *zap.Logger, timezone string) fiber.Handler {
 	// Zap's sugar logger writes to its internal core; we create a bridge writer
 	// so Fiber's logger middleware forwards its formatted lines to Zap.
 	writer := &zapWriter{logger: log.With(zap.String("component", "http"))}
+
+	if timezone == "" {
+		timezone = "Asia/Jakarta"
+	}
 
 	return logger.New(logger.Config{
 		// Format includes: timestamp, method, path, status, latency, IP.
 		Format: "[HTTP] ${time} | ${status} | ${latency} | ${ip} | ${method} ${path}\n",
 
-		// TimeFormat and TimeZone align with the app's Asia/Makassar timezone (WIT).
+		// TimeFormat and TimeZone align with APP_TIMEZONE (default Asia/Jakarta / WIB).
 		TimeFormat: "2006-01-02 15:04:05",
-		TimeZone:   "Asia/Makassar",
+		TimeZone:   timezone,
 
 		// Stream routes formatted log lines to our Zap bridge writer.
 		Stream: writer,

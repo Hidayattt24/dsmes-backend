@@ -34,10 +34,15 @@ func CORS(cfg *config.Config) fiber.Handler {
 		})
 	}
 
-	// Production: restrict to known frontend origins.
-	// Add your deployed frontend domains to APP_ALLOWED_ORIGINS in .env.
+	// Production: restrict to the explicit list of allowed origins from config.
+	// Configure them with APP_ALLOWED_ORIGINS (comma-separated) in .env; falls
+	// back to the API's own base URL when the list is empty.
+	origins := cfg.App.AllowedOrigins
+	if len(origins) == 0 {
+		origins = []string{cfg.App.BaseURL}
+	}
 	return cors.New(cors.Config{
-		AllowOrigins: []string{cfg.App.BaseURL},
+		AllowOrigins: origins,
 		AllowHeaders: []string{
 			"Origin", "Content-Type", "Accept",
 			"Authorization", "X-Request-ID",
