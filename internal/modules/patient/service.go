@@ -639,7 +639,7 @@ func complianceFromAggregates(dailyAggs map[string]*DailyLogsAggregate, dailyTar
 		totalAvg = 0
 	}
 
-	label := "Kurang"
+	var label string
 	if totalAvg >= 90 {
 		label = "Sangat Patuh"
 	} else if totalAvg >= 75 {
