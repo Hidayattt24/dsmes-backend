@@ -21,9 +21,9 @@ const (
 type ReminderLogStatus string
 
 const (
-	ReminderSelesai ReminderLogStatus = "selesai"
+	ReminderSelesai  ReminderLogStatus = "selesai"
 	ReminderTerlewat ReminderLogStatus = "terlewat"
-	ReminderPending ReminderLogStatus = "pending"
+	ReminderPending  ReminderLogStatus = "pending"
 )
 
 // Reminder represents a patient's customized/system reminder.
@@ -37,6 +37,7 @@ type Reminder struct {
 	ScheduledTime      string           `gorm:"type:time;not null" json:"scheduled_time"` // time string e.g. "08:00:00"
 	IsActive           bool             `gorm:"not null;default:true" json:"is_active"`
 	Notes              string           `gorm:"type:text" json:"notes"`
+	IconName           string           `gorm:"type:varchar(100);default:'default'" json:"icon_name"`
 	RepeatIntervalDays int              `gorm:"default:1" json:"repeat_interval_days"`
 
 	// Relations
@@ -86,6 +87,8 @@ type NotificationLog struct {
 	MessageText string    `gorm:"type:text;not null" json:"message_text"`
 	NotifiedAt  time.Time `gorm:"not null;default:now()" json:"notified_at"`
 	IsRead      bool      `gorm:"not null;default:false" json:"is_read"`
+	NotifType   string    `gorm:"type:varchar(50);not null;default:reminder" json:"notif_type"`
+	ArticleID   *string   `gorm:"type:uuid" json:"article_id"`
 }
 
 func (NotificationLog) TableName() string { return "notification_logs" }

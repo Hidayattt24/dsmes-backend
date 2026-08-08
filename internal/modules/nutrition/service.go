@@ -55,6 +55,12 @@ func (s *nutritionService) LogMeal(ctx context.Context, patientID string, req Lo
 	log := &domain.MealLog{
 		PatientID:         patientID,
 		FoodID:            req.FoodID,
+		FoodName:          food.Name,
+		ServingSize:       food.DefaultServingUnit,
+		Calories:          food.Calories,
+		CarbsG:            food.CarbsG,
+		ProteinG:          food.ProteinG,
+		FatG:              food.FatG,
 		MealType:          req.MealType,
 		PortionMultiplier: req.PortionMultiplier,
 		LoggedAt:          time.Now(),
@@ -88,7 +94,7 @@ func (s *nutritionService) GetDailyNutritionSummary(ctx context.Context, patient
 
 	target, err := s.repo.GetDailyCalorieTarget(ctx, patientID)
 	if err != nil {
-		target = 2000
+		target = domain.DefaultDailyCalorieTarget
 	}
 
 	var consumed float64
@@ -97,12 +103,16 @@ func (s *nutritionService) GetDailyNutritionSummary(ctx context.Context, patient
 	var fat float64
 
 	for _, m := range meals {
+		// Use the nutrition snapshot frozen at logging time. This works for
+		// logs created from either the `foods` or the food master dataset.
+		cal, c, p, f := m.Calories, m.CarbsG, m.ProteinG, m.FatG
 		if m.Food != nil {
-			consumed += m.Food.Calories * m.PortionMultiplier
-			carbs += m.Food.CarbsG * m.PortionMultiplier
-			protein += m.Food.ProteinG * m.PortionMultiplier
-			fat += m.Food.FatG * m.PortionMultiplier
+			cal, c, p, f = m.Food.Calories, m.Food.CarbsG, m.Food.ProteinG, m.Food.FatG
 		}
+		consumed += cal * m.PortionMultiplier
+		carbs += c * m.PortionMultiplier
+		protein += p * m.PortionMultiplier
+		fat += f * m.PortionMultiplier
 	}
 
 	remaining := float64(target) - consumed
@@ -114,6 +124,7 @@ func (s *nutritionService) GetDailyNutritionSummary(ctx context.Context, patient
 		CaloriesConsumed:   consumed,
 		DailyCalorieTarget: target,
 		CaloriesRemaining:  remaining,
+		TotalFoodMeal:      len(meals),
 		TotalCarbsG:        carbs,
 		TotalProteinG:      protein,
 		TotalFatG:          fat,
@@ -188,8 +199,42 @@ func (s *nutritionService) GetPatientMealLogs(ctx context.Context, patientID str
 	return resp, nil
 }
 
+func (s *nutritionService) UpdateMealLog(ctx context.Context, patientID string, id string, req UpdateMealLogRequest) (*MealLogResponse, error) {
+	log, err := s.repo.FindMealLogByID(ctx, patientID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.MealType != "" {
+		log.MealType = req.MealType
+	}
+	if req.PortionMultiplier > 0 {
+		log.PortionMultiplier = req.PortionMultiplier
+	}
+
+	if err = s.repo.UpdateMealLog(ctx, log); err != nil {
+		return nil, err
+	}
+
+	var fResp FoodResponse
+	if log.Food != nil {
+		fResp = ToFoodResponse(log.Food)
+	}
+
+	return &MealLogResponse{
+		ID:                log.ID,
+		Food:              fResp,
+		MealType:          log.MealType,
+		PortionMultiplier: log.PortionMultiplier,
+		LoggedAt:          log.LoggedAt.Format(time.RFC3339),
+	}, nil
+}
+
+func (s *nutritionService) DeleteMealLog(ctx context.Context, patientID string, id string) error {
+	return s.repo.DeleteMealLog(ctx, patientID, id)
+}
+
 func (s *nutritionService) CalculateCalories(ctx context.Context, req CalorieCalculationRequest) (*CalorieCalculationResponse, error) {
 	req.Normalize()
 	return CalculateDailyCalories(req)
 }
-

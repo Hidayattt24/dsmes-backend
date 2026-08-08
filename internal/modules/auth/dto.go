@@ -12,8 +12,8 @@ type StaffLoginRequest struct {
 
 // PatientLoginRequest is the body for POST /api/v1/auth/patient/login.
 type PatientLoginRequest struct {
-	Email    string `json:"email"    validate:"required,email"`
-	Password string `json:"password" validate:"required,min=6"`
+	PhoneNumber string `json:"phone_number" validate:"required"`
+	Password    string `json:"password"     validate:"required,min=6"`
 }
 
 // ForgotPasswordRequest is the body for POST /api/v1/auth/forgot-password.
@@ -55,10 +55,11 @@ type LoginResponse struct {
 // AuthUserResponse is the minimal user info included in the login response.
 // Never expose password_hash or internal fields.
 type AuthUserResponse struct {
-	ID       string `json:"id"`
-	FullName string `json:"full_name"`
-	Email    string `json:"email"`
-	Role     string `json:"role"`
+	ID          string `json:"id"`
+	FullName    string `json:"full_name"`
+	PhoneNumber string `json:"phone_number"`
+	Email       string `json:"email,omitempty"`
+	Role        string `json:"role"`
 }
 
 // TokenResponse wraps just the token pair — used by the refresh endpoint.

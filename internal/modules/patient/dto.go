@@ -1,23 +1,25 @@
 package patient
 
 import (
+	"math"
 	"time"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
+	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
 )
 
 type RegisterPatientRequest struct {
-	Email                 string  `json:"email"                  validate:"required,email"`
-	Password              string  `json:"password"               validate:"required,min=8"`
-	FullName              string  `json:"full_name"              validate:"required,min=3,max=150"`
+	Email                 string  `json:"email"           validate:"omitempty,email"`
+	Password              string  `json:"password"        validate:"required,min=8"`
+	FullName              string  `json:"full_name"       validate:"required,min=3,max=150"`
 	Nickname              string  `json:"nickname"`
 	WhatsappNumber        string  `json:"whatsapp_number"`
 	PhoneNumber           string  `json:"phone_number"`
-	Gender                string  `json:"gender"                 validate:"required"`
-	DateOfBirth           string  `json:"date_of_birth"          validate:"required"` // format: "YYYY-MM-DD"
-	HeightCm              float64 `json:"height_cm"              validate:"required,gt=0"`
-	WeightKg              float64 `json:"weight_kg"              validate:"required,gt=0"`
-	BloodType             string  `json:"blood_type"             validate:"required"`
+	Gender                string  `json:"gender"`
+	DateOfBirth           string  `json:"date_of_birth"`
+	HeightCm              float64 `json:"height_cm"`
+	WeightKg              float64 `json:"weight_kg"`
+	BloodType             string  `json:"blood_type"`
 	ActivityLevel         string  `json:"activity_level"`
 	PhysicalActivityLevel string  `json:"physical_activity_level"`
 }
@@ -36,12 +38,32 @@ func (r *RegisterPatientRequest) GetActivity() string {
 	return r.PhysicalActivityLevel
 }
 
+type SetupHealthProfileRequest struct {
+	Gender                string  `json:"gender"        validate:"required"`
+	DateOfBirth           string  `json:"date_of_birth" validate:"required"` // format: "YYYY-MM-DD"
+	HeightCm              float64 `json:"height_cm"     validate:"required,gt=0"`
+	WeightKg              float64 `json:"weight_kg"     validate:"required,gt=0"`
+	BloodType             string  `json:"blood_type"    validate:"required"`
+	ActivityLevel         string  `json:"activity_level"`
+	PhysicalActivityLevel string  `json:"physical_activity_level"`
+}
+
+func (r *SetupHealthProfileRequest) GetActivity() string {
+	if r.ActivityLevel != "" {
+		return r.ActivityLevel
+	}
+	return r.PhysicalActivityLevel
+}
+
 type UpdatePatientProfileRequest struct {
 	FullName              string  `json:"full_name"       validate:"required,min=3,max=150"`
 	Nickname              string  `json:"nickname"`
 	WhatsappNumber        string  `json:"whatsapp_number" validate:"required,numeric,min=10,max=20"`
 	HeightCm              float64 `json:"height_cm"       validate:"required,gt=0"`
 	WeightKg              float64 `json:"weight_kg"       validate:"required,gt=0"`
+	Gender                string  `json:"gender"`
+	DateOfBirth           string  `json:"date_of_birth"`
+	BloodType             string  `json:"blood_type"`
 	ProfilePhotoURL       string  `json:"profile_photo_url"`
 	BPJS                  string  `json:"bpjs"`
 	NIK                   string  `json:"nik"`
@@ -64,39 +86,41 @@ type AssignStaffRequest struct {
 }
 
 type PatientResponse struct {
-	ID                    string               `json:"id"`
-	Email                 string               `json:"email"`
-	FullName              string               `json:"full_name"`
-	Nickname              string               `json:"nickname"`
-	WhatsappNumber        string               `json:"whatsapp_number"`
-	Gender                domain.Gender        `json:"gender"`
-	DateOfBirth           string               `json:"date_of_birth"`
-	HeightCm              float64              `json:"height_cm"`
-	WeightKg              float64              `json:"weight_kg"`
-	BloodType             domain.BloodType     `json:"blood_type"`
-	DailyCalorieTarget    int                  `json:"daily_calorie_target"`
-	MedicalStatus         string               `json:"medical_status"`
-	ProfilePhotoURL       string               `json:"profile_photo_url"`
-	Status                domain.AccountStatus `json:"status"`
-	CreatedAt             string               `json:"created_at"`
-	BPJS                  string               `json:"bpjs"`
-	NIK                   string               `json:"nik"`
-	EmergencyName         string               `json:"emergency_name"`
-	EmergencyRelation     string               `json:"emergency_relation"`
-	EmergencyPhone        string               `json:"emergency_phone"`
-	DiabetesType          string               `json:"diabetes_type"`
-	Compliance            int                  `json:"compliance"`
-	ComplianceLabel       string               `json:"compliance_label,omitempty"`
-	ComplianceBreakdown   *ComplianceBreakdown `json:"compliance_breakdown,omitempty"`
-	InterventionType      string               `json:"intervention_type"`
-	PatientCode           string               `json:"patient_code"`
-	Address               string               `json:"address"`
-	DiagnosisDate         string               `json:"diagnosis_date"`
-	CurrentMedication     string               `json:"current_medication"`
-	Allergies             string               `json:"allergies"`
-	SmokingStatus         string               `json:"smoking_status"`
-	PhysicalActivityLevel string               `json:"physical_activity_level"`
-	LastActiveAt          *string              `json:"last_active_at,omitempty"`
+	ID                    string                            `json:"id"`
+	PhoneNumber           string                            `json:"phone_number"`
+	Email                 string                            `json:"email"`
+	FullName              string                            `json:"full_name"`
+	Nickname              string                            `json:"nickname"`
+	WhatsappNumber        string                            `json:"whatsapp_number"`
+	Gender                domain.Gender                     `json:"gender"`
+	DateOfBirth           string                            `json:"date_of_birth"`
+	HeightCm              float64                           `json:"height_cm"`
+	WeightKg              float64                           `json:"weight_kg"`
+	BloodType             domain.BloodType                  `json:"blood_type"`
+	DailyCalorieTarget    int                               `json:"daily_calorie_target"`
+	Recommendations       *nutrition.CalorieRecommendations `json:"recommendations,omitempty"`
+	MedicalStatus         string                            `json:"medical_status"`
+	ProfilePhotoURL       string                            `json:"profile_photo_url"`
+	Status                domain.AccountStatus              `json:"status"`
+	CreatedAt             string                            `json:"created_at"`
+	BPJS                  string                            `json:"bpjs"`
+	NIK                   string                            `json:"nik"`
+	EmergencyName         string                            `json:"emergency_name"`
+	EmergencyRelation     string                            `json:"emergency_relation"`
+	EmergencyPhone        string                            `json:"emergency_phone"`
+	DiabetesType          string                            `json:"diabetes_type"`
+	Compliance            int                               `json:"compliance"`
+	ComplianceLabel       string                            `json:"compliance_label,omitempty"`
+	ComplianceBreakdown   *ComplianceBreakdown              `json:"compliance_breakdown,omitempty"`
+	InterventionType      string                            `json:"intervention_type"`
+	PatientCode           string                            `json:"patient_code"`
+	Address               string                            `json:"address"`
+	DiagnosisDate         string                            `json:"diagnosis_date"`
+	CurrentMedication     string                            `json:"current_medication"`
+	Allergies             string                            `json:"allergies"`
+	SmokingStatus         string                            `json:"smoking_status"`
+	PhysicalActivityLevel string                            `json:"physical_activity_level"`
+	LastActiveAt          *string                           `json:"last_active_at,omitempty"`
 
 	// Summary statistics fields
 	LatestBloodSugar       *int               `json:"latest_blood_sugar,omitempty"`
@@ -105,8 +129,10 @@ type PatientResponse struct {
 	AverageBloodSugar      *float64           `json:"average_blood_sugar,omitempty"`
 	LatestWeight           *float64           `json:"latest_weight,omitempty"`
 	BMI                    *float64           `json:"bmi,omitempty"`
+	BMICategory            *string            `json:"bmi_category,omitempty"`
 	LatestMealCalories     *float64           `json:"latest_meal_calories,omitempty"`
 	LatestMealType         *string            `json:"latest_meal_type,omitempty"`
+	LatestMealName         *string            `json:"latest_meal_name,omitempty"`
 	LatestActivityTime     *string            `json:"latest_activity_time,omitempty"`
 	LatestActivityName     *string            `json:"latest_activity_name,omitempty"`
 	WaistCircumferenceCm   *float64           `json:"waist_circumference_cm,omitempty"`
@@ -164,6 +190,7 @@ type PatientSummaryData struct {
 	BMI                    *float64   `json:"bmi,omitempty"`
 	LatestMealCalories     *float64   `json:"latest_meal_calories,omitempty"`
 	LatestMealType         *string    `json:"latest_meal_type,omitempty"`
+	LatestMealName         *string    `json:"latest_meal_name,omitempty"`
 	LatestActivityTime     *time.Time `json:"latest_activity_time_raw,omitempty"`
 	LatestActivityName     *string    `json:"latest_activity_name,omitempty"`
 	TodayConsumedCalories  *float64   `json:"today_consumed_calories,omitempty"`
@@ -194,9 +221,31 @@ func ToPatientResponse(p *domain.Patient) PatientResponse {
 		lastActiveAt = &t
 	}
 
-	return PatientResponse{
+	var bmiVal *float64
+	var bmiCat *string
+	if p.HeightCm > 0 && p.WeightKg > 0 {
+		hM := p.HeightCm / 100.0
+		b := p.WeightKg / (hM * hM)
+		b = math.Round(b*10) / 10
+		bmiVal = &b
+
+		var cat string
+		if b < 18.5 {
+			cat = "Kurus"
+		} else if b >= 18.5 && b < 23.0 {
+			cat = "Normal"
+		} else if b >= 23.0 && b < 25.0 {
+			cat = "Kelebihan Berat Badan"
+		} else {
+			cat = "Obesitas"
+		}
+		bmiCat = &cat
+	}
+
+	resp := PatientResponse{
 		ID:                    p.ID,
-		Email:                 p.Email,
+		PhoneNumber:           p.PhoneNumber,
+		Email:                 p.GetEmail(),
 		FullName:              p.FullName,
 		Nickname:              p.Nickname,
 		WhatsappNumber:        p.WhatsappNumber,
@@ -226,7 +275,39 @@ func ToPatientResponse(p *domain.Patient) PatientResponse {
 		SmokingStatus:         p.SmokingStatus,
 		PhysicalActivityLevel: p.PhysicalActivityLevel,
 		LastActiveAt:          lastActiveAt,
+		BMI:                   bmiVal,
+		BMICategory:           bmiCat,
 	}
+
+	if p.MaintenanceCalories > 0 {
+		resp.Recommendations = &nutrition.CalorieRecommendations{
+			Maintain: nutrition.CalorieRecommendationDetail{
+				Title:      "Pertahankan Berat Badan",
+				Calories:   p.MaintenanceCalories,
+				Percentage: p.MaintenancePercentage,
+			},
+			MildLoss: nutrition.CalorieRecommendationDetail{
+				Title:        "Penurunan Berat Ringan",
+				WeeklyTarget: "0,25 kg/minggu",
+				Calories:     p.MildWeightLossCalories,
+				Percentage:   p.MildPercentage,
+			},
+			WeightLoss: nutrition.CalorieRecommendationDetail{
+				Title:        "Turunkan Berat Badan",
+				WeeklyTarget: "0,5 kg/minggu",
+				Calories:     p.WeightLossCalories,
+				Percentage:   p.WeightLossPercentage,
+			},
+			ExtremeLoss: nutrition.CalorieRecommendationDetail{
+				Title:        "Penurunan Berat Intensif",
+				WeeklyTarget: "1 kg/minggu",
+				Calories:     p.ExtremeWeightLossCalories,
+				Percentage:   p.ExtremePercentage,
+			},
+		}
+	}
+
+	return resp
 }
 
 func ToPatientDetailResponse(p *domain.Patient) PatientDetailResponse {
@@ -278,15 +359,20 @@ func ParseDOB(dateStr string) (time.Time, error) {
 	return time.Parse(time.RFC3339, dateStr)
 }
 
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	NewPassword     string `json:"new_password"     validate:"required,min=8"`
+}
+
 type CreateMeasurementRequest struct {
-	WeightKg               *float64               `json:"weight_kg"`
-	HeightCm               *float64               `json:"height_cm"`
-	BloodPressureSystolic  *int                   `json:"blood_pressure_systolic"`
-	BloodPressureDiastolic *int                   `json:"blood_pressure_diastolic"`
-	BloodSugar             *int                   `json:"blood_sugar"`
+	WeightKg               *float64               `json:"weight_kg"                 validate:"omitempty,gt=0"`
+	HeightCm               *float64               `json:"height_cm"                 validate:"omitempty,gt=0"`
+	BloodPressureSystolic  *int                   `json:"blood_pressure_systolic"   validate:"omitempty,gt=0"`
+	BloodPressureDiastolic *int                   `json:"blood_pressure_diastolic"  validate:"omitempty,gt=0"`
+	BloodSugar             *int                   `json:"blood_sugar"               validate:"omitempty,gt=0"`
 	BloodSugarTimeType     domain.MeasurementTime `json:"blood_sugar_time_type"`
-	WaistCircumferenceCm   *float64               `json:"waist_circumference_cm"`
-	DailyCalorieTarget     *int                   `json:"daily_calorie_target"`
+	WaistCircumferenceCm   *float64               `json:"waist_circumference_cm"    validate:"omitempty,gt=0"`
+	DailyCalorieTarget     *int                   `json:"daily_calorie_target"      validate:"omitempty,gt=0"`
 	Gender                 string                 `json:"gender"`
 	BloodType              string                 `json:"blood_type"`
 	PhysicalActivityLevel  string                 `json:"physical_activity_level"`
@@ -295,13 +381,13 @@ type CreateMeasurementRequest struct {
 }
 
 type UpdateMeasurementRequest struct {
-	WeightKg               *float64 `json:"weight_kg"`
-	HeightCm               *float64 `json:"height_cm"`
-	BloodPressureSystolic  *int     `json:"blood_pressure_systolic"`
-	BloodPressureDiastolic *int     `json:"blood_pressure_diastolic"`
-	BloodSugar             *int     `json:"blood_sugar"`
-	WaistCircumferenceCm   *float64 `json:"waist_circumference_cm"`
-	DailyCalorieTarget     *int     `json:"daily_calorie_target"`
+	WeightKg               *float64 `json:"weight_kg"                  validate:"omitempty,gt=0"`
+	HeightCm               *float64 `json:"height_cm"                  validate:"omitempty,gt=0"`
+	BloodPressureSystolic  *int     `json:"blood_pressure_systolic"    validate:"omitempty,gt=0"`
+	BloodPressureDiastolic *int     `json:"blood_pressure_diastolic"   validate:"omitempty,gt=0"`
+	BloodSugar             *int     `json:"blood_sugar"                validate:"omitempty,gt=0"`
+	WaistCircumferenceCm   *float64 `json:"waist_circumference_cm"     validate:"omitempty,gt=0"`
+	DailyCalorieTarget     *int     `json:"daily_calorie_target"       validate:"omitempty,gt=0"`
 	Notes                  string   `json:"notes"`
 }
 
@@ -317,9 +403,9 @@ type UpdatePatientRequest struct {
 	EmergencyName         string   `json:"emergency_name"`
 	EmergencyRelation     string   `json:"emergency_relation"`
 	EmergencyPhone        string   `json:"emergency_phone"`
-	HeightCm              *float64 `json:"height_cm"`
-	WeightKg              *float64 `json:"weight_kg"`
-	DailyCalorieTarget    *int     `json:"daily_calorie_target"`
+	HeightCm              *float64 `json:"height_cm"              validate:"omitempty,gt=0"`
+	WeightKg              *float64 `json:"weight_kg"              validate:"omitempty,gt=0"`
+	DailyCalorieTarget    *int     `json:"daily_calorie_target"   validate:"omitempty,gt=0"`
 	DiagnosisDate         string   `json:"diagnosis_date"`
 	CurrentMedication     string   `json:"current_medication"`
 	Allergies             string   `json:"allergies"`

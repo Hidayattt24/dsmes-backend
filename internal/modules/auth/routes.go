@@ -18,8 +18,9 @@ func RegisterRoutes(router fiber.Router, c *container.Container) {
 	svc := NewAuthService(repo, c.JWT, c.Email, c.Logger)
 	h := NewAuthHandler(svc, c.Logger)
 
-	// Public auth routes — no JWT middleware
-	auth := router.Group("/auth")
+	// Public auth routes — no JWT middleware.
+	// A strict limiter protects login/OTP endpoints from brute force.
+	auth := router.Group("/auth", middleware.StrictRateLimiter())
 	auth.Post("/login", h.PatientLogin)
 	auth.Post("/staff/login", h.StaffLogin)
 	auth.Post("/patient/login", h.PatientLogin)
@@ -27,7 +28,9 @@ func RegisterRoutes(router fiber.Router, c *container.Container) {
 	auth.Post("/forgot-password", h.ForgotPassword)
 	auth.Post("/verify-otp", h.VerifyOTP)
 	auth.Post("/reset-password", h.ResetPassword)
-	auth.Post("/refresh", h.RefreshToken)
+
+	// Refresh is rate-limited but more lenient than OTP (valid JWT needed).
+	auth.Post("/refresh", middleware.RateLimiter(), h.RefreshToken)
 
 	// Protected: logout requires a valid JWT (to extract session info)
 	auth.Post("/logout", middleware.JWT(c.Config), h.Logout)

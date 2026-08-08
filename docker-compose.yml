@@ -20,9 +20,9 @@ services:
       POSTGRES_DB:       ${DB_NAME:-dsmes_db}
       POSTGRES_USER:     ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      # Asia/Makassar = WIT (Waktu Indonesia Timur) = UTC+9
-      TZ: Asia/Makassar
-      PGTZ: Asia/Makassar
+      # Asia/Jakarta = WIB (Waktu Indonesia Barat) = UTC+7
+      TZ: Asia/Jakarta
+      PGTZ: Asia/Jakarta
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
@@ -54,6 +54,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - dsmes_net
     profiles:

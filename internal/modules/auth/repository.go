@@ -81,6 +81,20 @@ func (r *authRepository) FindPatientByEmail(ctx context.Context, email string) (
 	return &p, nil
 }
 
+func (r *authRepository) FindPatientByPhoneNumber(ctx context.Context, phone string) (*domain.Patient, error) {
+	var p domain.Patient
+	err := r.db.WithContext(ctx).
+		Where("phone_number = ? AND deleted_at IS NULL", phone).
+		First(&p).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("patient account not found")
+		}
+		return nil, errs.NewInternal("failed to find patient account by phone number", err)
+	}
+	return &p, nil
+}
+
 func (r *authRepository) FindPatientByID(ctx context.Context, id string) (*domain.Patient, error) {
 	var p domain.Patient
 	err := r.db.WithContext(ctx).

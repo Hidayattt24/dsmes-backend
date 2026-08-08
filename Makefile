@@ -42,6 +42,16 @@ run: build
 	@echo "Running $(APP_NAME)..."
 	$(BINARY)
 
+## migrate: Run database migrations
+migrate:
+	@echo "Running database migrations..."
+	go run ./cmd/migrate
+
+## migrate-rollback: Roll back the last N migrations (usage: make migrate-rollback N=1)
+migrate-rollback:
+	@echo "Rolling back the last $(N) migration(s)..."
+	go run ./cmd/migrate -rollback=$(N)
+
 ## test: Run all tests with race detector
 test:
 	@echo "Running tests..."

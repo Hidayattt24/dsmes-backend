@@ -162,7 +162,7 @@ func (h *QuizHandler) Delete(c fiber.Ctx) error {
 		return err
 	}
 
-	return response.Success(c, "questionnaire deleted successfully", nil)
+	return response.NoContent(c)
 }
 
 func (h *QuizHandler) GetStats(c fiber.Ctx) error {
@@ -198,7 +198,7 @@ func (h *QuizHandler) Submit(c fiber.Ctx) error {
 		return err
 	}
 
-	return response.Success(c, "questionnaire submitted successfully", res)
+	return response.Created(c, "questionnaire submitted successfully", res)
 }
 
 func (h *QuizHandler) ListParticipants(c fiber.Ctx) error {
@@ -228,4 +228,86 @@ func (h *QuizHandler) GetParticipantDetail(c fiber.Ctx) error {
 	}
 
 	return response.Success(c, "participant detail retrieved", detail)
+}
+
+func (h *QuizHandler) ListPatient(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil || claims.UserID == "" {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	qType := c.Query("type")
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	perPage, _ := strconv.Atoi(c.Query("per_page", "20"))
+
+	res, total, err := h.svc.ListPatientQuestionnaires(c.Context(), qType, claims.UserID, page, perPage)
+	if err != nil {
+		return err
+	}
+
+	totalPages := int(total) / perPage
+	if int(total)%perPage != 0 {
+		totalPages++
+	}
+
+	return response.SuccessWithMeta(c, "questionnaires retrieved", res, &response.Meta{
+		Page:       page,
+		PerPage:    perPage,
+		Total:      total,
+		TotalPages: totalPages,
+	})
+}
+
+func (h *QuizHandler) GetMyAttempt(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil || claims.UserID == "" {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	id := c.Params("id")
+	if id == "" {
+		return errs.NewBadRequest("questionnaire ID is required")
+	}
+
+	res, err := h.svc.GetMyAttempt(c.Context(), claims.UserID, id)
+	if err != nil {
+		return err
+	}
+
+	return response.Success(c, "my attempt retrieved", res)
+}
+
+func (h *QuizHandler) GetMyAttemptDetail(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil || claims.UserID == "" {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	id := c.Params("id")
+	if id == "" {
+		return errs.NewBadRequest("questionnaire ID is required")
+	}
+
+	res, err := h.svc.GetMyAttemptDetail(c.Context(), claims.UserID, id)
+	if err != nil {
+		return err
+	}
+
+	return response.Success(c, "my attempt detail retrieved", res)
+}
+
+func (h *QuizHandler) GetMyHistory(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil || claims.UserID == "" {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	qType := c.Query("type")
+
+	res, err := h.svc.GetMyHistory(c.Context(), claims.UserID, qType)
+	if err != nil {
+		return err
+	}
+
+	return response.Success(c, "questionnaire history retrieved", res)
 }

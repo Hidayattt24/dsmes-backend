@@ -15,6 +15,7 @@ type PatientMeasurement struct {
 	BloodPressureSystolic  *int       `gorm:"type:int" json:"blood_pressure_systolic,omitempty"`
 	BloodPressureDiastolic *int       `gorm:"type:int" json:"blood_pressure_diastolic,omitempty"`
 	BloodSugar             *int       `gorm:"type:int" json:"blood_sugar,omitempty"`
+	BloodSugarTimeType     *string    `gorm:"type:varchar(50)" json:"blood_sugar_time_type,omitempty"`
 	WaistCircumferenceCm   *float64   `gorm:"type:numeric(5,2)" json:"waist_circumference_cm,omitempty"`
 	DailyCalorieTarget     *int       `gorm:"type:int" json:"daily_calorie_target,omitempty"`
 	Notes                  string     `gorm:"type:text" json:"notes,omitempty"`

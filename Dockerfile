@@ -1,51 +1,64 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # DSMES Backend — Multi-stage Dockerfile
 #
-# Stage 1 (builder): compiles the Go binary with all build dependencies.
-# Stage 2 (runtime): minimal image — only the compiled binary + ca-certs.
+# Stage 1 (builder):  compiles the server + migrate binaries, generates the
+#                     Swagger spec, and keeps the migration files.
+# Stage 2 (runtime):  slim Alpine image with both binaries + migrations + docs.
 #
-# This two-stage approach produces an image < 20 MB instead of > 800 MB.
+# The container runs migrations automatically on start (see entrypoint.sh).
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
 FROM golang:1.26-alpine AS builder
 
-# Install git (needed for go mod download of private modules, if any).
-RUN apk add --no-cache git ca-certificates tzdata
+# git: needed for `go mod download`; swag: generates the API docs.
+RUN apk add --no-cache git ca-certificates tzdata \
+    && go install github.com/swaggo/swag/cmd/swag@v1.16.6
 
 WORKDIR /app
 
 # Copy dependency manifests first to leverage Docker layer cache.
-# The go mod download layer only rebuilds when go.mod or go.sum changes.
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 
 # Copy all source code.
 COPY . .
 
-# Compile the binary.
-# -ldflags="-s -w"  strips debug info and DWARF to reduce binary size.
-# CGO_ENABLED=0     builds a statically linked binary (no libc dependency).
-# GOARCH=amd64      explicitly target amd64 (change for ARM VPS).
+# Generate Swagger documentation into ./docs (served by the runtime).
+RUN swag init -g cmd/api/main.go -o ./docs --parseDependency --parseInternal
+
+# Compile the binaries (static, stripped).
+# CGO_ENABLED=0 → statically linked; GOARCH=amd64 (change for ARM VPS).
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-s -w" -o /app/server ./cmd/api
+    go build -ldflags="-s -w" -o /app/server ./cmd/api \
+ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-s -w" -o /app/migrate ./cmd/migrate
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
-FROM scratch
+FROM alpine:3.20
 
-# ca-certificates: required for HTTPS outbound requests (e.g. external APIs).
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S -g 1000 app && adduser -S -u 1000 -G app app
 
-# tzdata: required for Asia/Makassar timezone in GORM and logger.
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+WORKDIR /app
 
-# Copy the compiled binary from the builder stage.
-COPY --from=builder /app/server /server
+# Binaries
+COPY --from=builder /app/server  /app/server
+COPY --from=builder /app/migrate /app/migrate
+
+# Runtime data the server needs (migrations for the entrypoint, docs for Swagger)
+COPY --from=builder /app/migrations /app/migrations
+COPY --from=builder /app/docs       /app/docs
+
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENV TZ=Asia/Jakarta
 
 # Expose the application port (must match APP_PORT in .env).
 EXPOSE 8080
 
-# Use a non-root user for security (numeric UID avoids needing /etc/passwd).
+# Use a non-root user for security.
 USER 1000:1000
 
-ENTRYPOINT ["/server"]
+ENTRYPOINT ["/app/entrypoint.sh"]

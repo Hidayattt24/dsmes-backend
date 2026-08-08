@@ -6,7 +6,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 
-	"github.com/dsmes/dsmes-backend/internal/middleware"
 	"github.com/dsmes/dsmes-backend/internal/pkg/response"
 )
 
@@ -30,12 +29,7 @@ func (h *DashboardHandler) GetAdmin(c fiber.Ctx) error {
 
 // GetStaff handles GET /api/v1/staff/dashboard/stats
 func (h *DashboardHandler) GetStaff(c fiber.Ctx) error {
-	claims := middleware.ClaimsFromContext(c)
-	if claims == nil {
-		return fiber.ErrUnauthorized
-	}
-
-	res, err := h.svc.GetStaffDashboard(c.Context(), claims.UserID)
+	res, err := h.svc.GetStaffDashboard(c.Context(), "")
 	if err != nil {
 		return err
 	}
@@ -82,18 +76,13 @@ func (h *DashboardHandler) GetActivityChart(c fiber.Ctx) error {
 // @Success      200  {object}  map[string]any
 // @Router       /staff/dashboard/population-metrics [get]
 func (h *DashboardHandler) GetPopulationMetrics(c fiber.Ctx) error {
-	claims := middleware.ClaimsFromContext(c)
-	if claims == nil {
-		return fiber.ErrUnauthorized
-	}
-
 	rangeStr := c.Query("range", "7")
 	rangeDays, err := strconv.Atoi(rangeStr)
 	if err != nil || rangeDays < 1 || rangeDays > 365 {
 		rangeDays = 7
 	}
 
-	res, err := h.svc.GetPopulationMetrics(c.Context(), claims.UserID, rangeDays)
+	res, err := h.svc.GetPopulationMetrics(c.Context(), "", rangeDays)
 	if err != nil {
 		return err
 	}
@@ -110,18 +99,13 @@ func (h *DashboardHandler) GetPopulationMetrics(c fiber.Ctx) error {
 // @Success      200  {object}  map[string]any
 // @Router       /staff/dashboard/patient-trends [get]
 func (h *DashboardHandler) GetPatientTrends(c fiber.Ctx) error {
-	claims := middleware.ClaimsFromContext(c)
-	if claims == nil {
-		return fiber.ErrUnauthorized
-	}
-
 	rangeStr := c.Query("range", "7")
 	rangeDays, err := strconv.Atoi(rangeStr)
 	if err != nil || rangeDays < 1 || rangeDays > 365 {
 		rangeDays = 7
 	}
 
-	res, err := h.svc.GetPatientTrends(c.Context(), claims.UserID, rangeDays)
+	res, err := h.svc.GetPatientTrends(c.Context(), "", rangeDays)
 	if err != nil {
 		return err
 	}

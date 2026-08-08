@@ -56,6 +56,7 @@ func (r *settingsRepository) FindAllTickets(ctx context.Context) ([]domain.Suppo
 	err := r.db.WithContext(ctx).
 		Where("deleted_at IS NULL").
 		Order("created_at DESC").
+		Limit(200). // server-side cap to bound unbounded admin queries
 		Find(&items).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch all support tickets", err)

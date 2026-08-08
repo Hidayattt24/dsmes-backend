@@ -50,10 +50,11 @@ func (QuestionCategory) TableName() string { return "question_categories" }
 type Question struct {
 	BaseModel
 
-	CategoryID   string `gorm:"type:uuid;not null" json:"category_id"`
-	QuestionText string `gorm:"type:text;not null" json:"question_text"`
-	Explanation  string `gorm:"type:text" json:"explanation,omitempty"`
-	DisplayOrder int    `gorm:"type:int;not null;default:0" json:"display_order"`
+	CategoryID       *string `gorm:"type:uuid" json:"category_id,omitempty"`
+	QuestionText     string  `gorm:"type:text;not null" json:"question_text"`
+	QuestionImageURL *string `gorm:"type:text;column:question_image_url" json:"question_image_url,omitempty"`
+	Explanation      string  `gorm:"type:text" json:"explanation,omitempty"`
+	DisplayOrder     int     `gorm:"type:int;not null;default:0" json:"display_order"`
 
 	// Relations
 	Options []QuestionOption `gorm:"foreignKey:QuestionID;constraint:OnDelete:CASCADE" json:"options,omitempty"`
@@ -77,12 +78,13 @@ func (QuestionOption) TableName() string { return "question_options" }
 type QuizAttempt struct {
 	BaseModel
 
-	QuestionnaireID string    `gorm:"column:quiz_id;type:uuid;not null" json:"questionnaire_id"`
-	PatientID       string    `gorm:"type:uuid;not null" json:"patient_id"`
-	Score           int       `gorm:"type:int;not null" json:"score"`
-	Passed          bool      `gorm:"type:boolean;not null" json:"passed"`
-	DurationSeconds int       `gorm:"type:int;not null" json:"duration_seconds"`
-	CompletedAt     time.Time `gorm:"type:timestamptz;not null;default:now()" json:"completed_at"`
+	QuestionnaireID      string    `gorm:"column:quiz_id;type:uuid;not null" json:"questionnaire_id"`
+	PatientID            string    `gorm:"type:uuid;not null" json:"patient_id"`
+	Score                int       `gorm:"type:int;not null" json:"score"`
+	SelfEfficacyCategory *string   `gorm:"type:varchar(50);column:self_efficacy_category" json:"self_efficacy_category,omitempty"`
+	Passed               bool      `gorm:"type:boolean;not null" json:"passed"`
+	DurationSeconds      int       `gorm:"type:int;not null" json:"duration_seconds"`
+	CompletedAt          time.Time `gorm:"type:timestamptz;not null;default:now()" json:"completed_at"`
 
 	// Relations
 	Questionnaire *Questionnaire `gorm:"foreignKey:QuestionnaireID" json:"questionnaire,omitempty"`
@@ -98,7 +100,8 @@ type QuizAnswer struct {
 
 	AttemptID      string  `gorm:"type:uuid;not null" json:"attempt_id"`
 	QuestionID     string  `gorm:"type:uuid;not null" json:"question_id"`
-	SelectedOption string  `gorm:"type:varchar(50);not null" json:"selected_option"`
+	SelectedOption string  `gorm:"type:varchar(50)" json:"selected_option,omitempty"`
+	SelectedValue  *int    `gorm:"type:int;column:selected_value" json:"selected_value,omitempty"`
 	OptionID       *string `gorm:"type:uuid" json:"option_id,omitempty"`
 	IsCorrect      bool    `gorm:"type:boolean;not null" json:"is_correct"`
 

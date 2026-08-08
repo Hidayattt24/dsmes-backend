@@ -12,9 +12,12 @@ type ReminderRepository interface {
 	Create(ctx context.Context, r *domain.Reminder, activeDays []int) error
 	Update(ctx context.Context, r *domain.Reminder, activeDays []int) error
 	Delete(ctx context.Context, id string) error
+	UpsertLog(ctx context.Context, log *domain.DailyReminderLog) error
 
 	FindNotificationsByPatientID(ctx context.Context, patientID string) ([]domain.NotificationLog, error)
 	MarkNotificationsAsRead(ctx context.Context, patientID string) error
+	MarkNotificationReadByID(ctx context.Context, patientID string, notifID string) error
+	DeleteNotificationByID(ctx context.Context, patientID string, notifID string) error
 	FindLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.DailyReminderLog, error)
 }
 
@@ -24,8 +27,11 @@ type ReminderService interface {
 	UpdateReminder(ctx context.Context, patientID string, id string, req CreateReminderRequest) (*ReminderResponse, error)
 	DeleteReminder(ctx context.Context, patientID string, id string) error
 	ToggleReminder(ctx context.Context, patientID string, id string) (*ReminderResponse, error)
+	LogMedication(ctx context.Context, patientID string, req LogMedicationRequest) (*MedicationLogResponse, error)
 
 	GetNotifications(ctx context.Context, patientID string) ([]NotificationResponse, error)
 	MarkAllRead(ctx context.Context, patientID string) error
+	MarkReadByID(ctx context.Context, patientID string, notifID string) error
+	DeleteNotificationByID(ctx context.Context, patientID string, notifID string) error
 	GetPatientMedicationLogs(ctx context.Context, patientID string, dateStr string) ([]MedicationLogResponse, error)
 }

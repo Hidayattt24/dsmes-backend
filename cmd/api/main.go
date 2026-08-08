@@ -6,7 +6,7 @@
 // @termsOfService  http://swagger.io/terms/
 //
 // @contact.name    DSMES Team
-// @contact.email   support@dsmes.id
+// @contact.email
 //
 // @license.name    MIT
 // @license.url     https://opensource.org/licenses/MIT

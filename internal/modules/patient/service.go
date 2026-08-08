@@ -13,8 +13,10 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
 	"github.com/dsmes/dsmes-backend/internal/modules/auth"
+	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
+	"github.com/dsmes/dsmes-backend/internal/pkg/phone"
 )
 
 type patientService struct {
@@ -30,25 +32,42 @@ func NewPatientService(repo PatientRepository, authRepo auth.AuthRepository, jwt
 }
 
 func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatientRequest) (*auth.LoginResponse, error) {
-	// 1. Unique Check
-	_, err := s.repo.FindByEmail(ctx, req.Email)
-	if err == nil {
-		return nil, errs.NewConflict("email already registered")
+	// 1. Phone Number Normalization & Unique Check
+	rawPhone := req.GetPhone()
+	phoneNum, err := phone.Normalize(rawPhone)
+	if err != nil {
+		return nil, errs.NewBadRequest(err.Error())
 	}
 
-	// 2. Hash Password
+	_, err = s.repo.FindByPhoneNumber(ctx, phoneNum)
+	if err == nil {
+		return nil, errs.NewConflict("nomor handphone sudah terdaftar")
+	}
+
+	// 2. Optional Email Check
+	var emailPtr *string
+	cleanEmail := strings.TrimSpace(req.Email)
+	if cleanEmail != "" {
+		_, err := s.repo.FindByEmail(ctx, cleanEmail)
+		if err == nil {
+			return nil, errs.NewConflict("email sudah terdaftar")
+		}
+		emailPtr = &cleanEmail
+	}
+
+	// 3. Hash Password
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, errs.NewInternal("failed to hash password", err)
 	}
 
-	// 3. Parse DOB
-	dob, err := ParseDOB(req.DateOfBirth)
-	if err != nil {
-		return nil, errs.NewBadRequest("invalid date of birth format (must be YYYY-MM-DD or ISO string)", err)
+	// 4. Optional Parse DOB
+	var dob time.Time
+	if req.DateOfBirth != "" {
+		dob, _ = ParseDOB(req.DateOfBirth)
 	}
 
-	// 4. Normalize Gender & BloodType & Activity
+	// 5. Normalize Gender & BloodType & Activity
 	gender := domain.GenderLakiLaki
 	if strings.EqualFold(req.Gender, "perempuan") || strings.EqualFold(req.Gender, "female") {
 		gender = domain.GenderPerempuan
@@ -56,7 +75,7 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 
 	bloodType := domain.BloodType(req.BloodType)
 	cleanBlood := strings.ToLower(strings.TrimSpace(req.BloodType))
-	if cleanBlood == "tidak tahu" || cleanBlood == "tidak_tahu" {
+	if cleanBlood == "" || cleanBlood == "tidak tahu" || cleanBlood == "tidak_tahu" {
 		bloodType = domain.BloodTypeTidakTahu
 	}
 
@@ -70,23 +89,29 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		age = time.Now().Year() - dob.Year()
 	}
 
+	dailyCalorie := domain.DefaultDailyCalorieTarget
+	if req.WeightKg > 0 && req.HeightCm > 0 {
+		dailyCalorie = CalculateDSMESCalorieTarget(string(gender), req.WeightKg, req.HeightCm, age)
+	}
+
 	patient := &domain.Patient{
-		Email:                 req.Email,
+		PhoneNumber:           phoneNum,
+		Email:                 emailPtr,
 		PasswordHash:          string(hash),
 		FullName:              req.FullName,
 		Nickname:              req.Nickname,
-		WhatsappNumber:        req.GetPhone(),
+		WhatsappNumber:        phoneNum,
 		Gender:                gender,
 		DateOfBirth:           dob,
 		HeightCm:              req.HeightCm,
 		WeightKg:              req.WeightKg,
 		BloodType:             bloodType,
 		PhysicalActivityLevel: activityLevel,
-		DailyCalorieTarget:    CalculateDSMESCalorieTarget(string(gender), req.WeightKg, req.HeightCm, age),
+		DailyCalorieTarget:    dailyCalorie,
 		Status:                domain.StatusAktif,
 	}
 
-	// 4. Seed default routines & times
+	// 6. Seed default routines & times
 	defaultRoutines := []domain.Routine{
 		{
 			RoutineType:     domain.RoutineJalanPagi,
@@ -105,7 +130,7 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		{
 			RoutineType:     domain.RoutineMinumAir,
 			DescriptiveName: "Minum Air Putih",
-			BaseFrequency:   "Setiap 4 jam",
+			BaseFrequency:   "Harian",
 			IsActive:        true,
 			RoutineTimes: []domain.RoutineTime{
 				{
@@ -122,13 +147,13 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 				},
 				{
 					TimeType:       domain.WaktuDefault,
-					ScheduledTime:  strPtr("16:00:00"),
+					ScheduledTime:  strPtr("15:00:00"),
 					Status:         domain.WaktuSet,
 					ReminderActive: true,
 				},
 				{
 					TimeType:       domain.WaktuDefault,
-					ScheduledTime:  strPtr("20:00:00"),
+					ScheduledTime:  strPtr("18:00:00"),
 					Status:         domain.WaktuSet,
 					ReminderActive: true,
 				},
@@ -150,24 +175,26 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		},
 	}
 
-	// 5. Seed default reminders using system templates inside repo transaction
-	// Let's pass empty slice; repository will auto-query system templates
+	// Seed default reminders using system templates inside repo transaction
 	var defaultReminders []domain.Reminder
 
 	if err = s.repo.CreateWithOnboarding(ctx, patient, defaultRoutines, defaultReminders); err != nil {
 		return nil, err
 	}
 
-	// Send welcome email in the background
-	go func() {
-		bgCtx := context.Background()
-		if err := s.email.SendWelcomeEmail(bgCtx, patient.Email, patient.FullName); err != nil {
-			s.log.Warn("patient: welcome email delivery skipped or restricted by Resend test mode", zap.String("email", patient.Email), zap.Error(err))
-		}
-	}()
+	// Send welcome email in the background if email was provided
+	if patient.Email != nil && *patient.Email != "" {
+		targetEmail := *patient.Email
+		go func() {
+			bgCtx := context.Background()
+			if err := s.email.SendWelcomeEmail(bgCtx, targetEmail, patient.FullName); err != nil {
+				s.log.Warn("patient: welcome email delivery skipped or restricted by Resend test mode", zap.String("email", targetEmail), zap.Error(err))
+			}
+		}()
+	}
 
 	// Generate JWT tokens for instant mobile login
-	tokens, err := s.jwt.GenerateTokenPair(patient.ID, patient.Email, "user")
+	tokens, err := s.jwt.GenerateTokenPair(patient.ID, patient.GetEmail(), "user")
 	if err != nil {
 		return nil, errs.NewInternal("failed to generate tokens on register", err)
 	}
@@ -176,49 +203,153 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 		OwnerType:    auth.OwnerTypePatient,
 		OwnerID:      patient.ID,
 		RefreshToken: tokens.RefreshToken,
-		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
+		ExpiresAt:    time.Now().Add(s.jwt.RefreshTTL()),
 	}
 	if err = s.authRepo.CreateSession(ctx, session); err != nil {
 		s.log.Warn("patient: failed to persist session on register", zap.Error(err), zap.String("patient_id", patient.ID))
 	}
 
-	// Seed initial baseline measurement record in DB so baseline track record is PERMANENT
-	var bmiVal *float64
+	// Seed initial baseline measurement record in DB if metrics were provided
 	if req.WeightKg > 0 && req.HeightCm > 0 {
 		hM := req.HeightCm / 100.0
 		val := math.Round((req.WeightKg/(hM*hM))*10) / 10
-		bmiVal = &val
-	}
-	initCalTarget := patient.DailyCalorieTarget
+		bmiVal := &val
+		initCalTarget := patient.DailyCalorieTarget
 
-	initMeasurement := &domain.PatientMeasurement{
-		PatientID:          patient.ID,
-		WeightKg:           &req.WeightKg,
-		HeightCm:           &req.HeightCm,
-		BMI:                bmiVal,
-		DailyCalorieTarget: &initCalTarget,
-		Notes:              "Pengukuran Awal (Registrasi Akun Pasien)",
-		RecordedByID:       &patient.ID,
-		RecordedByName:     "Sistem (Registrasi Awal)",
-		RecordedByRole:     "admin",
-		MeasuredAt:         patient.CreatedAt,
+		initMeasurement := &domain.PatientMeasurement{
+			PatientID:          patient.ID,
+			WeightKg:           &req.WeightKg,
+			HeightCm:           &req.HeightCm,
+			BMI:                bmiVal,
+			DailyCalorieTarget: &initCalTarget,
+			Notes:              "Pengukuran Awal (Registrasi Akun Pasien)",
+			RecordedByID:       &patient.ID,
+			RecordedByName:     "Sistem (Registrasi Awal)",
+			RecordedByRole:     "admin",
+			MeasuredAt:         patient.CreatedAt,
+		}
+		_ = s.repo.CreateMeasurement(ctx, initMeasurement)
 	}
-	_ = s.repo.CreateMeasurement(ctx, initMeasurement)
 
 	return &auth.LoginResponse{
 		User: auth.AuthUserResponse{
-			ID:       patient.ID,
-			FullName: patient.FullName,
-			Email:    patient.Email,
-			Role:     "user",
+			ID:          patient.ID,
+			FullName:    patient.FullName,
+			PhoneNumber: patient.PhoneNumber,
+			Email:       patient.GetEmail(),
+			Role:        "user",
 		},
 		Tokens: *tokens,
 	}, nil
 }
 
+func (s *patientService) SetupHealthProfile(ctx context.Context, patientID string, req SetupHealthProfileRequest) (*PatientDetailResponse, error) {
+	patient, err := s.repo.FindByID(ctx, patientID)
+	if err != nil {
+		return nil, err
+	}
+
+	dob, err := ParseDOB(req.DateOfBirth)
+	if err != nil {
+		return nil, errs.NewBadRequest("invalid date of birth format (must be YYYY-MM-DD or ISO string)", err)
+	}
+
+	gender := domain.GenderLakiLaki
+	if strings.EqualFold(req.Gender, "perempuan") || strings.EqualFold(req.Gender, "female") {
+		gender = domain.GenderPerempuan
+	}
+
+	bloodType := domain.BloodType(req.BloodType)
+	cleanBlood := strings.ToLower(strings.TrimSpace(req.BloodType))
+	if cleanBlood == "tidak tahu" || cleanBlood == "tidak_tahu" {
+		bloodType = domain.BloodTypeTidakTahu
+	}
+
+	activityLevel := req.GetActivity()
+	if activityLevel == "" {
+		activityLevel = "Ringan"
+	}
+
+	age := time.Now().Year() - dob.Year()
+
+	// Calculate using standardized nutrition calculator (Mifflin-St Jeor + TDEE multiplier)
+	calcRes, calcErr := nutrition.CalculateDailyCalories(nutrition.CalorieCalculationRequest{
+		Gender:        req.Gender,
+		DateOfBirth:   req.DateOfBirth,
+		HeightCm:      req.HeightCm,
+		WeightKg:      req.WeightKg,
+		ActivityLevel: activityLevel,
+	})
+
+	dailyCalorieTarget := domain.DefaultDailyCalorieTarget
+	if calcErr == nil && calcRes != nil {
+		dailyCalorieTarget = calcRes.TDEE
+		patient.MaintenanceCalories = calcRes.Recommendations.Maintain.Calories
+		patient.MildWeightLossCalories = calcRes.Recommendations.MildLoss.Calories
+		patient.WeightLossCalories = calcRes.Recommendations.WeightLoss.Calories
+		patient.ExtremeWeightLossCalories = calcRes.Recommendations.ExtremeLoss.Calories
+		patient.MaintenancePercentage = calcRes.Recommendations.Maintain.Percentage
+		patient.MildPercentage = calcRes.Recommendations.MildLoss.Percentage
+		patient.WeightLossPercentage = calcRes.Recommendations.WeightLoss.Percentage
+		patient.ExtremePercentage = calcRes.Recommendations.ExtremeLoss.Percentage
+	} else {
+		dailyCalorieTarget = CalculateDSMESCalorieTarget(string(gender), req.WeightKg, req.HeightCm, age)
+	}
+
+	patient.Gender = gender
+	patient.DateOfBirth = dob
+	patient.HeightCm = req.HeightCm
+	patient.WeightKg = req.WeightKg
+	patient.BloodType = bloodType
+	patient.PhysicalActivityLevel = activityLevel
+	patient.DailyCalorieTarget = dailyCalorieTarget
+
+	if err := s.repo.Update(ctx, patient); err != nil {
+		return nil, err
+	}
+
+	// Check if there is an existing initial measurement from registration to update (to avoid duplicate logs)
+	latestMeasurement, latestErr := s.repo.GetLatestMeasurement(ctx, patient.ID)
+	if latestErr == nil && latestMeasurement != nil &&
+		(latestMeasurement.Notes == "Pengukuran Awal (Registrasi Akun Pasien)" || latestMeasurement.Notes == "Pengukuran Awal (Registrasi)") &&
+		latestMeasurement.WeightKg != nil && *latestMeasurement.WeightKg == req.WeightKg &&
+		latestMeasurement.HeightCm != nil && *latestMeasurement.HeightCm == req.HeightCm {
+
+		latestMeasurement.DailyCalorieTarget = &dailyCalorieTarget
+		latestMeasurement.Notes = "Setup Profil Kesehatan (Onboarding Phase 2)"
+		latestMeasurement.RecordedByID = &patient.ID
+		latestMeasurement.RecordedByName = patient.FullName
+		latestMeasurement.RecordedByRole = "user"
+		latestMeasurement.MeasuredAt = time.Now()
+
+		_ = s.repo.UpdateMeasurement(ctx, latestMeasurement)
+	} else {
+		// Create new measurement entry
+		hM := req.HeightCm / 100.0
+		val := math.Round((req.WeightKg/(hM*hM))*10) / 10
+		bmiVal := &val
+
+		measurement := &domain.PatientMeasurement{
+			PatientID:          patient.ID,
+			WeightKg:           &req.WeightKg,
+			HeightCm:           &req.HeightCm,
+			BMI:                bmiVal,
+			DailyCalorieTarget: &dailyCalorieTarget,
+			Notes:              "Setup Profil Kesehatan (Onboarding Phase 2)",
+			RecordedByID:       &patient.ID,
+			RecordedByName:     patient.FullName,
+			RecordedByRole:     "user",
+			MeasuredAt:         time.Now(),
+		}
+		_ = s.repo.CreateMeasurement(ctx, measurement)
+	}
+
+	return s.GetPatient(ctx, patient.ID)
+}
+
 func CalculateCalorieStatus(target int, consumed float64) *CalorieStatusInfo {
 	if target <= 0 {
-		target = 2000
+		target = domain.DefaultDailyCalorieTarget
 	}
 
 	achievement := (consumed / float64(target)) * 100.0
@@ -334,9 +465,17 @@ func (s *patientService) ListPatients(ctx context.Context, filter PatientFilterQ
 		s.log.Warn("patient: failed to batch fetch summaries", zap.Error(err))
 	}
 
+	// Batch fetch daily aggregates once for the whole page (avoids N+1 queries).
+	now := time.Now()
+	aggregates, aggErr := s.repo.GetPatientDailyLogsAggregates(ctx, patientIDs, now.AddDate(0, 0, -6), now)
+	if aggErr != nil {
+		s.log.Warn("patient: failed to batch fetch daily aggregates", zap.Error(aggErr))
+		aggregates = make(map[string]map[string]*DailyLogsAggregate)
+	}
+
 	for i := range items {
 		resp[i] = ToPatientResponse(&items[i])
-		score, label, _ := s.CalculateDynamicCompliance(ctx, items[i].ID, items[i].DailyCalorieTarget, items[i].CreatedAt)
+		score, label, _ := complianceFromAggregates(aggregates[items[i].ID], items[i].DailyCalorieTarget, items[i].CreatedAt, now)
 		resp[i].Compliance = score
 		resp[i].ComplianceLabel = label
 		if summary, ok := summaries[items[i].ID]; ok && summary != nil {
@@ -394,11 +533,20 @@ func (s *patientService) GetPatientActivityAnalytics(ctx context.Context, patien
 
 func (s *patientService) CalculateDynamicCompliance(ctx context.Context, patientID string, dailyTarget int, createdAt time.Time) (int, string, *ComplianceBreakdown) {
 	now := time.Now()
-	endDate := now
-	startDate := now.AddDate(0, 0, -6)
+	dailyAggs, err := s.repo.GetPatientDailyLogsAggregate(ctx, patientID, now.AddDate(0, 0, -6), now)
+	if err != nil {
+		s.log.Warn("patient: failed to fetch daily logs aggregate for compliance", zap.Error(err))
+		dailyAggs = make(map[string]*DailyLogsAggregate)
+	}
+	return complianceFromAggregates(dailyAggs, dailyTarget, createdAt, now)
+}
 
+// complianceFromAggregates scores a patient's compliance from pre-fetched daily
+// aggregates. Extracted so ListPatients can score all patients on a page from a
+// single batched repository call instead of issuing one query per patient.
+func complianceFromAggregates(dailyAggs map[string]*DailyLogsAggregate, dailyTarget int, createdAt time.Time, now time.Time) (int, string, *ComplianceBreakdown) {
 	if dailyTarget <= 0 {
-		dailyTarget = 2000
+		dailyTarget = domain.DefaultDailyCalorieTarget
 	}
 
 	daysSinceReg := int(now.Sub(createdAt).Hours()/24) + 1
@@ -408,12 +556,6 @@ func (s *patientService) CalculateDynamicCompliance(ctx context.Context, patient
 	}
 	if evalWindow < 1 {
 		evalWindow = 1
-	}
-
-	dailyAggs, err := s.repo.GetPatientDailyLogsAggregate(ctx, patientID, startDate, endDate)
-	if err != nil {
-		s.log.Warn("patient: failed to fetch daily logs aggregate for compliance", zap.Error(err))
-		dailyAggs = make(map[string]*DailyLogsAggregate)
 	}
 
 	var sumBS, sumFood, sumAct, sumMed float64
@@ -531,6 +673,26 @@ func (s *patientService) UpdateProfile(ctx context.Context, patientID string, re
 	patient.WhatsappNumber = req.WhatsappNumber
 	patient.HeightCm = req.HeightCm
 	patient.WeightKg = req.WeightKg
+	if req.Gender != "" {
+		gender := domain.GenderLakiLaki
+		if strings.EqualFold(req.Gender, "perempuan") || strings.EqualFold(req.Gender, "female") {
+			gender = domain.GenderPerempuan
+		}
+		patient.Gender = gender
+	}
+	if req.DateOfBirth != "" {
+		if t, err := ParseDOB(req.DateOfBirth); err == nil {
+			patient.DateOfBirth = t
+		}
+	}
+	if req.BloodType != "" {
+		bloodType := domain.BloodType(req.BloodType)
+		cleanBlood := strings.ToLower(strings.TrimSpace(req.BloodType))
+		if cleanBlood == "" || cleanBlood == "tidak tahu" || cleanBlood == "tidak_tahu" {
+			bloodType = domain.BloodTypeTidakTahu
+		}
+		patient.BloodType = bloodType
+	}
 	if req.ProfilePhotoURL != "" {
 		patient.ProfilePhotoURL = req.ProfilePhotoURL
 	}
@@ -553,12 +715,81 @@ func (s *patientService) UpdateProfile(ctx context.Context, patientID string, re
 	patient.SmokingStatus = req.SmokingStatus
 	patient.PhysicalActivityLevel = req.PhysicalActivityLevel
 
+	// Always trigger automatic calorie & BMI recalculation on profile update
+	dobStr := ""
+	if !patient.DateOfBirth.IsZero() {
+		dobStr = patient.DateOfBirth.Format("2006-01-02")
+	}
+
+	calcRes, calcErr := nutrition.CalculateDailyCalories(nutrition.CalorieCalculationRequest{
+		Gender:        string(patient.Gender),
+		DateOfBirth:   dobStr,
+		HeightCm:      patient.HeightCm,
+		WeightKg:      patient.WeightKg,
+		ActivityLevel: patient.PhysicalActivityLevel,
+	})
+	if calcErr != nil {
+		return nil, calcErr
+	}
+
+	patient.DailyCalorieTarget = calcRes.TDEE
+	patient.MaintenanceCalories = calcRes.Recommendations.Maintain.Calories
+	patient.MildWeightLossCalories = calcRes.Recommendations.MildLoss.Calories
+	patient.WeightLossCalories = calcRes.Recommendations.WeightLoss.Calories
+	patient.ExtremeWeightLossCalories = calcRes.Recommendations.ExtremeLoss.Calories
+	patient.MaintenancePercentage = calcRes.Recommendations.Maintain.Percentage
+	patient.MildPercentage = calcRes.Recommendations.MildLoss.Percentage
+	patient.WeightLossPercentage = calcRes.Recommendations.WeightLoss.Percentage
+	patient.ExtremePercentage = calcRes.Recommendations.ExtremeLoss.Percentage
+
+	// Insert updated measurement record for tracking history
+	hM := patient.HeightCm / 100.0
+	bmiVal := math.Round((patient.WeightKg/(hM*hM))*10) / 10
+	tdeeVal := calcRes.TDEE
+
+	_ = s.repo.CreateMeasurement(ctx, &domain.PatientMeasurement{
+		PatientID:          patient.ID,
+		WeightKg:           &patient.WeightKg,
+		HeightCm:           &patient.HeightCm,
+		BMI:                &bmiVal,
+		DailyCalorieTarget: &tdeeVal,
+		Notes:              "Pembaruan Profil Kesehatan (Rekalkulasi Otomatis)",
+		RecordedByID:       &patient.ID,
+		RecordedByName:     patient.FullName,
+		RecordedByRole:     "user",
+		MeasuredAt:         time.Now(),
+	})
+
 	if err = s.repo.Update(ctx, patient); err != nil {
 		return nil, err
 	}
 
 	res := ToPatientResponse(patient)
 	return &res, nil
+}
+
+func (s *patientService) ChangePassword(ctx context.Context, patientID string, req ChangePasswordRequest) error {
+	patient, err := s.repo.FindByID(ctx, patientID)
+	if err != nil {
+		return err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(patient.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		return errs.NewUnauthorized("kata sandi saat ini salah")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return errs.NewInternal("failed to hash password", err)
+	}
+
+	patient.PasswordHash = string(hash)
+	if err := s.repo.Update(ctx, patient); err != nil {
+		return err
+	}
+
+	// Invalidate every active session so old refresh tokens stop working.
+	return s.authRepo.RevokeAllSessions(ctx, auth.OwnerTypePatient, patientID)
 }
 
 func (s *patientService) AssignStaff(ctx context.Context, id string, req AssignStaffRequest) (*PatientDetailResponse, error) {
@@ -691,8 +922,6 @@ func (s *patientService) CreateMeasurement(ctx context.Context, patientID string
 	if req.BloodType != "" {
 		patient.BloodType = domain.BloodType(req.BloodType)
 	}
-	_ = s.repo.Update(ctx, patient)
-
 	recRole := recordedByRole
 	if recRole == "" {
 		recRole = "admin"
@@ -719,27 +948,37 @@ func (s *patientService) CreateMeasurement(ctx context.Context, patientID string
 		MeasuredAt:             measuredAt,
 	}
 
-	if err := s.repo.CreateMeasurement(ctx, m); err != nil {
-		return nil, err
-	}
-
-	// Synchronize with global blood_sugar_logs so latest blood sugar & trends update automatically everywhere
+	// Synchronize with global blood_sugar_logs so latest blood sugar & trends
+	// update automatically everywhere (created atomically with the measurement).
+	var bsLog *domain.BloodSugarLog
 	if req.BloodSugar != nil && *req.BloodSugar > 0 {
 		bsTimeType := req.BloodSugarTimeType
 		if bsTimeType == "" {
 			bsTimeType = domain.TimeSewaktu
 		}
-		status := domain.CalculateGlucoseStatus(*req.BloodSugar, bsTimeType)
-		bsLog := &domain.BloodSugarLog{
+		medRes := domain.CalculateBloodSugarMedicalResult(*req.BloodSugar, bsTimeType, &patient.DateOfBirth)
+		bsLog = &domain.BloodSugarLog{
+			BaseModel: domain.BaseModel{
+				ID: m.ID,
+			},
 			PatientID:           patient.ID,
 			GlucoseValue:        *req.BloodSugar,
 			MeasurementTimeType: bsTimeType,
 			MeasuredAt:          measuredAt,
-			Status:              status,
+			Category:            medRes.Category,
+			Severity:            medRes.Severity,
+			ReferenceMin:        medRes.ReferenceMin,
+			ReferenceMax:        medRes.ReferenceMax,
+			ReferenceRange:      medRes.ReferenceRange,
+			Recommendation:      medRes.Recommendation,
+			Color:               medRes.Color,
 		}
-		if err := s.repo.CreateBloodSugarLog(ctx, bsLog); err != nil {
-			s.log.Warn("patient: failed to sync blood sugar log", zap.Error(err), zap.String("patient_id", patient.ID))
-		}
+	}
+
+	// Patient profile + measurement + blood sugar log are written in one
+	// transaction; a failure rolls all of them back.
+	if err := s.repo.CreateMeasurementWithSync(ctx, patient, m, bsLog); err != nil {
+		return nil, err
 	}
 
 	resp := ToPatientMeasurementResponse(m)

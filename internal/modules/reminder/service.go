@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
@@ -41,6 +42,7 @@ func (s *reminderService) CreateReminder(ctx context.Context, patientID string, 
 		ScheduledTime:      req.ScheduledTime,
 		IsActive:           true,
 		Notes:              req.Notes,
+		IconName:           req.IconName,
 		RepeatIntervalDays: req.RepeatIntervalDays,
 	}
 
@@ -72,6 +74,7 @@ func (s *reminderService) UpdateReminder(ctx context.Context, patientID string, 
 	rem.Category = req.Category
 	rem.ScheduledTime = req.ScheduledTime
 	rem.Notes = req.Notes
+	rem.IconName = req.IconName
 	rem.RepeatIntervalDays = req.RepeatIntervalDays
 
 	if err = s.repo.Update(ctx, rem, req.ActiveDays); err != nil {
@@ -127,6 +130,48 @@ func (s *reminderService) ToggleReminder(ctx context.Context, patientID string, 
 	return &res, nil
 }
 
+func (s *reminderService) LogMedication(ctx context.Context, patientID string, req LogMedicationRequest) (*MedicationLogResponse, error) {
+	rem, err := s.repo.FindByID(ctx, req.ReminderID)
+	if err != nil {
+		return nil, err
+	}
+	if rem.PatientID != patientID {
+		return nil, errs.NewForbidden("unauthorized access to reminder")
+	}
+
+	logDate := time.Now()
+	if req.LogDate != "" {
+		if t, err := time.Parse("2006-01-02", req.LogDate); err == nil {
+			logDate = t
+		}
+	}
+
+	status := domain.ReminderLogStatus(req.Status)
+	if status == "" {
+		status = domain.ReminderSelesai
+	}
+
+	log := &domain.DailyReminderLog{
+		ReminderID: req.ReminderID,
+		LogDate:    logDate,
+		Status:     status,
+	}
+
+	if err := s.repo.UpsertLog(ctx, log); err != nil {
+		return nil, err
+	}
+
+	return &MedicationLogResponse{
+		ID:            log.ID,
+		ReminderID:    req.ReminderID,
+		ActivityName:  rem.ActivityName,
+		Category:      rem.Category,
+		ScheduledTime: rem.ScheduledTime,
+		Status:        status,
+		LoggedDate:    logDate.Format("2006-01-02"),
+	}, nil
+}
+
 func (s *reminderService) GetNotifications(ctx context.Context, patientID string) ([]NotificationResponse, error) {
 	items, err := s.repo.FindNotificationsByPatientID(ctx, patientID)
 	if err != nil {
@@ -141,6 +186,8 @@ func (s *reminderService) GetNotifications(ctx context.Context, patientID string
 			MessageText: items[i].MessageText,
 			NotifiedAt:  items[i].NotifiedAt.Format(time.RFC3339),
 			IsRead:      items[i].IsRead,
+			NotifType:   items[i].NotifType,
+			ArticleID:   items[i].ArticleID,
 		}
 	}
 	return resp, nil
@@ -148,6 +195,25 @@ func (s *reminderService) GetNotifications(ctx context.Context, patientID string
 
 func (s *reminderService) MarkAllRead(ctx context.Context, patientID string) error {
 	return s.repo.MarkNotificationsAsRead(ctx, patientID)
+}
+
+func (s *reminderService) MarkReadByID(ctx context.Context, patientID string, notifID string) error {
+	// Guard against non-UUID ids (e.g. locally generated mobile ids) which
+	// would cause a PostgreSQL type error instead of a clean "not found".
+	if _, err := uuid.Parse(notifID); err != nil {
+		return errs.NewNotFound("notification not found")
+	}
+	return s.repo.MarkNotificationReadByID(ctx, patientID, notifID)
+}
+
+func (s *reminderService) DeleteNotificationByID(ctx context.Context, patientID string, notifID string) error {
+	if notifID == "all" || notifID == "" {
+		return s.repo.DeleteNotificationByID(ctx, patientID, notifID)
+	}
+	if _, err := uuid.Parse(notifID); err != nil {
+		return errs.NewNotFound("notification not found")
+	}
+	return s.repo.DeleteNotificationByID(ctx, patientID, notifID)
 }
 
 func (s *reminderService) GetPatientMedicationLogs(ctx context.Context, patientID string, dateStr string) ([]MedicationLogResponse, error) {
@@ -176,25 +242,17 @@ func (s *reminderService) GetPatientMedicationLogs(ctx context.Context, patientI
 			continue
 		}
 
-		status := domain.ReminderPending
-		loggedDate := ""
-		logID := ""
-
 		if log, exists := logMap[r.ID]; exists {
-			status = log.Status
-			loggedDate = log.LogDate.Format("2006-01-02")
-			logID = log.ID
+			resp = append(resp, MedicationLogResponse{
+				ID:            log.ID,
+				ReminderID:    r.ID,
+				ActivityName:  r.ActivityName,
+				Category:      r.Category,
+				ScheduledTime: r.ScheduledTime,
+				Status:        log.Status,
+				LoggedDate:    log.LogDate.Format("2006-01-02"),
+			})
 		}
-
-		resp = append(resp, MedicationLogResponse{
-			ID:            logID,
-			ReminderID:    r.ID,
-			ActivityName:  r.ActivityName,
-			Category:      r.Category,
-			ScheduledTime: r.ScheduledTime,
-			Status:        status,
-			LoggedDate:    loggedDate,
-		})
 	}
 
 	return resp, nil

@@ -2,6 +2,8 @@ package quiz
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
 
 	"go.uber.org/zap"
@@ -97,6 +99,9 @@ func (s *quizService) validateQuestionnairePayload(ctx context.Context, question
 				return qType, status, errs.NewBadRequest("Sistem hanya memperbolehkan 1 Pre-Test aktif")
 			}
 		}
+		if len(req.Categories) == 0 && len(req.Questions) == 0 {
+			return qType, status, errs.NewBadRequest("Pre-Test wajib memiliki minimal 1 Pertanyaan")
+		}
 	} else {
 		// Post-Test rules
 		if req.EducationID == nil || strings.TrimSpace(*req.EducationID) == "" {
@@ -114,37 +119,90 @@ func (s *quizService) validateQuestionnairePayload(ctx context.Context, question
 		if err == nil && existingPost != nil && existingPost.ID != questionnaireID {
 			return qType, status, errs.NewBadRequest("Materi Edukasi ini sudah memiliki Post-Test")
 		}
-	}
 
-	if len(req.Categories) == 0 {
-		return qType, status, errs.NewBadRequest("Kuisioner wajib memiliki minimal 1 Kategori")
+		if len(req.Categories) == 0 {
+			return qType, status, errs.NewBadRequest("Kuisioner wajib memiliki minimal 1 Kategori")
+		}
 	}
 
 	return qType, status, nil
 }
 
-func buildCategoriesFromRequest(reqCategories []QuestionCategoryRequest) []domain.QuestionCategory {
+func buildCategoriesFromRequest(reqTitle string, qType domain.QuestionnaireType, reqCategories []QuestionCategoryRequest, reqQuestions []QuestionRequest) []domain.QuestionCategory {
+	// If PRE_TEST questions are sent directly at root level without categories:
+	if qType == domain.TypePreTest && len(reqQuestions) > 0 {
+		questions := make([]domain.Question, len(reqQuestions))
+		for j, qReq := range reqQuestions {
+			var imgURL *string
+			if strings.TrimSpace(qReq.QuestionImageURL) != "" {
+				urlVal := qReq.QuestionImageURL
+				imgURL = &urlVal
+			}
+
+			// Pre-test questions do not store answer choices in DB
+			questions[j] = domain.Question{
+				QuestionText:     qReq.QuestionText,
+				QuestionImageURL: imgURL,
+				Explanation:      qReq.Explanation,
+				DisplayOrder:     j,
+				Options:          nil,
+			}
+		}
+
+		catTitle := "Pertanyaan DMSES"
+		if strings.TrimSpace(reqTitle) != "" {
+			catTitle = reqTitle
+		}
+
+		return []domain.QuestionCategory{
+			{
+				Title:        catTitle,
+				Description:  "Kuesioner Efikasi Diri Manajemen Diabetes",
+				DisplayOrder: 0,
+				Questions:    questions,
+			},
+		}
+	}
+
 	categories := make([]domain.QuestionCategory, len(reqCategories))
 	for i, cReq := range reqCategories {
+		title := cReq.Title
+		if strings.TrimSpace(title) == "" {
+			title = reqTitle
+			if strings.TrimSpace(title) == "" {
+				title = "Soal Kuesioner"
+			}
+		}
 		questions := make([]domain.Question, len(cReq.Questions))
 		for j, qReq := range cReq.Questions {
-			options := make([]domain.QuestionOption, len(qReq.Choices))
-			for k, optReq := range qReq.Choices {
-				options[k] = domain.QuestionOption{
-					OptionText:   optReq.OptionText,
-					IsCorrect:    optReq.IsCorrect,
-					DisplayOrder: k,
+			var imgURL *string
+			if strings.TrimSpace(qReq.QuestionImageURL) != "" {
+				urlVal := qReq.QuestionImageURL
+				imgURL = &urlVal
+			}
+
+			var options []domain.QuestionOption
+			if qType == domain.TypePostTest && len(qReq.Choices) > 0 {
+				options = make([]domain.QuestionOption, len(qReq.Choices))
+				for k, optReq := range qReq.Choices {
+					options[k] = domain.QuestionOption{
+						OptionText:   optReq.OptionText,
+						IsCorrect:    optReq.IsCorrect,
+						DisplayOrder: k,
+					}
 				}
 			}
+
 			questions[j] = domain.Question{
-				QuestionText: qReq.QuestionText,
-				Explanation:  qReq.Explanation,
-				DisplayOrder: j,
-				Options:      options,
+				QuestionText:     qReq.QuestionText,
+				QuestionImageURL: imgURL,
+				Explanation:      qReq.Explanation,
+				DisplayOrder:     j,
+				Options:          options,
 			}
 		}
 		categories[i] = domain.QuestionCategory{
-			Title:        cReq.Title,
+			Title:        title,
 			Description:  cReq.Description,
 			DisplayOrder: i,
 			Questions:    questions,
@@ -179,7 +237,7 @@ func (s *quizService) CreateQuestionnaire(ctx context.Context, staffID string, r
 		Difficulty:   difficulty,
 		Status:       status,
 		CreatedBy:    &createdBy,
-		Categories:   buildCategoriesFromRequest(req.Categories),
+		Categories:   buildCategoriesFromRequest(req.Title, qType, req.Categories, req.Questions),
 	}
 
 	if err := s.repo.Create(ctx, q); err != nil {
@@ -217,7 +275,7 @@ func (s *quizService) UpdateQuestionnaire(ctx context.Context, id string, req Cr
 	q.PassingScore = passingScore
 	q.Difficulty = difficulty
 	q.Status = status
-	q.Categories = buildCategoriesFromRequest(req.Categories)
+	q.Categories = buildCategoriesFromRequest(req.Title, qType, req.Categories, req.Questions)
 
 	if err := s.repo.Update(ctx, q); err != nil {
 		return nil, err
@@ -244,13 +302,66 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 		return nil, err
 	}
 
-	// Map all questions and correct options
-	correctOptionMap := make(map[string]string) // question_id -> correct option_id
 	totalQuestions := 0
+	for _, cat := range q.Categories {
+		totalQuestions += len(cat.Questions)
+	}
 
+	if totalQuestions == 0 {
+		return nil, errs.NewBadRequest("Kuisioner tidak memiliki pertanyaan")
+	}
+
+	if q.Type == domain.TypePreTest {
+		// ── DMSES Pre-Test Submission (Likert Scale 1-5) ────────────────────
+		totalDMSESScore := 0
+		answers := make([]domain.QuizAnswer, len(req.Answers))
+
+		for i, ans := range req.Answers {
+			val := 1
+			if ans.SelectedValue != nil && *ans.SelectedValue >= 1 && *ans.SelectedValue <= 5 {
+				val = *ans.SelectedValue
+			}
+			totalDMSESScore += val
+
+			selectedVal := val
+			answers[i] = domain.QuizAnswer{
+				QuestionID:     ans.QuestionID,
+				SelectedOption: fmt.Sprintf("%d", val),
+				SelectedValue:  &selectedVal,
+				IsCorrect:      true,
+			}
+		}
+
+		selfEfficacyCat := DetermineSelfEfficacyCategory(totalDMSESScore)
+
+		attempt := &domain.QuizAttempt{
+			QuestionnaireID:      q.ID,
+			PatientID:            patientID,
+			Score:                totalDMSESScore,
+			SelfEfficacyCategory: &selfEfficacyCat,
+			Passed:               true,
+			DurationSeconds:      req.DurationSeconds,
+			Answers:              answers,
+		}
+
+		if err := s.repo.SaveAttempt(ctx, attempt); err != nil {
+			return nil, err
+		}
+
+		// Return PRE_TEST completion response (Score & Passed omitted from user display)
+		return &SubmitResultResponse{
+			AttemptID:       attempt.ID,
+			QuestionnaireID: q.ID,
+			Type:            "PRE_TEST",
+			Message:         "Jawaban Anda telah berhasil disimpan dan akan digunakan untuk membantu memahami tingkat keyakinan Anda dalam mengelola diabetes.",
+			TotalQuestions:  totalQuestions,
+		}, nil
+	}
+
+	// ── POST_TEST Submission (Knowledge Assessment) ────────────────────────
+	correctOptionMap := make(map[string]string) // question_id -> correct option_id
 	for _, cat := range q.Categories {
 		for _, quest := range cat.Questions {
-			totalQuestions++
 			for _, opt := range quest.Options {
 				if opt.IsCorrect {
 					correctOptionMap[quest.ID] = opt.ID
@@ -259,23 +370,23 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 		}
 	}
 
-	if totalQuestions == 0 {
-		return nil, errs.NewBadRequest("Kuisioner tidak memiliki pertanyaan")
-	}
-
 	correctCount := 0
 	answers := make([]domain.QuizAnswer, len(req.Answers))
 
 	for i, ans := range req.Answers {
+		optID := ""
+		if ans.OptionID != nil {
+			optID = *ans.OptionID
+		}
 		correctOptID, exists := correctOptionMap[ans.QuestionID]
-		isCorrect := exists && correctOptID == ans.OptionID
+		isCorrect := exists && correctOptID == optID
 		if isCorrect {
 			correctCount++
 		}
-		optionIDVal := ans.OptionID
+		optionIDVal := optID
 		answers[i] = domain.QuizAnswer{
 			QuestionID:     ans.QuestionID,
-			SelectedOption: ans.OptionID,
+			SelectedOption: optID,
 			OptionID:       &optionIDVal,
 			IsCorrect:      isCorrect,
 		}
@@ -283,7 +394,7 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 
 	score := int((float64(correctCount) / float64(totalQuestions)) * 100)
 	passed := true
-	if q.Type == domain.TypePostTest && q.PassingScore != nil {
+	if q.PassingScore != nil {
 		passed = score >= *q.PassingScore
 	}
 
@@ -300,13 +411,18 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 		return nil, err
 	}
 
+	scoreVal := score
+	passedVal := passed
+	correctCountVal := correctCount
+
 	return &SubmitResultResponse{
 		AttemptID:       attempt.ID,
 		QuestionnaireID: q.ID,
-		Score:           score,
-		Passed:          passed,
+		Type:            "POST_TEST",
+		Score:           &scoreVal,
+		Passed:          &passedVal,
 		TotalQuestions:  totalQuestions,
-		CorrectCount:    correctCount,
+		CorrectCount:    &correctCountVal,
 	}, nil
 }
 
@@ -324,16 +440,21 @@ func (s *quizService) ListParticipants(ctx context.Context, questionnaireID stri
 			name = a.Patient.FullName
 			avatar = a.Patient.ProfilePhotoURL
 		}
+		catStr := ""
+		if a.SelfEfficacyCategory != nil {
+			catStr = *a.SelfEfficacyCategory
+		}
 		resps[i] = ParticipantResponse{
-			ID:             a.ID,
-			PatientID:      a.PatientID,
-			PatientName:    name,
-			PatientAvatar:  avatar,
-			Puskesmas:      "DSMES Platform",
-			CompletionDate: a.CompletedAt,
-			Score:          a.Score,
-			Passed:         a.Passed,
-			Duration:       formatDuration(a.DurationSeconds),
+			ID:                   a.ID,
+			PatientID:            a.PatientID,
+			PatientName:          name,
+			PatientAvatar:        avatar,
+			Puskesmas:            "DSMES Platform",
+			CompletionDate:       a.CompletedAt,
+			Score:                a.Score,
+			Passed:               a.Passed,
+			Duration:             formatDuration(a.DurationSeconds),
+			SelfEfficacyCategory: catStr,
 		}
 	}
 	return resps, nil
@@ -357,16 +478,22 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, questionnaireID 
 		patientAvatar = attempt.Patient.ProfilePhotoURL
 	}
 
+	attemptCatStr := ""
+	if attempt.SelfEfficacyCategory != nil {
+		attemptCatStr = *attempt.SelfEfficacyCategory
+	}
+
 	partResp := ParticipantResponse{
-		ID:             attempt.ID,
-		PatientID:      attempt.PatientID,
-		PatientName:    patientName,
-		PatientAvatar:  patientAvatar,
-		Puskesmas:      "DSMES Platform",
-		CompletionDate: attempt.CompletedAt,
-		Score:          attempt.Score,
-		Passed:         attempt.Passed,
-		Duration:       formatDuration(attempt.DurationSeconds),
+		ID:                   attempt.ID,
+		PatientID:            attempt.PatientID,
+		PatientName:          patientName,
+		PatientAvatar:        patientAvatar,
+		Puskesmas:            "DSMES Platform",
+		CompletionDate:       attempt.CompletedAt,
+		Score:                attempt.Score,
+		Passed:               attempt.Passed,
+		Duration:             formatDuration(attempt.DurationSeconds),
+		SelfEfficacyCategory: attemptCatStr,
 	}
 
 	ansMap := make(map[string]domain.QuizAnswer)
@@ -383,14 +510,32 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, questionnaireID 
 			correctAnsText := "-"
 			isCorr := false
 
-			for _, opt := range quest.Options {
-				if opt.IsCorrect {
-					correctAnsText = opt.OptionText
-				}
+			if q.Type == "PRE_TEST" {
+				correctAnsText = ""
+				isCorr = true
 				if userAns, ok := ansMap[quest.ID]; ok {
-					if (userAns.OptionID != nil && *userAns.OptionID == opt.ID) || userAns.SelectedOption == opt.ID {
-						userAnsText = opt.OptionText
-						isCorr = userAns.IsCorrect
+					if userAns.SelectedValue != nil {
+						val := *userAns.SelectedValue
+						label := "Cukup Yakin"
+						for _, choice := range DefaultLikertChoices {
+							if choice.ID == strconv.Itoa(val) {
+								label = choice.OptionText
+								break
+							}
+						}
+						userAnsText = strconv.Itoa(val) + ". " + label
+					}
+				}
+			} else {
+				for _, opt := range quest.Options {
+					if opt.IsCorrect {
+						correctAnsText = opt.OptionText
+					}
+					if userAns, ok := ansMap[quest.ID]; ok {
+						if (userAns.OptionID != nil && *userAns.OptionID == opt.ID) || userAns.SelectedOption == opt.ID {
+							userAnsText = opt.OptionText
+							isCorr = userAns.IsCorrect
+						}
 					}
 				}
 			}
@@ -413,4 +558,109 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, questionnaireID 
 		QuizTitle:        q.Title,
 		QuestionAnalysis: analysis,
 	}, nil
+}
+
+func (s *quizService) ListPatientQuestionnaires(ctx context.Context, qType string, patientID string, page, perPage int) ([]PatientQuestionnaireItem, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+	return s.repo.FindActiveForPatient(ctx, qType, patientID, page, perPage)
+}
+
+func (s *quizService) GetMyAttempt(ctx context.Context, patientID, questionnaireID string) (*MyAttemptResponse, error) {
+	attempt, err := s.repo.FindMyAttempt(ctx, patientID, questionnaireID)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := s.repo.FindByID(ctx, questionnaireID)
+	if err != nil {
+		return nil, err
+	}
+
+	totalQuestions := 0
+	for _, cat := range q.Categories {
+		totalQuestions += len(cat.Questions)
+	}
+
+	correctCount := 0
+	for _, ans := range attempt.Answers {
+		if ans.IsCorrect {
+			correctCount++
+		}
+	}
+	if len(attempt.Answers) == 0 && totalQuestions > 0 {
+		correctCount = (attempt.Score * totalQuestions) / 100
+	}
+	incorrectCount := totalQuestions - correctCount
+
+	return &MyAttemptResponse{
+		AttemptID:       attempt.ID,
+		QuestionnaireID: questionnaireID,
+		Score:           attempt.Score,
+		Passed:          attempt.Passed,
+		TotalQuestions:  totalQuestions,
+		CorrectCount:    correctCount,
+		IncorrectCount:  incorrectCount,
+		Percentage:      attempt.Score,
+		CompletedAt:     attempt.CompletedAt,
+	}, nil
+}
+
+func (s *quizService) GetMyAttemptDetail(ctx context.Context, patientID, questionnaireID string) (*ParticipantDetailResponse, error) {
+	return s.GetParticipantDetail(ctx, questionnaireID, patientID)
+}
+
+func (s *quizService) GetMyHistory(ctx context.Context, patientID, qType string) ([]MyHistoryItemResponse, error) {
+	attempts, err := s.repo.FindMyHistory(ctx, patientID, strings.ToUpper(strings.TrimSpace(qType)))
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]MyHistoryItemResponse, 0, len(attempts))
+	for _, a := range attempts {
+		title := ""
+		qTypeStr := ""
+		if a.Questionnaire != nil {
+			title = a.Questionnaire.Title
+			qTypeStr = string(a.Questionnaire.Type)
+		}
+
+		correctCount := 0
+		for _, ans := range a.Answers {
+			if ans.IsCorrect {
+				correctCount++
+			}
+		}
+
+		totalQuestions := 0
+		if a.Questionnaire != nil {
+			for _, cat := range a.Questionnaire.Categories {
+				totalQuestions += len(cat.Questions)
+			}
+		}
+
+		if len(a.Answers) == 0 && totalQuestions > 0 {
+			correctCount = (a.Score * totalQuestions) / 100
+		}
+		incorrectCount := totalQuestions - correctCount
+
+		result = append(result, MyHistoryItemResponse{
+			AttemptID:          a.ID,
+			QuestionnaireID:    a.QuestionnaireID,
+			QuestionnaireTitle: title,
+			Type:               qTypeStr,
+			Score:              a.Score,
+			Passed:             a.Passed,
+			TotalQuestions:     totalQuestions,
+			CorrectCount:       correctCount,
+			IncorrectCount:     incorrectCount,
+			Percentage:         a.Score,
+			CompletedAt:        a.CompletedAt,
+		})
+	}
+	return result, nil
 }

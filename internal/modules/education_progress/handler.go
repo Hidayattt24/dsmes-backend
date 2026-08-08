@@ -52,11 +52,19 @@ func (h *EducationProgressHandler) MarkArticleRead(c fiber.Ctx) error {
 		return fiber.ErrUnauthorized
 	}
 
+	var req MarkArticleReadRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
 	articleID := c.Params("id")
-	if err := h.svc.MarkArticleRead(c.Context(), claims.UserID, articleID); err != nil {
+	if err := h.svc.MarkArticleRead(c.Context(), claims.UserID, articleID, req.ReadingDuration, req.LastScrollPosition, req.IsCompleted); err != nil {
 		return err
 	}
-	return response.Success(c, "article marked as read", nil)
+	return response.Created(c, "article marked as read", nil)
 }
 
 // MarkVideoWatched handles POST /api/v1/patient/education/:id/watch-video
@@ -67,11 +75,19 @@ func (h *EducationProgressHandler) MarkVideoWatched(c fiber.Ctx) error {
 		return fiber.ErrUnauthorized
 	}
 
+	var req MarkVideoWatchedRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
 	articleID := c.Params("id")
-	if err := h.svc.MarkVideoWatched(c.Context(), claims.UserID, articleID); err != nil {
+	if err := h.svc.MarkVideoWatched(c.Context(), claims.UserID, articleID, req.WatchDuration, req.VideoLastTimestamp); err != nil {
 		return err
 	}
-	return response.Success(c, "video marked as watched", nil)
+	return response.Created(c, "video marked as watched", nil)
 }
 
 // GetPatientProgress handles GET /api/v1/patient/education/:id/progress
@@ -90,6 +106,17 @@ func (h *EducationProgressHandler) GetPatientProgress(c fiber.Ctx) error {
 	return response.Success(c, "patient progress retrieved", item)
 }
 
+// GetPatientEducationActivities handles GET /api/v1/admin/patients/:id/education-activities
+// Returns all education activities for a specific patient.
+func (h *EducationProgressHandler) GetPatientEducationActivities(c fiber.Ctx) error {
+	patientID := c.Params("id")
+	result, err := h.svc.GetPatientEducationActivities(c.Context(), patientID)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient education activities retrieved", result)
+}
+
 // MarkArticleReadAdmin handles POST /api/v1/admin/education/:id/progress/read-article
 // Admin marks article as read for a specific patient.
 func (h *EducationProgressHandler) MarkArticleReadAdmin(c fiber.Ctx) error {
@@ -101,10 +128,11 @@ func (h *EducationProgressHandler) MarkArticleReadAdmin(c fiber.Ctx) error {
 	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
 		return response.ValidationError(c, fieldErrs)
 	}
-	if err := h.svc.MarkArticleRead(c.Context(), req.PatientID, articleID); err != nil {
+	// Admin force-marks with duration=0, scroll=100, and isCompleted=true
+	if err := h.svc.MarkArticleRead(c.Context(), req.PatientID, articleID, 0, 100, true); err != nil {
 		return err
 	}
-	return response.Success(c, "article marked as read", nil)
+	return response.Created(c, "article marked as read", nil)
 }
 
 // MarkVideoWatchedAdmin handles POST /api/v1/admin/education/:id/progress/watch-video
@@ -118,8 +146,9 @@ func (h *EducationProgressHandler) MarkVideoWatchedAdmin(c fiber.Ctx) error {
 	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
 		return response.ValidationError(c, fieldErrs)
 	}
-	if err := h.svc.MarkVideoWatched(c.Context(), req.PatientID, articleID); err != nil {
+	// Admin force-marks with duration=0 and timestamp=0
+	if err := h.svc.MarkVideoWatched(c.Context(), req.PatientID, articleID, 0, 0); err != nil {
 		return err
 	}
-	return response.Success(c, "video marked as watched", nil)
+	return response.Created(c, "video marked as watched", nil)
 }

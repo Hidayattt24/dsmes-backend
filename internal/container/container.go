@@ -35,6 +35,7 @@ import (
 
 	"github.com/dsmes/dsmes-backend/internal/bootstrap"
 	"github.com/dsmes/dsmes-backend/internal/config"
+	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
 	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
 )
@@ -93,6 +94,36 @@ func Build() (*Container, error) {
 	db, err := bootstrap.NewDatabase(cfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("container: failed to connect to database: %w", err)
+	}
+
+	// Auto-migrate all domain models
+	if err := db.AutoMigrate(
+		&domain.Patient{},
+		&domain.UserArticleCompletion{},
+		&domain.PatientEducationActivity{},
+		&domain.EducationReview{},
+		&domain.BloodSugarLog{},
+		&domain.Reminder{},
+		&domain.ReminderActiveDay{},
+		&domain.DailyReminderLog{},
+		&domain.NotificationLog{},
+		&domain.SystemReminderTemplate{},
+		&domain.PatientActivityLog{},
+		&domain.Questionnaire{},
+		&domain.QuestionCategory{},
+		&domain.Question{},
+		&domain.QuestionOption{},
+		&domain.QuizAttempt{},
+		&domain.QuizAnswer{},
+		&domain.Survey{},
+		&domain.SurveyQuestion{},
+		&domain.SurveyResponse{},
+		&domain.SurveyAnswer{},
+		&domain.PatientMeasurement{},
+		&domain.FoodMaster{},
+		&domain.MealLog{},
+	); err != nil {
+		logger.Warn("container: failed to auto-migrate models", zap.Error(err))
 	}
 
 	// 4. Fiber application (global middleware already registered)

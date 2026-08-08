@@ -7,16 +7,18 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
+	"github.com/dsmes/dsmes-backend/internal/modules/auth"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 )
 
 type staffService struct {
-	repo StaffRepository
-	log  *zap.Logger
+	repo     StaffRepository
+	authRepo auth.AuthRepository
+	log      *zap.Logger
 }
 
-func NewStaffService(repo StaffRepository, log *zap.Logger) StaffService {
-	return &staffService{repo: repo, log: log}
+func NewStaffService(repo StaffRepository, authRepo auth.AuthRepository, log *zap.Logger) StaffService {
+	return &staffService{repo: repo, authRepo: authRepo, log: log}
 }
 
 func (s *staffService) ListStaff(ctx context.Context, search, status string, role *domain.StaffRole, page, limit int) ([]StaffResponse, int64, error) {
@@ -198,7 +200,12 @@ func (s *staffService) ChangePassword(ctx context.Context, staffID string, req C
 	}
 
 	staff.PasswordHash = string(hash)
-	return s.repo.Update(ctx, staff)
+	if err := s.repo.Update(ctx, staff); err != nil {
+		return err
+	}
+
+	// Invalidate every active session so old refresh tokens stop working.
+	return s.authRepo.RevokeAllSessions(ctx, auth.OwnerTypeStaff, staffID)
 }
 
 func (s *staffService) DeleteStaff(ctx context.Context, id string) error {

@@ -33,10 +33,11 @@ func (r *checkinRepository) Upsert(ctx context.Context, c *domain.DailyMedicalCh
 
 func (r *checkinRepository) FindByMonth(ctx context.Context, patientID string, year int, month int) ([]domain.DailyMedicalCheckin, error) {
 	var items []domain.DailyMedicalCheckin
-	// Query checkins in the specified month
+	// Range predicate over checkin_date instead of EXTRACT(YEAR/MONTH ...) so the
+	// UNIQUE(patient_id, checkin_date) index can be used.
 	err := r.db.WithContext(ctx).
-		Where("patient_id = ? AND EXTRACT(YEAR FROM checkin_date) = ? AND EXTRACT(MONTH FROM checkin_date) = ? AND deleted_at IS NULL",
-			patientID, year, month).
+		Where("patient_id = ? AND checkin_date >= make_date(?, ?, 1) AND checkin_date < (make_date(?, ?, 1) + INTERVAL '1 month') AND deleted_at IS NULL",
+			patientID, year, month, year, month).
 		Find(&items).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch monthly checkins", err)

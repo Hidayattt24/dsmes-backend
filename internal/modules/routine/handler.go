@@ -92,13 +92,16 @@ func (h *RoutineHandler) BulkSetup(c fiber.Ctx) error {
 		return errs.NewBadRequest("invalid request body")
 	}
 
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
 	res, err := h.svc.BulkSetupRoutines(c.Context(), claims.UserID, req)
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "daily routines configured successfully", res)
+	return response.Created(c, "daily routines configured successfully", res)
 }
-
 
 // Log handles POST /api/v1/patient/routines/log
 // @Summary      Log routine execution
@@ -128,7 +131,38 @@ func (h *RoutineHandler) Log(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return response.Success(c, "routine tracked successfully", res)
+	return response.Created(c, "routine tracked successfully", res)
+}
+
+// LogActivity handles POST /api/v1/patient/activities/log
+// @Summary      Log physical activity directly (no routine required)
+// @Tags         routine
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  LogActivityRequest  true  "Activity log payload"
+// @Success      201  {object}  map[string]any
+// @Router       /patient/activities/log [post]
+func (h *RoutineHandler) LogActivity(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req LogActivityRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.LogActivity(c.Context(), claims.UserID, req)
+	if err != nil {
+		return err
+	}
+	return response.Created(c, "activity logged successfully", res)
 }
 
 // Status handles GET /api/v1/patient/routines/status

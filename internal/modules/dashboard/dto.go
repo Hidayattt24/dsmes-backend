@@ -28,10 +28,11 @@ type AdminDashboardResponse struct {
 }
 
 type GlucoseDistribution struct {
-	NormalCount       int64 `json:"normal_count"`
-	TinggiCount       int64 `json:"tinggi_count"`
-	SangatTinggiCount int64 `json:"sangat_tinggi_count"`
-	RendahCount       int64 `json:"rendah_count"`
+	HypoglycemiaCount  int64 `json:"hypoglycemia_count"`
+	NormalCount        int64 `json:"normal_count"`
+	PrediabetesCount   int64 `json:"prediabetes_count"`
+	ElevatedCount      int64 `json:"elevated_count"`
+	HyperglycemiaCount int64 `json:"hyperglycemia_count"`
 }
 
 type PriorityPatient struct {
@@ -100,6 +101,17 @@ type PopulationMetricsResponse struct {
 	FoodIntake          []FoodIntakeItem       `json:"food_intake"`
 	PhysicalActivity    []PhysicalActivityItem `json:"physical_activity"`
 	MedicationAdherence []AdherenceItem        `json:"medication_adherence"`
+	FoodPatients        []PatientContribution  `json:"food_patients"`
+	ActivityPatients    []PatientContribution  `json:"activity_patients"`
+	MedicationPatients  []PatientContribution  `json:"medication_patients"`
+}
+
+// PatientContribution lists a patient and how many logs they contributed within
+// the dashboard range. Used to show "which patients have data" under each card.
+type PatientContribution struct {
+	PatientID string `json:"patient_id"`
+	FullName  string `json:"full_name"`
+	Count     int64  `json:"count"`
 }
 
 type TrendPatient struct {

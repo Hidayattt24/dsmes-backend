@@ -44,7 +44,7 @@ type RoutineSetupItem struct {
 
 type BulkSetupRoutinesRequest struct {
 	UseReminder bool               `json:"use_reminder"`
-	Routines    []RoutineSetupItem `json:"routines"`
+	Routines    []RoutineSetupItem `json:"routines" validate:"min=1"`
 }
 
 type RoutineLogResponse struct {
@@ -86,7 +86,27 @@ type ActivityLogResponse struct {
 	ID              string                  `json:"id"`
 	RoutineType     domain.RoutineType      `json:"routine_type"`
 	DescriptiveName string                  `json:"descriptive_name"`
+	ActivityName    string                  `json:"activity_name"`
+	DurationMinutes int                     `json:"duration_minutes"`
+	Intensity       string                  `json:"intensity"`
 	ScheduledTime   *string                 `json:"scheduled_time"`
 	Status          domain.RoutineLogStatus `json:"status"`
 	LoggedAt        string                  `json:"logged_at"`
+}
+
+type LogActivityRequest struct {
+	ActivityName    string `json:"activity_name"    validate:"required,min=1,max=255"`
+	DurationMinutes int    `json:"duration_minutes" validate:"required,gt=0"`
+	Intensity       string `json:"intensity"        validate:"required,oneof=Ringan Sedang Berat"`
+	Notes           string `json:"notes"`
+	LoggedAt        string `json:"logged_at"` // ISO 8601, defaults to now
+}
+
+type LogActivityResponse struct {
+	ID              string `json:"id"`
+	ActivityName    string `json:"activity_name"`
+	DurationMinutes int    `json:"duration_minutes"`
+	Intensity       string `json:"intensity"`
+	Notes           string `json:"notes"`
+	LoggedAt        string `json:"logged_at"`
 }

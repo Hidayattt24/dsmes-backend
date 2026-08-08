@@ -79,7 +79,6 @@ func (s *routineService) BulkSetupRoutines(ctx context.Context, patientID string
 			rType = domain.RoutineType("Custom")
 		}
 
-
 		var routineTimes []domain.RoutineTime
 		for _, tStr := range item.CustomTimes {
 			timeVal := tStr
@@ -112,7 +111,6 @@ func (s *routineService) BulkSetupRoutines(ctx context.Context, patientID string
 
 	return s.ListRoutines(ctx, patientID)
 }
-
 
 func (s *routineService) LogRoutine(ctx context.Context, patientID string, req LogRoutineRequest) (*RoutineLogResponse, error) {
 	// Verify routine time exists
@@ -167,6 +165,37 @@ func (s *routineService) GetOnboardingStatus(ctx context.Context, patientID stri
 	}, nil
 }
 
+func (s *routineService) LogActivity(ctx context.Context, patientID string, req LogActivityRequest) (*LogActivityResponse, error) {
+	loggedAt := time.Now()
+	if req.LoggedAt != "" {
+		if t, err := time.Parse(time.RFC3339, req.LoggedAt); err == nil {
+			loggedAt = t
+		}
+	}
+
+	log := &domain.PatientActivityLog{
+		PatientID:       patientID,
+		ActivityName:    req.ActivityName,
+		DurationMinutes: req.DurationMinutes,
+		Intensity:       req.Intensity,
+		Notes:           req.Notes,
+		LoggedAt:        loggedAt,
+	}
+
+	if err := s.repo.CreateActivityLog(ctx, log); err != nil {
+		return nil, err
+	}
+
+	return &LogActivityResponse{
+		ID:              log.ID,
+		ActivityName:    log.ActivityName,
+		DurationMinutes: log.DurationMinutes,
+		Intensity:       log.Intensity,
+		Notes:           log.Notes,
+		LoggedAt:        log.LoggedAt.Format(time.RFC3339),
+	}, nil
+}
+
 func (s *routineService) GetPatientActivityLogs(ctx context.Context, patientID string, dateStr string) ([]ActivityLogResponse, error) {
 	if dateStr == "" {
 		dateStr = time.Now().Format("2006-01-02")
@@ -208,9 +237,34 @@ func (s *routineService) GetPatientActivityLogs(ctx context.Context, patientID s
 				ID:              logID,
 				RoutineType:     r.RoutineType,
 				DescriptiveName: r.DescriptiveName,
+				ActivityName:    r.DescriptiveName,
+				DurationMinutes: 30,
+				Intensity:       "Ringan",
 				ScheduledTime:   t.ScheduledTime,
 				Status:          status,
 				LoggedAt:        loggedAtStr,
+			})
+		}
+	}
+
+	// Include free-form activity logs from patient_activity_logs
+	freeLogs, err := s.repo.FindFreeActivityLogsByPatientAndDate(ctx, patientID, dateStr)
+	if err == nil {
+		for _, fl := range freeLogs {
+			intensity := "Ringan"
+			if fl.Intensity == "Sedang" || fl.Intensity == "Berat" {
+				intensity = fl.Intensity
+			}
+			resp = append(resp, ActivityLogResponse{
+				ID:              fl.ID,
+				RoutineType:     "",
+				DescriptiveName: fl.ActivityName,
+				ActivityName:    fl.ActivityName,
+				DurationMinutes: fl.DurationMinutes,
+				Intensity:       intensity,
+				ScheduledTime:   nil,
+				Status:          domain.LogCompleted,
+				LoggedAt:        fl.LoggedAt.Format(time.RFC3339),
 			})
 		}
 	}

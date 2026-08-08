@@ -3,6 +3,7 @@ package education
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -23,9 +24,15 @@ func NewEducationRepository(db *gorm.DB, log *zap.Logger) EducationRepository {
 
 func (r *educationRepository) FindAllCategories(ctx context.Context) ([]domain.ArticleCategory, error) {
 	var items []domain.ArticleCategory
-	err := r.db.WithContext(ctx).Where("deleted_at IS NULL").Find(&items).Error
-	if err != nil {
-		return nil, errs.NewInternal("failed to fetch categories", err)
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT DISTINCT ac.id, ac.name, ac.created_at, ac.updated_at, ac.deleted_at 
+		FROM article_categories ac
+		JOIN articles a ON a.category_id = ac.id AND a.deleted_at IS NULL AND a.status = 'publikasi'
+		WHERE ac.deleted_at IS NULL
+		ORDER BY ac.name ASC
+	`).Scan(&items).Error
+	if err != nil || len(items) == 0 {
+		err = r.db.WithContext(ctx).Where("deleted_at IS NULL").Order("name ASC").Find(&items).Error
 	}
 	return items, nil
 }
@@ -154,35 +161,85 @@ func (r *educationRepository) MarkCompleted(ctx context.Context, completion *dom
 	return nil
 }
 
-func (r *educationRepository) ToggleSaved(ctx context.Context, patientID string, articleID string) (bool, error) {
+func (r *educationRepository) SaveArticle(ctx context.Context, patientID string, articleID string) error {
 	var saved domain.UserSavedArticle
 	err := r.db.WithContext(ctx).
 		Where("patient_id = ? AND article_id = ?", patientID, articleID).
 		First(&saved).Error
 	if err == nil {
-		// Already exists -> delete (unsave)
-		if err := r.db.WithContext(ctx).Delete(&saved).Error; err != nil {
-			return false, errs.NewInternal("failed to unsave article", err)
-		}
-		return false, nil
+		return nil // Already saved, idempotent
 	}
-
-	// Create bookmark
 	saved = domain.UserSavedArticle{
 		PatientID: patientID,
 		ArticleID: articleID,
+		SavedAt:   time.Now(),
 	}
 	if err := r.db.WithContext(ctx).Create(&saved).Error; err != nil {
-		return false, errs.NewInternal("failed to save article", err)
+		return errs.NewInternal("failed to save article", err)
 	}
-	return true, nil
+	return nil
+}
+
+func (r *educationRepository) UnsaveArticle(ctx context.Context, patientID string, articleID string) error {
+	var saved domain.UserSavedArticle
+	err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND article_id = ?", patientID, articleID).
+		First(&saved).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil // Already unsaved, idempotent
+		}
+		return errs.NewInternal("failed to query saved article", err)
+	}
+	if err := r.db.WithContext(ctx).Delete(&saved).Error; err != nil {
+		return errs.NewInternal("failed to unsave article", err)
+	}
+	return nil
+}
+
+func (r *educationRepository) GetPatientSavedMap(ctx context.Context, patientID string) (map[string]bool, error) {
+	var results []struct {
+		ArticleID string
+	}
+	err := r.db.WithContext(ctx).Model(&domain.UserSavedArticle{}).
+		Select("article_id").
+		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Find(&results).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch saved articles map", err)
+	}
+	m := make(map[string]bool)
+	for _, res := range results {
+		m[res.ArticleID] = true
+	}
+	return m, nil
+}
+
+func (r *educationRepository) GetPatientCompletedMap(ctx context.Context, patientID string) (map[string]bool, error) {
+	var results []struct {
+		ArticleID string
+	}
+	err := r.db.WithContext(ctx).Model(&domain.UserArticleCompletion{}).
+		Select("article_id").
+		Where("patient_id = ? AND (article_read = TRUE OR youtube_watched = TRUE OR completed_at IS NOT NULL) AND deleted_at IS NULL", patientID).
+		Find(&results).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch completed articles map", err)
+	}
+	m := make(map[string]bool)
+	for _, res := range results {
+		m[res.ArticleID] = true
+	}
+	return m, nil
 }
 
 func (r *educationRepository) FindSavedArticles(ctx context.Context, patientID string) ([]domain.Article, error) {
 	var items []domain.Article
 	err := r.db.WithContext(ctx).
-		Preload("Category").
+		Select("articles.*, COALESCE(views.count, 0) as read_count").
 		Joins("JOIN user_saved_articles usa ON usa.article_id = articles.id").
+		Joins("LEFT JOIN (SELECT article_id, COUNT(*) as count FROM article_views WHERE deleted_at IS NULL GROUP BY article_id) views ON views.article_id = articles.id").
+		Preload("Category").
 		Where("usa.patient_id = ? AND articles.deleted_at IS NULL", patientID).
 		Order("usa.saved_at DESC").
 		Find(&items).Error
@@ -190,6 +247,36 @@ func (r *educationRepository) FindSavedArticles(ctx context.Context, patientID s
 		return nil, errs.NewInternal("failed to fetch saved articles", err)
 	}
 	return items, nil
+}
+
+func (r *educationRepository) BroadcastEducationNotification(ctx context.Context, message string, articleID string) error {
+	var patientIDs []string
+	if err := r.db.WithContext(ctx).
+		Model(&domain.Patient{}).
+		Where("deleted_at IS NULL").
+		Pluck("id", &patientIDs).Error; err != nil {
+		return errs.NewInternal("failed to fetch patient ids", err)
+	}
+
+	if len(patientIDs) == 0 {
+		return nil
+	}
+
+	logs := make([]domain.NotificationLog, 0, len(patientIDs))
+	for _, pid := range patientIDs {
+		logs = append(logs, domain.NotificationLog{
+			PatientID:   pid,
+			MessageText: message,
+			NotifiedAt:  time.Now(),
+			NotifType:   "education",
+			ArticleID:   &articleID,
+		})
+	}
+
+	if err := r.db.WithContext(ctx).Create(&logs).Error; err != nil {
+		return errs.NewInternal("failed to broadcast education notification", err)
+	}
+	return nil
 }
 
 func (r *educationRepository) ReplaceSections(ctx context.Context, articleID string, sections []domain.ArticleSection) error {
@@ -264,3 +351,107 @@ func (r *educationRepository) GetStats(ctx context.Context) (*EducationStats, er
 		TotalReads:        totalReads,
 	}, nil
 }
+
+func (r *educationRepository) UpsertReview(ctx context.Context, review *domain.EducationReview) error {
+	err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "education_id"}, {Name: "patient_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"rating", "note", "updated_at"}),
+		}).
+		Create(review).Error
+	if err != nil {
+		return errs.NewInternal("failed to upsert education review", err)
+	}
+	return nil
+}
+
+func (r *educationRepository) GetReviewByPatientAndArticle(ctx context.Context, patientID string, educationID string) (*domain.EducationReview, error) {
+	var rev domain.EducationReview
+	err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND education_id = ? AND deleted_at IS NULL", patientID, educationID).
+		First(&rev).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, errs.NewInternal("failed to fetch review", err)
+	}
+	return &rev, nil
+}
+
+func (r *educationRepository) GetRatingSummary(ctx context.Context, educationID string) (average float64, count int64, dist RatingDistribution, err error) {
+	var result struct {
+		AvgRating float64 `gorm:"column:avg_rating"`
+		Total     int64   `gorm:"column:total"`
+		Star1     int64   `gorm:"column:star_1"`
+		Star2     int64   `gorm:"column:star_2"`
+		Star3     int64   `gorm:"column:star_3"`
+		Star4     int64   `gorm:"column:star_4"`
+		Star5     int64   `gorm:"column:star_5"`
+	}
+
+	err = r.db.WithContext(ctx).Raw(`
+		SELECT
+			COALESCE(AVG(rating), 0) AS avg_rating,
+			COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE rating = 1) AS star_1,
+			COUNT(*) FILTER (WHERE rating = 2) AS star_2,
+			COUNT(*) FILTER (WHERE rating = 3) AS star_3,
+			COUNT(*) FILTER (WHERE rating = 4) AS star_4,
+			COUNT(*) FILTER (WHERE rating = 5) AS star_5
+		FROM education_reviews
+		WHERE education_id = ? AND deleted_at IS NULL
+	`, educationID).Scan(&result).Error
+
+	if err != nil {
+		return 0, 0, RatingDistribution{}, errs.NewInternal("failed to fetch rating summary", err)
+	}
+
+	dist = RatingDistribution{
+		Star1: result.Star1,
+		Star2: result.Star2,
+		Star3: result.Star3,
+		Star4: result.Star4,
+		Star5: result.Star5,
+	}
+
+	return result.AvgRating, result.Total, dist, nil
+}
+
+func (r *educationRepository) GetAdminReviews(ctx context.Context, educationID string) ([]domain.EducationReview, map[string]string, map[string]*time.Time, error) {
+	var reviews []domain.EducationReview
+	err := r.db.WithContext(ctx).
+		Where("education_id = ? AND deleted_at IS NULL", educationID).
+		Order("created_at DESC").
+		Find(&reviews).Error
+	if err != nil {
+		return nil, nil, nil, errs.NewInternal("failed to fetch admin reviews", err)
+	}
+
+	patientNames := make(map[string]string)
+	completionDates := make(map[string]*time.Time)
+
+	if len(reviews) > 0 {
+		patientIDs := make([]string, 0, len(reviews))
+		for _, rev := range reviews {
+			patientIDs = append(patientIDs, rev.PatientID)
+		}
+
+		var patients []domain.Patient
+		if err := r.db.WithContext(ctx).Where("id IN ?", patientIDs).Find(&patients).Error; err == nil {
+			for _, p := range patients {
+				patientNames[p.ID] = p.FullName
+			}
+		}
+
+		var completions []domain.UserArticleCompletion
+		if err := r.db.WithContext(ctx).Where("article_id = ? AND patient_id IN ?", educationID, patientIDs).Find(&completions).Error; err == nil {
+			for _, c := range completions {
+				completionDates[c.PatientID] = c.CompletedAt
+			}
+		}
+	}
+
+	return reviews, patientNames, completionDates, nil
+}
+

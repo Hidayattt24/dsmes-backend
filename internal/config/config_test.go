@@ -24,6 +24,14 @@ func TestConfigDefaults(t *testing.T) {
 		t.Errorf("expected App.Port to be '8080', got: %s", cfg.App.Port)
 	}
 
+	if cfg.App.Timezone != "Asia/Jakarta" {
+		t.Errorf("expected App.Timezone to default to 'Asia/Jakarta', got: %s", cfg.App.Timezone)
+	}
+
+	if cfg.DB.Timezone != "Asia/Jakarta" {
+		t.Errorf("expected DB.Timezone to default to 'Asia/Jakarta', got: %s", cfg.DB.Timezone)
+	}
+
 	if cfg.DB.Host != "localhost" {
 		t.Errorf("expected DB.Host to be 'localhost', got: %s", cfg.DB.Host)
 	}
@@ -34,11 +42,17 @@ func TestEnvironmentOverrides(t *testing.T) {
 	os.Setenv("APP_ENV", "production")
 	os.Setenv("APP_PORT", "9090")
 	os.Setenv("DB_NAME", "production_dsmes_db")
+	os.Setenv("JWT_SECRET", "this-is-a-strong-random-secret-for-testing-only-1234")
+	os.Setenv("APP_ALLOWED_ORIGINS", "https://app.example.com, https://admin.example.com")
+	os.Setenv("APP_TIMEZONE", "Asia/Makassar")
 
 	defer func() {
 		os.Unsetenv("APP_ENV")
 		os.Unsetenv("APP_PORT")
 		os.Unsetenv("DB_NAME")
+		os.Unsetenv("JWT_SECRET")
+		os.Unsetenv("APP_ALLOWED_ORIGINS")
+		os.Unsetenv("APP_TIMEZONE")
 	}()
 
 	cfg, err := Load()
@@ -58,11 +72,33 @@ func TestEnvironmentOverrides(t *testing.T) {
 		t.Errorf("expected DB.Name to override to 'production_dsmes_db', got: %s", cfg.DB.Name)
 	}
 
+	if len(cfg.App.AllowedOrigins) != 2 {
+		t.Errorf("expected 2 allowed origins, got: %v", cfg.App.AllowedOrigins)
+	}
+
+	if cfg.App.Timezone != "Asia/Makassar" {
+		t.Errorf("expected App.Timezone to override to 'Asia/Makassar', got: %s", cfg.App.Timezone)
+	}
+
 	if !cfg.IsProduction() {
 		t.Error("expected IsProduction() to be true")
 	}
 
 	if cfg.IsDevelopment() {
 		t.Error("expected IsDevelopment() to be false")
+	}
+}
+
+func TestProductionGuardsWeakJWTSecret(t *testing.T) {
+	os.Setenv("APP_ENV", "production")
+	os.Setenv("JWT_SECRET", "change-me-in-production")
+
+	defer func() {
+		os.Unsetenv("APP_ENV")
+		os.Unsetenv("JWT_SECRET")
+	}()
+
+	if _, err := Load(); err == nil {
+		t.Error("expected error when production uses the default JWT secret")
 	}
 }

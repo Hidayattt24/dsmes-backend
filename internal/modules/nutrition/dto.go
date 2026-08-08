@@ -18,6 +18,11 @@ type LogMealRequest struct {
 	PortionMultiplier float64         `json:"portion_multiplier" validate:"required,gt=0"`
 }
 
+type UpdateMealLogRequest struct {
+	MealType          domain.MealType `json:"meal_type"          validate:"omitempty,oneof=sarapan makan_siang makan_malam camilan"`
+	PortionMultiplier float64         `json:"portion_multiplier" validate:"omitempty,gt=0"`
+}
+
 type FoodResponse struct {
 	ID                  string  `json:"id"`
 	Name                string  `json:"name"`
@@ -41,6 +46,7 @@ type DailyNutritionSummaryResponse struct {
 	CaloriesConsumed   float64 `json:"calories_consumed"`
 	DailyCalorieTarget int     `json:"daily_calorie_target"`
 	CaloriesRemaining  float64 `json:"calories_remaining"`
+	TotalFoodMeal      int     `json:"total_food_today"`
 	TotalCarbsG        float64 `json:"total_carbs_g"`
 	TotalProteinG      float64 `json:"total_protein_g"`
 	TotalFatG          float64 `json:"total_fat_g"`
@@ -80,6 +86,20 @@ func (r *CalorieCalculationRequest) Normalize() {
 	}
 }
 
+type CalorieRecommendationDetail struct {
+	Title        string `json:"title"`
+	WeeklyTarget string `json:"weekly_target,omitempty"`
+	Calories     int    `json:"calories"`
+	Percentage   int    `json:"percentage"`
+}
+
+type CalorieRecommendations struct {
+	Maintain    CalorieRecommendationDetail `json:"maintain"`
+	MildLoss    CalorieRecommendationDetail `json:"mild_loss"`
+	WeightLoss  CalorieRecommendationDetail `json:"weight_loss"`
+	ExtremeLoss CalorieRecommendationDetail `json:"extreme_loss"`
+}
+
 type RecommendedCalories struct {
 	WeightLoss  int `json:"weightLoss"`
 	Maintenance int `json:"maintenance"`
@@ -87,13 +107,17 @@ type RecommendedCalories struct {
 }
 
 type CalorieCalculationResponse struct {
-	Age                 int                 `json:"age"`
-	Gender              string              `json:"gender"`
-	Height              float64             `json:"height"`
-	Weight              float64             `json:"weight"`
-	BMR                 int                 `json:"bmr"`
-	ActivityMultiplier  float64             `json:"activityMultiplier"`
-	TDEE                int                 `json:"tdee"`
-	RecommendedCalories RecommendedCalories `json:"recommendedCalories"`
+	Age                 int                    `json:"age"`
+	Gender              string                 `json:"gender"`
+	Height              float64                `json:"height"`
+	HeightCm            float64                `json:"height_cm"`
+	Weight              float64                `json:"weight"`
+	WeightKg            float64                `json:"weight_kg"`
+	BMI                 float64                `json:"bmi"`
+	BMICategory         string                 `json:"bmi_category"`
+	BMR                 int                    `json:"bmr"`
+	ActivityMultiplier  float64                `json:"activityMultiplier"`
+	TDEE                int                    `json:"tdee"`
+	RecommendedCalories RecommendedCalories    `json:"recommendedCalories"`
+	Recommendations     CalorieRecommendations `json:"recommendations"`
 }
-

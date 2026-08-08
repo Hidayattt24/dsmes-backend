@@ -2,7 +2,6 @@ package nutrition
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"go.uber.org/zap"
@@ -37,13 +36,26 @@ func (r *nutritionRepository) SearchFoods(ctx context.Context, query string) ([]
 func (r *nutritionRepository) FindFoodByID(ctx context.Context, id string) (*domain.Food, error) {
 	var f domain.Food
 	err := r.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", id).First(&f).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errs.NewNotFound("food item not found")
-		}
-		return nil, errs.NewInternal("failed to fetch food item", err)
+	if err == nil {
+		return &f, nil
 	}
-	return &f, nil
+
+	var fm domain.FoodMaster
+	errMaster := r.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", id).First(&fm).Error
+	if errMaster == nil {
+		return &domain.Food{
+			BaseModel:           fm.BaseModel,
+			Name:                fm.Name,
+			DefaultServingUnit:  fm.ServingSize,
+			DefaultServingGrams: 100,
+			Calories:            fm.EnergyKcal,
+			CarbsG:              fm.CarbohydrateG,
+			ProteinG:            fm.ProteinG,
+			FatG:                fm.FatG,
+		}, nil
+	}
+
+	return nil, errs.NewNotFound("food item not found")
 }
 
 func (r *nutritionRepository) CreateFood(ctx context.Context, f *domain.Food) error {
@@ -68,11 +80,40 @@ func (r *nutritionRepository) CreateMealLog(ctx context.Context, log *domain.Mea
 	return nil
 }
 
+func (r *nutritionRepository) FindMealLogByID(ctx context.Context, patientID string, id string) (*domain.MealLog, error) {
+	var log domain.MealLog
+	err := r.db.WithContext(ctx).
+		Preload("Food").
+		Where("id = ? AND patient_id = ? AND deleted_at IS NULL", id, patientID).
+		First(&log).Error
+	if err != nil {
+		return nil, errs.NewNotFound("meal log not found")
+	}
+	return &log, nil
+}
+
+func (r *nutritionRepository) UpdateMealLog(ctx context.Context, log *domain.MealLog) error {
+	result := r.db.WithContext(ctx).Save(log)
+	if result.Error != nil {
+		return errs.NewInternal("failed to update meal log", result.Error)
+	}
+	return nil
+}
+
+func (r *nutritionRepository) DeleteMealLog(ctx context.Context, patientID string, id string) error {
+	result := r.db.WithContext(ctx).Where("id = ? AND patient_id = ?", id, patientID).Delete(&domain.MealLog{})
+	if result.Error != nil {
+		return errs.NewInternal("failed to delete meal log", result.Error)
+	}
+	return nil
+}
+
 func (r *nutritionRepository) FindMealsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.MealLog, error) {
 	var items []domain.MealLog
 	q := r.db.WithContext(ctx).Preload("Food").Where("patient_id = ? AND deleted_at IS NULL", patientID)
 	if dateStr != "" {
-		q = q.Where("DATE(logged_at) = ?", dateStr)
+		// Range predicate so the (patient_id, logged_at) index can be used.
+		q = q.Where("logged_at >= ?::date AND logged_at < (?::date + INTERVAL '1 day')", dateStr, dateStr)
 	} else {
 		q = q.Where("logged_at >= NOW() - INTERVAL '30 days'")
 	}
@@ -92,7 +133,7 @@ func (r *nutritionRepository) GetDailyCalorieTarget(ctx context.Context, patient
 		Row().
 		Scan(&target)
 	if err != nil {
-		return 2000, nil // default fallback
+		return domain.DefaultDailyCalorieTarget, nil // default fallback
 	}
 	return target, nil
 }

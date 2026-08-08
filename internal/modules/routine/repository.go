@@ -65,7 +65,9 @@ func (r *routineRepository) FindLogsByPatientAndDate(ctx context.Context, patien
 	var logs []domain.RoutineLogEntry
 	q := r.db.WithContext(ctx).Preload("RoutineTime").Preload("RoutineTime.Routine").Where("patient_id = ? AND deleted_at IS NULL", patientID)
 	if dateStr != "" {
-		q = q.Where("DATE(logged_at) = ?", dateStr)
+		// Range predicate instead of DATE(col) = ? so the (patient_id, logged_at)
+		// index can be used.
+		q = q.Where("logged_at >= ?::date AND logged_at < (?::date + INTERVAL '1 day')", dateStr, dateStr)
 	} else {
 		q = q.Where("logged_at >= NOW() - INTERVAL '30 days'")
 	}
@@ -74,6 +76,26 @@ func (r *routineRepository) FindLogsByPatientAndDate(ctx context.Context, patien
 		return nil, errs.NewInternal("failed to fetch routine logs", err)
 	}
 	return logs, nil
+}
+
+func (r *routineRepository) FindFreeActivityLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.PatientActivityLog, error) {
+	var logs []domain.PatientActivityLog
+	q := r.db.WithContext(ctx).Where("patient_id = ? AND deleted_at IS NULL", patientID)
+	if dateStr != "" {
+		q = q.Where("logged_at >= ?::date AND logged_at < (?::date + INTERVAL '1 day')", dateStr, dateStr)
+	}
+	err := q.Order("logged_at DESC").Find(&logs).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch free activity logs", err)
+	}
+	return logs, nil
+}
+
+func (r *routineRepository) CreateActivityLog(ctx context.Context, log *domain.PatientActivityLog) error {
+	if err := r.db.WithContext(ctx).Create(log).Error; err != nil {
+		return errs.NewInternal("failed to create activity log", err)
+	}
+	return nil
 }
 
 func (r *routineRepository) ReplacePatientRoutines(ctx context.Context, patientID string, routines []domain.Routine) error {
@@ -96,4 +118,3 @@ func (r *routineRepository) ReplacePatientRoutines(ctx context.Context, patientI
 		return nil
 	})
 }
-

@@ -62,8 +62,14 @@ func (h *EducationHandler) ListPublished(c fiber.Ctx) error {
 		}
 	}
 
+	claims := middleware.ClaimsFromContext(c)
+	var patientID *string
+	if claims != nil && claims.Role == "user" {
+		patientID = &claims.UserID
+	}
+
 	status := domain.StatusPublikasi
-	items, total, err := h.svc.ListArticles(c.Context(), categoryID, &status, page, limit)
+	items, total, err := h.svc.ListArticles(c.Context(), patientID, categoryID, &status, page, limit)
 	if err != nil {
 		return err
 	}
@@ -122,11 +128,11 @@ func (h *EducationHandler) Complete(c fiber.Ctx) error {
 	if err := h.svc.CompleteArticle(c.Context(), claims.UserID, id); err != nil {
 		return err
 	}
-	return response.Success(c, "article completed", nil)
+	return response.Created(c, "article completed", nil)
 }
 
 // Save handles POST /api/v1/patient/education/:id/save
-// @Summary      Bookmark/save article toggle
+// @Summary      Bookmark/save article
 // @Tags         education
 // @Security     BearerAuth
 // @Produce      json
@@ -140,16 +146,33 @@ func (h *EducationHandler) Save(c fiber.Ctx) error {
 	}
 
 	id := c.Params("id")
-	saved, err := h.svc.ToggleSaveArticle(c.Context(), claims.UserID, id)
+	err := h.svc.SaveArticle(c.Context(), claims.UserID, id)
 	if err != nil {
 		return err
 	}
+	return response.Created(c, "article saved", map[string]bool{"saved": true})
+}
 
-	msg := "article unsaved"
-	if saved {
-		msg = "article saved"
+// Unsave handles DELETE /api/v1/patient/education/:id/save
+// @Summary      Unbookmark/unsave article
+// @Tags         education
+// @Security     BearerAuth
+// @Produce      json
+// @Param        id   path  string  true  "Article ID"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/education/{id}/save [delete]
+func (h *EducationHandler) Unsave(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
 	}
-	return response.Success(c, msg, map[string]bool{"saved": saved})
+
+	id := c.Params("id")
+	err := h.svc.UnsaveArticle(c.Context(), claims.UserID, id)
+	if err != nil {
+		return err
+	}
+	return response.NoContent(c)
 }
 
 // ListSaved handles GET /api/v1/patient/education/saved
@@ -205,7 +228,7 @@ func (h *EducationHandler) ListAdmin(c fiber.Ctx) error {
 		s = &val
 	}
 
-	items, total, err := h.svc.ListArticles(c.Context(), categoryID, s, page, limit)
+	items, total, err := h.svc.ListArticles(c.Context(), nil, categoryID, s, page, limit)
 	if err != nil {
 		return err
 	}
@@ -314,4 +337,65 @@ func (h *EducationHandler) GetStats(c fiber.Ctx) error {
 		return err
 	}
 	return response.Success(c, "education statistics retrieved", res)
+}
+
+func (h *EducationHandler) SubmitReview(c fiber.Ctx) error {
+	id := c.Params("id")
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil || claims.UserID == "" {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	var req CreateReviewRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.SubmitReview(c.Context(), claims.UserID, id, req)
+	if err != nil {
+		return err
+	}
+	return response.Created(c, "review submitted successfully", res)
+}
+
+func (h *EducationHandler) GetReview(c fiber.Ctx) error {
+	id := c.Params("id")
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil || claims.UserID == "" {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	res, err := h.svc.GetPatientReview(c.Context(), claims.UserID, id)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "review retrieved", res)
+}
+
+func (h *EducationHandler) GetRatingSummary(c fiber.Ctx) error {
+	id := c.Params("id")
+	claims := middleware.ClaimsFromContext(c)
+	var patientID *string
+	if claims != nil && claims.Role == "user" {
+		patientID = &claims.UserID
+	}
+
+	res, err := h.svc.GetRatingSummary(c.Context(), id, patientID)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "rating summary retrieved", res)
+}
+
+func (h *EducationHandler) GetAdminReviews(c fiber.Ctx) error {
+	id := c.Params("id")
+	res, err := h.svc.GetAdminReviews(c.Context(), id)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "admin article reviews retrieved", res)
 }

@@ -19,6 +19,9 @@ type QuizRepository interface {
 	SaveAttempt(ctx context.Context, attempt *domain.QuizAttempt) error
 	FindAttemptsByQuestionnaireID(ctx context.Context, questionnaireID string) ([]domain.QuizAttempt, error)
 	FindAttemptByID(ctx context.Context, questionnaireID string, participantID string) (*domain.QuizAttempt, error)
+	FindMyAttempt(ctx context.Context, patientID, questionnaireID string) (*domain.QuizAttempt, error)
+	FindMyHistory(ctx context.Context, patientID, qType string) ([]domain.QuizAttempt, error)
+	FindActiveForPatient(ctx context.Context, qType string, patientID string, page, perPage int) ([]PatientQuestionnaireItem, int64, error)
 	CountAttempts(ctx context.Context, questionnaireID string) (int, error)
 	GetAverageScore(ctx context.Context, questionnaireID string) (*int, error)
 }
@@ -36,4 +39,8 @@ type QuizService interface {
 	SubmitQuestionnaire(ctx context.Context, patientID string, questionnaireID string, req SubmitQuestionnaireRequest) (*SubmitResultResponse, error)
 	ListParticipants(ctx context.Context, questionnaireID string) ([]ParticipantResponse, error)
 	GetParticipantDetail(ctx context.Context, questionnaireID string, participantID string) (*ParticipantDetailResponse, error)
+	GetMyAttempt(ctx context.Context, patientID, questionnaireID string) (*MyAttemptResponse, error)
+	GetMyAttemptDetail(ctx context.Context, patientID, questionnaireID string) (*ParticipantDetailResponse, error)
+	GetMyHistory(ctx context.Context, patientID, qType string) ([]MyHistoryItemResponse, error)
+	ListPatientQuestionnaires(ctx context.Context, qType string, patientID string, page, perPage int) ([]PatientQuestionnaireItem, int64, error)
 }

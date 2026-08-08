@@ -141,6 +141,60 @@ func (h *BloodSugarHandler) GetPatientHistory(c fiber.Ctx) error {
 	})
 }
 
+// Update handles PUT /api/v1/patient/blood-sugar/:id
+// @Summary      Update own blood sugar measurement
+// @Tags         blood-sugar
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        id    path  string                true  "Blood Sugar Log ID"
+// @Param        body  body  LogBloodSugarRequest  true  "Update payload"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/blood-sugar/{id} [put]
+func (h *BloodSugarHandler) Update(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	id := c.Params("id")
+	var req LogBloodSugarRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.UpdateBloodSugar(c.Context(), claims.UserID, id, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "blood sugar log updated successfully", res)
+}
+
+// Delete handles DELETE /api/v1/patient/blood-sugar/:id
+// @Summary      Delete own blood sugar measurement
+// @Tags         blood-sugar
+// @Security     BearerAuth
+// @Produce      json
+// @Param        id   path  string  true  "Blood Sugar Log ID"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/blood-sugar/{id} [delete]
+func (h *BloodSugarHandler) Delete(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	id := c.Params("id")
+	if err := h.svc.DeleteBloodSugar(c.Context(), claims.UserID, id); err != nil {
+		return err
+	}
+	return response.NoContent(c)
+}
+
 // GetDashboard handles GET /api/v1/staff/dashboard/blood-sugar
 // @Summary      Get staff monitoring stats
 // @Tags         blood-sugar

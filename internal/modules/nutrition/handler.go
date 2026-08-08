@@ -179,6 +179,60 @@ func (h *NutritionHandler) GetPatientMealLogs(c fiber.Ctx) error {
 	return response.Success(c, "patient meal logs retrieved", res)
 }
 
+// UpdateMeal handles PUT /api/v1/patient/meals/:id
+// @Summary      Update meal log portion or meal type
+// @Tags         nutrition
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        id    path  string               true  "Meal Log ID"
+// @Param        body  body  UpdateMealLogRequest  true  "Update meal payload"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/meals/{id} [put]
+func (h *NutritionHandler) UpdateMeal(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	id := c.Params("id")
+	var req UpdateMealLogRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.UpdateMealLog(c.Context(), claims.UserID, id, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "meal log updated", res)
+}
+
+// DeleteMeal handles DELETE /api/v1/patient/meals/:id
+// @Summary      Delete meal log
+// @Tags         nutrition
+// @Security     BearerAuth
+// @Produce      json
+// @Param        id   path  string  true  "Meal Log ID"
+// @Success      204
+// @Router       /patient/meals/{id} [delete]
+func (h *NutritionHandler) DeleteMeal(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	id := c.Params("id")
+	if err := h.svc.DeleteMealLog(c.Context(), claims.UserID, id); err != nil {
+		return err
+	}
+	return response.NoContent(c)
+}
+
 // CalculateCalories handles POST /api/v1/nutrition/calculate-calories
 // @Summary      Calculate daily calorie requirements & targets (BMR & TDEE)
 // @Tags         nutrition
@@ -204,4 +258,3 @@ func (h *NutritionHandler) CalculateCalories(c fiber.Ctx) error {
 	}
 	return response.Success(c, "calorie calculation successful", res)
 }
-

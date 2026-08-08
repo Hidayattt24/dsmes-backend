@@ -25,14 +25,22 @@ func (s *bloodSugarService) LogBloodSugar(ctx context.Context, patientID string,
 		return nil, errs.NewBadRequest("invalid measured_at format (RFC3339 required)", err)
 	}
 
-	status := domain.CalculateGlucoseStatus(req.GlucoseValue, req.MeasurementTimeType)
+	normType := domain.NormalizeMeasurementType(string(req.MeasurementTimeType))
+	dob, _ := s.repo.GetPatientDOB(ctx, patientID)
+	medRes := domain.CalculateBloodSugarMedicalResult(req.GlucoseValue, normType, dob)
 
 	log := &domain.BloodSugarLog{
 		PatientID:           patientID,
 		GlucoseValue:        req.GlucoseValue,
-		MeasurementTimeType: req.MeasurementTimeType,
+		MeasurementTimeType: normType,
 		MeasuredAt:          measuredAt,
-		Status:              status,
+		Category:            medRes.Category,
+		Severity:            medRes.Severity,
+		ReferenceMin:        medRes.ReferenceMin,
+		ReferenceMax:        medRes.ReferenceMax,
+		ReferenceRange:      medRes.ReferenceRange,
+		Recommendation:      medRes.Recommendation,
+		Color:               medRes.Color,
 	}
 
 	if err = s.repo.Create(ctx, log); err != nil {
@@ -41,6 +49,54 @@ func (s *bloodSugarService) LogBloodSugar(ctx context.Context, patientID string,
 
 	res := ToBloodSugarResponse(log)
 	return &res, nil
+}
+
+func (s *bloodSugarService) UpdateBloodSugar(ctx context.Context, patientID, id string, req LogBloodSugarRequest) (*BloodSugarResponse, error) {
+	existing, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if existing.PatientID != patientID {
+		return nil, errs.NewForbidden("unauthorized access to blood sugar log")
+	}
+
+	measuredAt, err := time.Parse(time.RFC3339, req.MeasuredAt)
+	if err != nil {
+		return nil, errs.NewBadRequest("invalid measured_at format (RFC3339 required)", err)
+	}
+
+	normType := domain.NormalizeMeasurementType(string(req.MeasurementTimeType))
+	dob, _ := s.repo.GetPatientDOB(ctx, patientID)
+	medRes := domain.CalculateBloodSugarMedicalResult(req.GlucoseValue, normType, dob)
+
+	existing.GlucoseValue = req.GlucoseValue
+	existing.MeasurementTimeType = normType
+	existing.MeasuredAt = measuredAt
+	existing.Category = medRes.Category
+	existing.Severity = medRes.Severity
+	existing.ReferenceMin = medRes.ReferenceMin
+	existing.ReferenceMax = medRes.ReferenceMax
+	existing.ReferenceRange = medRes.ReferenceRange
+	existing.Recommendation = medRes.Recommendation
+	existing.Color = medRes.Color
+
+	if err = s.repo.Update(ctx, existing); err != nil {
+		return nil, err
+	}
+
+	res := ToBloodSugarResponse(existing)
+	return &res, nil
+}
+
+func (s *bloodSugarService) DeleteBloodSugar(ctx context.Context, patientID, id string) error {
+	existing, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if existing.PatientID != patientID {
+		return errs.NewForbidden("unauthorized access to blood sugar log")
+	}
+	return s.repo.Delete(ctx, id)
 }
 
 func (s *bloodSugarService) GetPatientHistory(ctx context.Context, patientID string, page, limit int) ([]BloodSugarResponse, int64, error) {

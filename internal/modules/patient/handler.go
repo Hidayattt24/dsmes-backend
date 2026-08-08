@@ -47,6 +47,37 @@ func (h *PatientHandler) Register(c fiber.Ctx) error {
 	return response.Created(c, "patient registered successfully", res)
 }
 
+// SetupHealthProfile handles POST /api/v1/patient/profile/setup
+// @Summary      Setup patient health profile
+// @Tags         patient
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  SetupHealthProfileRequest  true  "Health profile setup payload"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/profile/setup [post]
+func (h *PatientHandler) SetupHealthProfile(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req SetupHealthProfileRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.SetupHealthProfile(c.Context(), claims.UserID, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "health profile set up successfully", res)
+}
+
 // List handles GET /api/v1/admin/patients
 // @Summary      List all patients (Admin)
 // @Tags         patient
@@ -173,7 +204,7 @@ func (h *PatientHandler) ListStaff(c fiber.Ctx) error {
 	}
 
 	items, total, err := h.svc.ListPatients(c.Context(), PatientFilterQuery{
-		StaffID:          claims.UserID,
+		StaffID:          c.Query("staff_id"),
 		Search:           c.Query("search"),
 		Gender:           c.Query("gender"),
 		Status:           c.Query("status"),
@@ -230,6 +261,10 @@ func (h *PatientHandler) UpdatePatientByAdmin(c fiber.Ctx) error {
 		return errs.NewBadRequest("invalid payload", err)
 	}
 
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
 	res, err := h.svc.UpdatePatientByAdmin(c.Context(), id, req)
 	if err != nil {
 		return err
@@ -260,6 +295,10 @@ func (h *PatientHandler) CreateMeasurement(c fiber.Ctx) error {
 	var req CreateMeasurementRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return errs.NewBadRequest("invalid payload", err)
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
 	}
 
 	res, err := h.svc.CreateMeasurement(c.Context(), patientID, req, recByID, recByName, recByRole)
@@ -294,6 +333,10 @@ func (h *PatientHandler) UpdateMeasurement(c fiber.Ctx) error {
 	var req UpdateMeasurementRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return errs.NewBadRequest("invalid payload", err)
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
 	}
 
 	res, err := h.svc.UpdateMeasurement(c.Context(), patientID, measurementID, req)
@@ -368,6 +411,37 @@ func (h *PatientHandler) UpdateMe(c fiber.Ctx) error {
 	return response.Success(c, "profile updated", res)
 }
 
+// ChangePassword handles PUT /api/v1/patient/me/password
+// @Summary      Change current patient password
+// @Tags         patient
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  ChangePasswordRequest  true  "Change password payload"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/me/password [put]
+func (h *PatientHandler) ChangePassword(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req ChangePasswordRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	if err := h.svc.ChangePassword(c.Context(), claims.UserID, req); err != nil {
+		return err
+	}
+
+	return response.Success(c, "password changed", nil)
+}
+
 // AssignStaff handles PATCH /api/v1/admin/patients/:id/assign
 // @Summary      Assign patient to monitoring staff
 // @Tags         patient
@@ -440,11 +514,7 @@ func (h *PatientHandler) GetStats(c fiber.Ctx) error {
 
 // GetStatsStaff handles GET /api/v1/staff/patients/stats
 func (h *PatientHandler) GetStatsStaff(c fiber.Ctx) error {
-	claims := middleware.ClaimsFromContext(c)
-	if claims == nil {
-		return fiber.ErrUnauthorized
-	}
-	res, err := h.svc.GetStats(c.Context(), claims.UserID)
+	res, err := h.svc.GetStats(c.Context(), "")
 	if err != nil {
 		return err
 	}

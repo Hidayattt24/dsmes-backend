@@ -2,6 +2,7 @@ package education
 
 import (
 	"context"
+	"time"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 )
@@ -21,16 +22,29 @@ type EducationRepository interface {
 
 	RecordView(ctx context.Context, view *domain.ArticleView) error
 	MarkCompleted(ctx context.Context, completion *domain.UserArticleCompletion) error
-	ToggleSaved(ctx context.Context, patientID string, articleID string) (bool, error)
+	SaveArticle(ctx context.Context, patientID string, articleID string) error
+	UnsaveArticle(ctx context.Context, patientID string, articleID string) error
 	FindSavedArticles(ctx context.Context, patientID string) ([]domain.Article, error)
+	GetPatientSavedMap(ctx context.Context, patientID string) (map[string]bool, error)
+	GetPatientCompletedMap(ctx context.Context, patientID string) (map[string]bool, error)
+
+	// BroadcastEducationNotification inserts an education notification into
+	// every active patient's notification_logs inbox.
+	BroadcastEducationNotification(ctx context.Context, message string, articleID string) error
 
 	// Transactional updates for sections/steps
 	ReplaceSections(ctx context.Context, articleID string, sections []domain.ArticleSection) error
+
+	// Reviews & Ratings
+	UpsertReview(ctx context.Context, review *domain.EducationReview) error
+	GetReviewByPatientAndArticle(ctx context.Context, patientID string, educationID string) (*domain.EducationReview, error)
+	GetRatingSummary(ctx context.Context, educationID string) (average float64, count int64, dist RatingDistribution, err error)
+	GetAdminReviews(ctx context.Context, educationID string) ([]domain.EducationReview, map[string]string, map[string]*time.Time, error)
 }
 
 type EducationService interface {
 	ListCategories(ctx context.Context) ([]CategoryResponse, error)
-	ListArticles(ctx context.Context, categoryID string, status *domain.ArticleStatus, page, limit int) ([]ArticleListResponse, int64, error)
+	ListArticles(ctx context.Context, patientID *string, categoryID string, status *domain.ArticleStatus, page, limit int) ([]ArticleListResponse, int64, error)
 	GetArticle(ctx context.Context, id string, patientID *string) (*ArticleDetailResponse, error)
 	CreateArticle(ctx context.Context, staffID string, req CreateArticleRequest) (*ArticleDetailResponse, error)
 	UpdateArticle(ctx context.Context, id string, req CreateArticleRequest) (*ArticleDetailResponse, error)
@@ -39,6 +53,14 @@ type EducationService interface {
 	GetStats(ctx context.Context) (*EducationStats, error)
 
 	CompleteArticle(ctx context.Context, patientID string, id string) error
-	ToggleSaveArticle(ctx context.Context, patientID string, id string) (bool, error)
+	SaveArticle(ctx context.Context, patientID string, id string) error
+	UnsaveArticle(ctx context.Context, patientID string, id string) error
 	ListSavedArticles(ctx context.Context, patientID string) ([]ArticleListResponse, error)
+
+	// Reviews & Ratings
+	SubmitReview(ctx context.Context, patientID string, educationID string, req CreateReviewRequest) (*EducationReviewResponse, error)
+	GetPatientReview(ctx context.Context, patientID string, educationID string) (*EducationReviewResponse, error)
+	GetRatingSummary(ctx context.Context, educationID string, patientID *string) (*ArticleRatingResponse, error)
+	GetAdminReviews(ctx context.Context, educationID string) (*AdminArticleReviewsResponse, error)
 }
+
