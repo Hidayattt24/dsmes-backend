@@ -33,6 +33,9 @@ func (r *educationRepository) FindAllCategories(ctx context.Context) ([]domain.A
 	`).Scan(&items).Error
 	if err != nil || len(items) == 0 {
 		err = r.db.WithContext(ctx).Where("deleted_at IS NULL").Order("name ASC").Find(&items).Error
+		if err != nil {
+			return nil, errs.NewInternal("failed to fetch categories", err)
+		}
 	}
 	return items, nil
 }
@@ -454,4 +457,3 @@ func (r *educationRepository) GetAdminReviews(ctx context.Context, educationID s
 
 	return reviews, patientNames, completionDates, nil
 }
-
