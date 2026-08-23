@@ -22,6 +22,29 @@ type ForgotPasswordRequest struct {
 	OwnerType string `json:"owner_type" validate:"omitempty,oneof=staff patient"`
 }
 
+// ForgotPasswordCheckPhoneRequest is the body for POST /api/v1/auth/forgot-password/check-phone.
+type ForgotPasswordCheckPhoneRequest struct {
+	PhoneNumber string `json:"phone_number" validate:"required"`
+}
+
+// ResetPasswordByPhoneRequest is the body for POST /api/v1/auth/reset-password-by-phone.
+type ResetPasswordByPhoneRequest struct {
+	PhoneNumber     string `json:"phone_number"     validate:"required"`
+	NewPassword     string `json:"new_password"     validate:"required,min=8"`
+	ConfirmPassword string `json:"confirm_password" validate:"required,eqfield=NewPassword"`
+}
+
+// ForgotPasswordCheckEmailRequest is the body for POST /api/v1/auth/forgot-password/check-email.
+type ForgotPasswordCheckEmailRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+// ResetPasswordByEmailRequest is the body for POST /api/v1/auth/reset-password-by-email.
+type ResetPasswordByEmailRequest struct {
+	Email           string `json:"email"            validate:"required,email"`
+	NewPassword     string `json:"new_password"     validate:"required,min=8"`
+	ConfirmPassword string `json:"confirm_password" validate:"required,eqfield=NewPassword"`
+}
 
 // VerifyOTPRequest is the body for POST /api/v1/auth/verify-otp.
 type VerifyOTPRequest struct {
@@ -48,8 +71,8 @@ type RefreshTokenRequest struct {
 
 // LoginResponse is returned after a successful login.
 type LoginResponse struct {
-	User   AuthUserResponse   `json:"user"`
-	Tokens jwtpkg.TokenPair   `json:"tokens"`
+	User   AuthUserResponse `json:"user"`
+	Tokens jwtpkg.TokenPair `json:"tokens"`
 }
 
 // AuthUserResponse is the minimal user info included in the login response.

@@ -37,5 +37,9 @@ type AuthService interface {
 	ForgotPassword(ctx context.Context, req ForgotPasswordRequest) error
 	VerifyOTP(ctx context.Context, req VerifyOTPRequest) error
 	ResetPassword(ctx context.Context, req ResetPasswordRequest) error
+	CheckPhoneNumber(ctx context.Context, req ForgotPasswordCheckPhoneRequest) error
+	ResetPasswordByPhone(ctx context.Context, req ResetPasswordByPhoneRequest) error
+	CheckEmail(ctx context.Context, req ForgotPasswordCheckEmailRequest) error
+	ResetPasswordByEmail(ctx context.Context, req ResetPasswordByEmailRequest) error
 	RefreshToken(ctx context.Context, req RefreshTokenRequest) (*TokenResponse, error)
 }

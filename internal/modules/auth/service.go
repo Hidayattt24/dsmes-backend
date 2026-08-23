@@ -252,6 +252,110 @@ func (s *authService) ResetPassword(ctx context.Context, req ResetPasswordReques
 	return s.repo.RevokeAllSessions(ctx, ownerType, matchedToken.OwnerID)
 }
 
+// ── CheckPhoneNumber ──────────────────────────────────────────────────────────
+
+func (s *authService) CheckPhoneNumber(ctx context.Context, req ForgotPasswordCheckPhoneRequest) error {
+	phoneNum, err := phone.Normalize(req.PhoneNumber)
+	if err != nil {
+		return errs.NewBadRequest(err.Error())
+	}
+
+	patient, err := s.repo.FindPatientByPhoneNumber(ctx, phoneNum)
+	if err != nil {
+		if errs.IsNotFound(err) {
+			return errs.NewNotFound("nomor handphone tidak terdaftar")
+		}
+		return err
+	}
+
+	if patient.Status == domain.StatusNonaktif {
+		return errs.NewForbidden("account is deactivated")
+	}
+
+	return nil
+}
+
+// ── ResetPasswordByPhone ──────────────────────────────────────────────────────
+
+func (s *authService) ResetPasswordByPhone(ctx context.Context, req ResetPasswordByPhoneRequest) error {
+	phoneNum, err := phone.Normalize(req.PhoneNumber)
+	if err != nil {
+		return errs.NewBadRequest(err.Error())
+	}
+
+	patient, err := s.repo.FindPatientByPhoneNumber(ctx, phoneNum)
+	if err != nil {
+		if errs.IsNotFound(err) {
+			return errs.NewNotFound("nomor handphone tidak terdaftar")
+		}
+		return err
+	}
+
+	if patient.Status == domain.StatusNonaktif {
+		return errs.NewForbidden("account is deactivated")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return errs.NewInternal("failed to hash password", err)
+	}
+
+	if err := s.repo.UpdatePatientPassword(ctx, patient.ID, string(hash)); err != nil {
+		return err
+	}
+
+	// Invalidate every active session so old refresh tokens stop working
+	// after a password reset.
+	return s.repo.RevokeAllSessions(ctx, OwnerTypePatient, patient.ID)
+}
+
+// ── CheckEmail ────────────────────────────────────────────────────────────────
+
+func (s *authService) CheckEmail(ctx context.Context, req ForgotPasswordCheckEmailRequest) error {
+	staff, err := s.repo.FindStaffByEmail(ctx, req.Email)
+	if err != nil {
+		if errs.IsNotFound(err) {
+			return errs.NewNotFound("email tidak terdaftar")
+		}
+		return err
+	}
+
+	if staff.Status == StatusNonaktif {
+		return errs.NewForbidden("account is deactivated")
+	}
+
+	return nil
+}
+
+// ── ResetPasswordByEmail ──────────────────────────────────────────────────────
+
+func (s *authService) ResetPasswordByEmail(ctx context.Context, req ResetPasswordByEmailRequest) error {
+	staff, err := s.repo.FindStaffByEmail(ctx, req.Email)
+	if err != nil {
+		if errs.IsNotFound(err) {
+			return errs.NewNotFound("email tidak terdaftar")
+		}
+		return err
+	}
+
+	if staff.Status == StatusNonaktif {
+		return errs.NewForbidden("account is deactivated")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return errs.NewInternal("failed to hash password", err)
+	}
+
+	if err := s.repo.UpdateStaffPassword(ctx, staff.ID, string(hash)); err != nil {
+		return err
+	}
+
+	// Invalidate every active session so old refresh tokens stop working
+	// after a password reset.
+	return s.repo.RevokeAllSessions(ctx, OwnerTypeStaff, staff.ID)
+}
+
 // ── RefreshToken ──────────────────────────────────────────────────────────────
 
 func (s *authService) RefreshToken(ctx context.Context, req RefreshTokenRequest) (*TokenResponse, error) {
