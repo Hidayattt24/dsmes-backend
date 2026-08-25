@@ -82,7 +82,6 @@ func (h *AuthHandler) PatientLogin(c fiber.Ctx) error {
 	return response.Success(c, "login successful", res)
 }
 
-
 // Logout handles POST /api/v1/auth/logout
 //
 // @Summary      Logout
@@ -186,6 +185,116 @@ func (h *AuthHandler) ResetPassword(c fiber.Ctx) error {
 	}
 
 	if err := h.svc.ResetPassword(c.Context(), req); err != nil {
+		return err
+	}
+	return response.Success(c, "password reset successfully", nil)
+}
+
+// ResetPasswordByPhone handles POST /api/v1/auth/reset-password-by-phone
+//
+// @Summary      Reset password by phone number
+// @Description  Resets the patient's password directly using a registered phone number.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body      ResetPasswordByPhoneRequest  true  "Reset password by phone payload"
+// @Success      200   {object}  map[string]any
+// @Failure      400   {object}  map[string]any
+// @Failure      404   {object}  map[string]any
+// @Failure      422   {object}  map[string]any
+// @Router       /auth/reset-password-by-phone [post]
+func (h *AuthHandler) ResetPasswordByPhone(c fiber.Ctx) error {
+	var req ResetPasswordByPhoneRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	if err := h.svc.ResetPasswordByPhone(c.Context(), req); err != nil {
+		return err
+	}
+	return response.Success(c, "password reset successfully", nil)
+}
+
+// CheckPhoneNumber handles POST /api/v1/auth/forgot-password/check-phone
+//
+// @Summary      Check phone number
+// @Description  Checks whether a phone number is registered to a patient account.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body      ForgotPasswordCheckPhoneRequest  true  "Phone number to check"
+// @Success      200   {object}  map[string]any
+// @Failure      404   {object}  map[string]any
+// @Failure      422   {object}  map[string]any
+// @Router       /auth/forgot-password/check-phone [post]
+func (h *AuthHandler) CheckPhoneNumber(c fiber.Ctx) error {
+	var req ForgotPasswordCheckPhoneRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	if err := h.svc.CheckPhoneNumber(c.Context(), req); err != nil {
+		return err
+	}
+	return response.Success(c, "phone number is registered", nil)
+}
+
+// CheckEmail handles POST /api/v1/auth/forgot-password/check-email
+//
+// @Summary      Check email
+// @Description  Checks whether an email is registered to a staff account.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body      ForgotPasswordCheckEmailRequest  true  "Email to check"
+// @Success      200   {object}  map[string]any
+// @Failure      404   {object}  map[string]any
+// @Failure      422   {object}  map[string]any
+// @Router       /auth/forgot-password/check-email [post]
+func (h *AuthHandler) CheckEmail(c fiber.Ctx) error {
+	var req ForgotPasswordCheckEmailRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	if err := h.svc.CheckEmail(c.Context(), req); err != nil {
+		return err
+	}
+	return response.Success(c, "email is registered", nil)
+}
+
+// ResetPasswordByEmail handles POST /api/v1/auth/reset-password-by-email
+//
+// @Summary      Reset password by email
+// @Description  Resets the staff's password directly using a registered email.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body      ResetPasswordByEmailRequest  true  "Reset password by email payload"
+// @Success      200   {object}  map[string]any
+// @Failure      400   {object}  map[string]any
+// @Failure      404   {object}  map[string]any
+// @Failure      422   {object}  map[string]any
+// @Router       /auth/reset-password-by-email [post]
+func (h *AuthHandler) ResetPasswordByEmail(c fiber.Ctx) error {
+	var req ResetPasswordByEmailRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	if err := h.svc.ResetPasswordByEmail(c.Context(), req); err != nil {
 		return err
 	}
 	return response.Success(c, "password reset successfully", nil)

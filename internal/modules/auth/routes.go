@@ -29,6 +29,12 @@ func RegisterRoutes(router fiber.Router, c *container.Container) {
 	auth.Post("/verify-otp", h.VerifyOTP)
 	auth.Post("/reset-password", h.ResetPassword)
 
+	auth.Post("/forgot-password/check-phone", h.CheckPhoneNumber)
+	auth.Post("/reset-password-by-phone", h.ResetPasswordByPhone)
+
+	auth.Post("/forgot-password/check-email", h.CheckEmail)
+	auth.Post("/reset-password-by-email", h.ResetPasswordByEmail)
+
 	// Refresh is rate-limited but more lenient than OTP (valid JWT needed).
 	auth.Post("/refresh", middleware.RateLimiter(), h.RefreshToken)
 
