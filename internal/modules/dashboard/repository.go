@@ -136,7 +136,7 @@ func (r *dashboardRepository) GetAdminStats(ctx context.Context) (*AdminDashboar
 	}, nil
 }
 
-func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string) (*StaffDashboardResponse, error) {
+func (r *dashboardRepository) GetStaffStats(ctx context.Context, healthFacility string) (*StaffDashboardResponse, error) {
 	var totalAssignedPatients int64
 	var activeAssignedPatients int64
 	var totalAttempts int64
@@ -144,16 +144,16 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	var dist GlucoseDistribution
 
 	qPatients := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("deleted_at IS NULL")
-	if staffID != "" {
-		qPatients = qPatients.Where("assigned_staff_id = ?", staffID)
+	if healthFacility != "" {
+		qPatients = qPatients.Where("health_facility = ?", healthFacility)
 	}
 	if err := qPatients.Count(&totalAssignedPatients).Error; err != nil {
 		return nil, errs.NewInternal("failed to count assigned patients", err)
 	}
 
 	qActivePatients := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("status = ? AND deleted_at IS NULL", domain.StatusAktif)
-	if staffID != "" {
-		qActivePatients = qActivePatients.Where("assigned_staff_id = ?", staffID)
+	if healthFacility != "" {
+		qActivePatients = qActivePatients.Where("health_facility = ?", healthFacility)
 	}
 	if err := qActivePatients.Count(&activeAssignedPatients).Error; err != nil {
 		return nil, errs.NewInternal("failed to count active assigned patients", err)
@@ -163,8 +163,8 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 		SELECT COUNT(qa.id)
 		FROM quiz_attempts qa
 		JOIN patients p ON p.id = qa.patient_id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND qa.deleted_at IS NULL AND p.deleted_at IS NULL
-	`, staffID, staffID).Scan(&totalAttempts).Error
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND qa.deleted_at IS NULL AND p.deleted_at IS NULL
+	`, healthFacility, healthFacility).Scan(&totalAttempts).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to count quiz attempts for staff", err)
 	}
@@ -187,8 +187,8 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 			COALESCE(COUNT(*) FILTER (WHERE b.status = 'hyperglycemia'), 0) AS hyperglycemia_count
 		FROM blood_sugar_logs b
 		JOIN patients p ON p.id = b.patient_id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND b.deleted_at IS NULL AND p.deleted_at IS NULL
-	`, staffID, staffID).Scan(&glucoseStats).Error
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND b.deleted_at IS NULL AND p.deleted_at IS NULL
+	`, healthFacility, healthFacility).Scan(&glucoseStats).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch glucose stats", err)
 	}
@@ -236,11 +236,11 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 			FROM patient_measurements pm
 			WHERE pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 AND pm.deleted_at IS NULL AND pm.measured_at >= NOW() - INTERVAL '7 days'
 		) combined ON combined.patient_id = p.id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR p.assigned_staff_id IS NULL OR NULLIF(?, '') IS NULL) 
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) 
 		  AND p.deleted_at IS NULL 
 		  AND (combined.status IN ('hypoglycemia', 'prediabetes', 'elevated', 'hyperglycemia') OR combined.glucose_value >= 140 OR combined.glucose_value <= 70)
 		ORDER BY combined.patient_id, combined.measured_at DESC
-	`, staffID, staffID).Scan(&priorityPatientsRaw).Error
+	`, healthFacility, healthFacility).Scan(&priorityPatientsRaw).Error
 
 	var priorityPatients []PriorityPatient
 	if err == nil {
@@ -281,10 +281,10 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	err = r.db.WithContext(ctx).Raw(`
 		SELECT p.id, p.full_name, p.nickname, p.email, p.whatsapp_number, p.diabetes_type, p.compliance, p.last_active_at
 		FROM patients p
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR p.assigned_staff_id IS NULL OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL AND (p.compliance < 50 OR p.last_active_at IS NULL OR p.last_active_at < NOW() - INTERVAL '3 days')
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL AND (p.compliance < 50 OR p.last_active_at IS NULL OR p.last_active_at < NOW() - INTERVAL '3 days')
 		ORDER BY p.compliance ASC
 		LIMIT 15
-	`, staffID, staffID).Scan(&nonCompliantRaw).Error
+	`, healthFacility, healthFacility).Scan(&nonCompliantRaw).Error
 
 	var nonCompliantPatients []PriorityPatient
 	if err == nil {
@@ -320,8 +320,8 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	qSugar := r.db.WithContext(ctx).Model(&domain.BloodSugarLog{}).
 		Joins("JOIN patients p ON p.id = blood_sugar_logs.patient_id").
 		Where("blood_sugar_logs.deleted_at IS NULL AND p.deleted_at IS NULL")
-	if staffID != "" {
-		qSugar = qSugar.Where("p.assigned_staff_id = ?", staffID)
+	if healthFacility != "" {
+		qSugar = qSugar.Where("p.health_facility = ?", healthFacility)
 	}
 	qSugar.Count(&totalSugarLogs)
 
@@ -329,8 +329,8 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	qMeal := r.db.WithContext(ctx).Model(&domain.MealLog{}).
 		Joins("JOIN patients p ON p.id = meal_logs.patient_id").
 		Where("meal_logs.deleted_at IS NULL AND p.deleted_at IS NULL")
-	if staffID != "" {
-		qMeal = qMeal.Where("p.assigned_staff_id = ?", staffID)
+	if healthFacility != "" {
+		qMeal = qMeal.Where("p.health_facility = ?", healthFacility)
 	}
 	qMeal.Count(&totalMealLogs)
 
@@ -338,8 +338,8 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 	qAct := r.db.WithContext(ctx).Model(&domain.RoutineLogEntry{}).
 		Joins("JOIN patients p ON p.id = routine_log_entries.patient_id").
 		Where("routine_log_entries.deleted_at IS NULL AND p.deleted_at IS NULL")
-	if staffID != "" {
-		qAct = qAct.Where("p.assigned_staff_id = ?", staffID)
+	if healthFacility != "" {
+		qAct = qAct.Where("p.health_facility = ?", healthFacility)
 	}
 	qAct.Count(&totalActivityLogs)
 
@@ -348,8 +348,8 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, staffID string)
 		Joins("JOIN reminders r ON r.id = daily_reminder_logs.reminder_id").
 		Joins("JOIN patients p ON p.id = r.patient_id").
 		Where("daily_reminder_logs.deleted_at IS NULL AND p.deleted_at IS NULL")
-	if staffID != "" {
-		qMed = qMed.Where("p.assigned_staff_id = ?", staffID)
+	if healthFacility != "" {
+		qMed = qMed.Where("p.health_facility = ?", healthFacility)
 	}
 	qMed.Count(&totalMedicationLogs)
 
@@ -453,7 +453,7 @@ func (r *dashboardRepository) GetActivityChart(ctx context.Context) ([]ActivityC
 	return items, nil
 }
 
-func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID string, rangeDays int) (*PopulationMetricsResponse, error) {
+func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, healthFacility string, rangeDays int) (*PopulationMetricsResponse, error) {
 	type foodRow struct {
 		MealType string
 		Count    int64
@@ -463,12 +463,12 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID 
 		SELECT ml.meal_type, COUNT(*) AS count
 		FROM meal_logs ml
 		JOIN patients p ON p.id = ml.patient_id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND ml.deleted_at IS NULL AND p.deleted_at IS NULL
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND ml.deleted_at IS NULL AND p.deleted_at IS NULL
 		AND ml.logged_at >= NOW() - INTERVAL '%d days'
 		GROUP BY ml.meal_type
 		ORDER BY ml.meal_type
 	`, rangeDays)
-	if err := r.db.WithContext(ctx).Raw(sqlFood, staffID, staffID).Scan(&foodRows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw(sqlFood, healthFacility, healthFacility).Scan(&foodRows).Error; err != nil {
 		return nil, errs.NewInternal("failed to fetch food intake distribution", err)
 	}
 
@@ -529,11 +529,11 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID 
 			WHERE rle.deleted_at IS NULL AND rle.status = 'Completed' AND rle.logged_at >= NOW() - INTERVAL '%d days'
 		) act
 		JOIN patients p ON p.id = act.patient_id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL
 		GROUP BY level
 		ORDER BY count DESC
 	`, rangeDays, rangeDays)
-	if err := r.db.WithContext(ctx).Raw(sqlActivity, staffID, staffID).Scan(&activityRows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw(sqlActivity, healthFacility, healthFacility).Scan(&activityRows).Error; err != nil {
 		return nil, errs.NewInternal("failed to fetch physical activity distribution", err)
 	}
 
@@ -555,12 +555,12 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID 
 		FROM daily_reminder_logs drl
 		JOIN reminders r ON r.id = drl.reminder_id
 		JOIN patients p ON p.id = r.patient_id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND drl.deleted_at IS NULL AND p.deleted_at IS NULL
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND drl.deleted_at IS NULL AND p.deleted_at IS NULL
 		AND drl.log_date >= CURRENT_DATE - INTERVAL '%d days'
 		GROUP BY drl.status
 		ORDER BY drl.status
 	`, rangeDays)
-	if err := r.db.WithContext(ctx).Raw(sqlAdh, staffID, staffID).Scan(&adhRows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw(sqlAdh, healthFacility, healthFacility).Scan(&adhRows).Error; err != nil {
 		return nil, errs.NewInternal("failed to fetch medication adherence", err)
 	}
 
@@ -607,12 +607,12 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID 
 		SELECT p.id AS patient_id, p.full_name, COUNT(*) AS count
 		FROM meal_logs ml
 		JOIN patients p ON p.id = ml.patient_id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND ml.deleted_at IS NULL AND p.deleted_at IS NULL
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND ml.deleted_at IS NULL AND p.deleted_at IS NULL
 		AND ml.logged_at >= NOW() - INTERVAL '%d days'
 		GROUP BY p.id, p.full_name
 		ORDER BY count DESC
 	`, rangeDays)
-	foodPatients, err := r.scanPatientContributions(ctx, staffID, foodPatientSQL)
+	foodPatients, err := r.scanPatientContributions(ctx, healthFacility, foodPatientSQL)
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch food patient contributions", err)
 	}
@@ -629,11 +629,11 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID 
 			WHERE rle.deleted_at IS NULL AND rle.status = 'Completed' AND rle.logged_at >= NOW() - INTERVAL '%d days'
 		) act
 		JOIN patients p ON p.id = act.patient_id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL
 		GROUP BY p.id, p.full_name
 		ORDER BY count DESC
 	`, rangeDays, rangeDays)
-	activityPatients, err := r.scanPatientContributions(ctx, staffID, activityPatientSQL)
+	activityPatients, err := r.scanPatientContributions(ctx, healthFacility, activityPatientSQL)
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch activity patient contributions", err)
 	}
@@ -643,12 +643,12 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID 
 		FROM daily_reminder_logs drl
 		JOIN reminders r ON r.id = drl.reminder_id
 		JOIN patients p ON p.id = r.patient_id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR NULLIF(?, '') IS NULL) AND drl.deleted_at IS NULL AND p.deleted_at IS NULL
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND drl.deleted_at IS NULL AND p.deleted_at IS NULL
 		AND drl.log_date >= CURRENT_DATE - INTERVAL '%d days'
 		GROUP BY p.id, p.full_name
 		ORDER BY count DESC
 	`, rangeDays)
-	medicationPatients, err := r.scanPatientContributions(ctx, staffID, medicationPatientSQL)
+	medicationPatients, err := r.scanPatientContributions(ctx, healthFacility, medicationPatientSQL)
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch medication patient contributions", err)
 	}
@@ -665,16 +665,16 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, staffID 
 
 // scanPatientContributions scans a per-patient GROUP BY query into a
 // []PatientContribution list. The SQL template must be fully formatted and
-// contain exactly two ? placeholders for the staffID filter.
-func (r *dashboardRepository) scanPatientContributions(ctx context.Context, staffID, sql string) ([]PatientContribution, error) {
+// contain exactly two ? placeholders for the healthFacility filter.
+func (r *dashboardRepository) scanPatientContributions(ctx context.Context, healthFacility, sql string) ([]PatientContribution, error) {
 	var rows []PatientContribution
-	if err := r.db.WithContext(ctx).Raw(sql, staffID, staffID).Scan(&rows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw(sql, healthFacility, healthFacility).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil
 }
 
-func (r *dashboardRepository) GetPatientTrends(ctx context.Context, staffID string, rangeDays int) ([]TrendPatient, error) {
+func (r *dashboardRepository) GetPatientTrends(ctx context.Context, healthFacility string, rangeDays int) ([]TrendPatient, error) {
 	type trendRow struct {
 		ID          string
 		FullName    string
@@ -703,7 +703,7 @@ func (r *dashboardRepository) GetPatientTrends(ctx context.Context, staffID stri
 			FROM patient_measurements pm
 			WHERE pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 AND pm.deleted_at IS NULL
 		) combined ON combined.patient_id = p.id
-		WHERE (p.assigned_staff_id = NULLIF(?, '')::uuid OR p.assigned_staff_id IS NULL OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL
+		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL
 		AND combined.measured_at >= NOW() - INTERVAL '%d days'
 		GROUP BY p.id, p.full_name, p.nickname
 		HAVING
@@ -714,7 +714,7 @@ func (r *dashboardRepository) GetPatientTrends(ctx context.Context, staffID stri
 		LIMIT 10
 	`,
 		rangeDays, halfDays, halfDays, rangeDays, halfDays, rangeDays, halfDays, rangeDays, halfDays, halfDays, rangeDays, halfDays)
-	err := r.db.WithContext(ctx).Raw(sql, staffID, staffID).Scan(&rows).Error
+	err := r.db.WithContext(ctx).Raw(sql, healthFacility, healthFacility).Scan(&rows).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch patient trends", err)
 	}

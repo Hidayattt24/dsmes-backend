@@ -16,7 +16,7 @@ type PatientRepository interface {
 	Create(ctx context.Context, p *domain.Patient) error
 	Update(ctx context.Context, p *domain.Patient) error
 	Delete(ctx context.Context, id string) error
-	GetStats(ctx context.Context, staffID string) (*PatientStats, error)
+	GetStats(ctx context.Context, facilityName string) (*PatientStats, error)
 	GetPatientSummary(ctx context.Context, patientID string) (*PatientSummaryData, error)
 	GetPatientSummaries(ctx context.Context, patientIDs []string) (map[string]*PatientSummaryData, error)
 	GetPatientActivityAnalytics(ctx context.Context, patientID string, days int) (*PatientActivityAnalyticsResponse, error)
@@ -39,16 +39,20 @@ type PatientRepository interface {
 type PatientService interface {
 	RegisterPatient(ctx context.Context, req RegisterPatientRequest) (*auth.LoginResponse, error)
 	SetupHealthProfile(ctx context.Context, patientID string, req SetupHealthProfileRequest) (*PatientDetailResponse, error)
+	SetupSociodemographic(ctx context.Context, patientID string, req SetupSociodemographicRequest) (*PatientDetailResponse, error)
 
 	ListPatients(ctx context.Context, filter PatientFilterQuery) ([]PatientResponse, int64, error)
+	ListPatientsForStaff(ctx context.Context, staffID string, filter PatientFilterQuery) ([]PatientResponse, int64, error)
 	GetPatient(ctx context.Context, id string) (*PatientDetailResponse, error)
+	GetPatientForStaff(ctx context.Context, staffID, id string) (*PatientDetailResponse, error)
 	UpdateProfile(ctx context.Context, patientID string, req UpdatePatientProfileRequest) (*PatientResponse, error)
 	ChangePassword(ctx context.Context, patientID string, req ChangePasswordRequest) error
 	UpdatePatientByAdmin(ctx context.Context, patientID string, req UpdatePatientRequest) (*PatientDetailResponse, error)
 	AssignStaff(ctx context.Context, id string, req AssignStaffRequest) (*PatientDetailResponse, error)
 	ToggleStatus(ctx context.Context, id string) (*PatientResponse, error)
 	DeletePatient(ctx context.Context, id string) error
-	GetStats(ctx context.Context, staffID string) (*PatientStats, error)
+	GetStats(ctx context.Context, facilityName string) (*PatientStats, error)
+	GetStatsForStaff(ctx context.Context, staffID string) (*PatientStats, error)
 	GetPatientActivityAnalytics(ctx context.Context, patientID string, days int) (*PatientActivityAnalyticsResponse, error)
 
 	// Health Measurements

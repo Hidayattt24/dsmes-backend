@@ -11,17 +11,40 @@ import (
 	"time"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
+	"github.com/dsmes/dsmes-backend/internal/modules/facility"
+	"github.com/dsmes/dsmes-backend/internal/modules/staff"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 	"go.uber.org/zap"
 )
 
 type surveyService struct {
-	repo SurveyRepository
-	log  *zap.Logger
+	repo         SurveyRepository
+	staffRepo    staff.StaffRepository
+	facilityRepo facility.FacilityRepository
+	log          *zap.Logger
 }
 
-func NewSurveyService(repo SurveyRepository, log *zap.Logger) SurveyService {
-	return &surveyService{repo: repo, log: log}
+func NewSurveyService(repo SurveyRepository, staffRepo staff.StaffRepository, facilityRepo facility.FacilityRepository, log *zap.Logger) SurveyService {
+	return &surveyService{repo: repo, staffRepo: staffRepo, facilityRepo: facilityRepo, log: log}
+}
+
+// resolveFacilityName maps a staff account to its assigned Puskesmas name.
+func (s *surveyService) resolveFacilityName(ctx context.Context, staffID string) (string, error) {
+	if staffID == "" {
+		return "", errs.NewUnauthorized("staff not identified")
+	}
+	sa, err := s.staffRepo.FindByID(ctx, staffID)
+	if err != nil {
+		return "", err
+	}
+	if sa.HealthFacilityID == nil || *sa.HealthFacilityID == "" {
+		return "", errs.NewForbidden("staff belum memiliki puskesmas")
+	}
+	f, err := s.facilityRepo.FindByID(ctx, *sa.HealthFacilityID)
+	if err != nil {
+		return "", err
+	}
+	return f.Name, nil
 }
 
 func (s *surveyService) CreateSurvey(ctx context.Context, adminID string, req CreateSurveyRequest) (*SurveyDetailResponse, error) {
@@ -30,14 +53,14 @@ func (s *surveyService) CreateSurvey(ctx context.Context, adminID string, req Cr
 	}
 
 	survey := &domain.Survey{
-		Title:             req.Title,
-		Description:       req.Description,
-		Type:              req.Type,
-		Status:            domain.SurveyStatusDraft,
-		IsActive:          false,
-		StartDate:         req.StartDate,
-		EndDate:           req.EndDate,
-		CreatedBy:         &adminID,
+		Title:       req.Title,
+		Description: req.Description,
+		Type:        req.Type,
+		Status:      domain.SurveyStatusDraft,
+		IsActive:    false,
+		StartDate:   req.StartDate,
+		EndDate:     req.EndDate,
+		CreatedBy:   &adminID,
 	}
 
 	if err := s.repo.Create(ctx, survey); err != nil {
@@ -158,23 +181,35 @@ func (s *surveyService) GetSurveyByID(ctx context.Context, id string, isPatient 
 	}
 
 	return &SurveyDetailResponse{
-		ID:                survey.ID,
-		Title:             survey.Title,
-		Description:       survey.Description,
-		Type:              survey.Type,
-		Status:            survey.Status,
-		IsActive:          survey.IsActive,
-		StartDate:         survey.StartDate,
-		EndDate:           survey.EndDate,
-		QuestionCount:     len(survey.Questions),
-		ResponseCount:     len(survey.Responses),
-		CreatedAt:         survey.CreatedAt,
-		UpdatedAt:         survey.UpdatedAt,
-		Questions:         qDTOs,
+		ID:            survey.ID,
+		Title:         survey.Title,
+		Description:   survey.Description,
+		Type:          survey.Type,
+		Status:        survey.Status,
+		IsActive:      survey.IsActive,
+		StartDate:     survey.StartDate,
+		EndDate:       survey.EndDate,
+		QuestionCount: len(survey.Questions),
+		ResponseCount: len(survey.Responses),
+		CreatedAt:     survey.CreatedAt,
+		UpdatedAt:     survey.UpdatedAt,
+		Questions:     qDTOs,
 	}, nil
 }
 
 func (s *surveyService) ListSurveys(ctx context.Context, surveyType string, status string, page int, limit int) ([]SurveyListItemResponse, int64, error) {
+	return s.listSurveys(ctx, surveyType, status, page, limit, "")
+}
+
+func (s *surveyService) ListSurveysForStaff(ctx context.Context, staffID string, surveyType string, status string, page int, limit int) ([]SurveyListItemResponse, int64, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return s.listSurveys(ctx, surveyType, status, page, limit, name)
+}
+
+func (s *surveyService) listSurveys(ctx context.Context, surveyType string, status string, page int, limit int, facilityName string) ([]SurveyListItemResponse, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -182,7 +217,7 @@ func (s *surveyService) ListSurveys(ctx context.Context, surveyType string, stat
 		limit = 20
 	}
 
-	items, total, err := s.repo.List(ctx, surveyType, status, page, limit)
+	items, total, err := s.repo.List(ctx, surveyType, status, page, limit, facilityName)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -463,6 +498,18 @@ func (s *surveyService) SubmitSurvey(ctx context.Context, surveyID string, patie
 }
 
 func (s *surveyService) GetSurveyResponses(ctx context.Context, surveyID string, page int, limit int) ([]SurveyResponseItemResponse, int64, error) {
+	return s.getSurveyResponses(ctx, surveyID, page, limit, "")
+}
+
+func (s *surveyService) GetSurveyResponsesForStaff(ctx context.Context, staffID string, surveyID string, page int, limit int) ([]SurveyResponseItemResponse, int64, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return s.getSurveyResponses(ctx, surveyID, page, limit, name)
+}
+
+func (s *surveyService) getSurveyResponses(ctx context.Context, surveyID string, page int, limit int, facilityName string) ([]SurveyResponseItemResponse, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -470,7 +517,7 @@ func (s *surveyService) GetSurveyResponses(ctx context.Context, surveyID string,
 		limit = 20
 	}
 
-	responses, total, err := s.repo.ListResponses(ctx, surveyID, page, limit)
+	responses, total, err := s.repo.ListResponses(ctx, surveyID, page, limit, facilityName)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -527,16 +574,36 @@ func (s *surveyService) GetSurveyResponses(ctx context.Context, surveyID string,
 }
 
 func (s *surveyService) GetSurveyAnalytics(ctx context.Context, surveyID string) (*SurveyAnalyticsResponse, error) {
-	return s.repo.GetAnalytics(ctx, surveyID)
+	return s.repo.GetAnalytics(ctx, surveyID, "")
+}
+
+func (s *surveyService) GetSurveyAnalyticsForStaff(ctx context.Context, staffID string, surveyID string) (*SurveyAnalyticsResponse, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.GetAnalytics(ctx, surveyID, name)
 }
 
 func (s *surveyService) ExportResponsesCSV(ctx context.Context, surveyID string) ([]byte, string, error) {
+	return s.exportResponsesCSV(ctx, surveyID, "")
+}
+
+func (s *surveyService) ExportResponsesCSVForStaff(ctx context.Context, staffID string, surveyID string) ([]byte, string, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, "", err
+	}
+	return s.exportResponsesCSV(ctx, surveyID, name)
+}
+
+func (s *surveyService) exportResponsesCSV(ctx context.Context, surveyID string, facilityName string) ([]byte, string, error) {
 	survey, err := s.repo.GetByID(ctx, surveyID)
 	if err != nil {
 		return nil, "", err
 	}
 
-	responses, err := s.repo.GetAllResponsesForExport(ctx, surveyID)
+	responses, err := s.repo.GetAllResponsesForExport(ctx, surveyID, facilityName)
 	if err != nil {
 		return nil, "", err
 	}

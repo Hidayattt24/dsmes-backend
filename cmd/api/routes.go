@@ -24,6 +24,7 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/modules/dashboard"
 	"github.com/dsmes/dsmes-backend/internal/modules/education"
 	"github.com/dsmes/dsmes-backend/internal/modules/education_progress"
+	"github.com/dsmes/dsmes-backend/internal/modules/facility"
 	"github.com/dsmes/dsmes-backend/internal/modules/food"
 	"github.com/dsmes/dsmes-backend/internal/modules/history"
 	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
@@ -68,14 +69,19 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	// 1. Auth (shared repo used for session revocation across modules)
 	authRepo := auth.NewAuthRepository(c.DB, c.Logger)
 
-	// 2. Staff
+	// 2. Facility master data
+	facilityRepo := facility.NewFacilityRepository(c.DB, c.Logger)
+	facilitySvc := facility.NewFacilityService(facilityRepo, c.Logger)
+	facilityHandler := facility.NewFacilityHandler(facilitySvc, c.Logger)
+
+	// 3. Staff
 	staffRepo := staff.NewStaffRepository(c.DB, c.Logger)
-	staffSvc := staff.NewStaffService(staffRepo, authRepo, c.Logger)
+	staffSvc := staff.NewStaffService(staffRepo, authRepo, facilityRepo, c.Logger)
 	staffHandler := staff.NewStaffHandler(staffSvc, c.Logger)
 
-	// 3. Patient
+	// 4. Patient
 	patientRepo := patient.NewPatientRepository(c.DB, c.Logger)
-	patientSvc := patient.NewPatientService(patientRepo, authRepo, c.JWT, c.Email, c.Logger)
+	patientSvc := patient.NewPatientService(patientRepo, authRepo, staffRepo, facilityRepo, c.JWT, c.Email, c.Logger)
 	patientHandler := patient.NewPatientHandler(patientSvc, c.Logger)
 
 	// 3. Routine
@@ -125,7 +131,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 
 	// 11. Quiz / Questionnaire
 	quizRepo := quiz.NewQuizRepository(c.DB, c.Logger)
-	quizSvc := quiz.NewQuizService(quizRepo, c.Logger)
+	quizSvc := quiz.NewQuizService(quizRepo, staffRepo, facilityRepo, c.Logger)
 	quizHandler := quiz.NewQuizHandler(quizSvc, c.Logger)
 
 	// 12. History
@@ -135,7 +141,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 
 	// 13. Dashboard
 	dashboardRepo := dashboard.NewDashboardRepository(c.DB, c.Logger)
-	dashboardSvc := dashboard.NewDashboardService(dashboardRepo, c.Logger)
+	dashboardSvc := dashboard.NewDashboardService(dashboardRepo, staffRepo, facilityRepo, c.Logger)
 	dashboardHandler := dashboard.NewDashboardHandler(dashboardSvc, c.Logger)
 
 	// 14. AI Personal Diabetes Assistant
@@ -145,7 +151,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 
 	// 15. Survey Module
 	surveyRepo := survey.NewSurveyRepository(c.DB)
-	surveySvc := survey.NewSurveyService(surveyRepo, c.Logger)
+	surveySvc := survey.NewSurveyService(surveyRepo, staffRepo, facilityRepo, c.Logger)
 	surveyHandler := survey.NewSurveyHandler(surveySvc, c.Logger)
 
 	// 16. Food Master Module
@@ -160,6 +166,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	auth.RegisterRoutes(v1, c)
 	v1.Post("/auth/register", patientHandler.Register)
 	v1.Post("/nutrition/calculate-calories", nutritionHandler.CalculateCalories)
+	v1.Get("/health-facilities", facilityHandler.List)
 
 	// ── Protected: Admin Group (JWT + RequireRole("admin")) ───────────────────
 	admin := v1.Group("/admin",
@@ -180,6 +187,12 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Put("/staff/:id", staffHandler.Update)
 		admin.Patch("/staff/:id/status", staffHandler.ToggleStatus)
 		admin.Delete("/staff/:id", staffHandler.Delete)
+
+		// Health Facility Management
+		admin.Get("/facilities", facilityHandler.List)
+		admin.Post("/facilities", facilityHandler.Create)
+		admin.Put("/facilities/:id", facilityHandler.Update)
+		admin.Delete("/facilities/:id", facilityHandler.Delete)
 
 		admin.Get("/me", staffHandler.GetMe)
 		admin.Put("/me", staffHandler.UpdateMe)
@@ -250,7 +263,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Patient Monitoring
 		staff.Get("/patients/stats", patientHandler.GetStatsStaff)
 		staff.Get("/patients", patientHandler.ListStaff)
-		staff.Get("/patients/:id", patientHandler.GetByID)
+		staff.Get("/patients/:id", patientHandler.GetByIDStaff)
 		staff.Get("/patients/:id/measurements", patientHandler.GetPatientMeasurements)
 		staff.Get("/patients/:id/blood-sugar", bsHandler.GetPatientHistory)
 		staff.Get("/patients/:id/meals", nutritionHandler.GetPatientMealLogs)
@@ -287,6 +300,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Put("/me", patientHandler.UpdateMe)
 		patientGroup.Put("/me/password", patientHandler.ChangePassword)
 		patientGroup.Post("/profile/setup", patientHandler.SetupHealthProfile)
+		patientGroup.Post("/profile/sociodemographic", patientHandler.SetupSociodemographic)
 
 		// Health Measurements
 		patientGroup.Get("/measurements", patientHandler.GetPatientMeasurements)
@@ -364,6 +378,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Get("/questionnaires/post-test", quizHandler.GetPostTestByEducation)
 		patientGroup.Get("/questionnaires/:id", quizHandler.GetByID)
 		patientGroup.Get("/questionnaires/:id/my-attempt", quizHandler.GetMyAttempt)
+		patientGroup.Get("/questionnaires/:id/attempts/:attempt_id", quizHandler.GetMyAttemptDetailByID)
 		patientGroup.Get("/questionnaires/:id/my-attempt/detail", quizHandler.GetMyAttemptDetail)
 		patientGroup.Post("/questionnaires/:id/submit", quizHandler.Submit)
 	}

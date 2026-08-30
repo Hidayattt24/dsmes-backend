@@ -5,6 +5,7 @@ import (
 
 	"github.com/dsmes/dsmes-backend/internal/container"
 	"github.com/dsmes/dsmes-backend/internal/modules/auth"
+	"github.com/dsmes/dsmes-backend/internal/modules/facility"
 )
 
 // RegisterRoutes registers endpoints.
@@ -15,7 +16,8 @@ import (
 func RegisterRoutes(router fiber.Router, c *container.Container) {
 	repo := NewStaffRepository(c.DB, c.Logger)
 	authRepo := auth.NewAuthRepository(c.DB, c.Logger)
-	svc := NewStaffService(repo, authRepo, c.Logger)
+	facilityRepo := facility.NewFacilityRepository(c.DB, c.Logger)
+	svc := NewStaffService(repo, authRepo, facilityRepo, c.Logger)
 	h := NewStaffHandler(svc, c.Logger)
 
 	// Since the caller already applies JWT and RequireRole("admin"),

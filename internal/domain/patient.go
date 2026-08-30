@@ -69,6 +69,13 @@ type Patient struct {
 	Allergies                 string        `gorm:"type:text" json:"allergies"`
 	SmokingStatus             string        `gorm:"type:varchar(50)" json:"smoking_status"`
 	PhysicalActivityLevel     string        `gorm:"type:varchar(50)" json:"physical_activity_level"`
+	City                      string        `gorm:"type:varchar(100);not null" json:"city"`
+	District                  string        `gorm:"type:varchar(100)" json:"district"`
+	HealthFacility            string        `gorm:"type:varchar(150)" json:"health_facility"`
+	TreatmentFacility         string        `gorm:"type:varchar(150)" json:"treatment_facility"`
+	LivingArrangement         string        `gorm:"type:varchar(50)" json:"living_arrangement"`
+	EducationLevel            string        `gorm:"type:varchar(50)" json:"education_level"`
+	DiabetesDuration          string        `gorm:"type:varchar(50)" json:"diabetes_duration"`
 
 	// Relations
 	AssignedStaff *StaffAccount `gorm:"foreignKey:AssignedStaffID" json:"assigned_staff,omitempty"`

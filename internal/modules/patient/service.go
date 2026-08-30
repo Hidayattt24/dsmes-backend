@@ -13,22 +13,26 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
 	"github.com/dsmes/dsmes-backend/internal/modules/auth"
+	"github.com/dsmes/dsmes-backend/internal/modules/facility"
 	"github.com/dsmes/dsmes-backend/internal/modules/nutrition"
+	"github.com/dsmes/dsmes-backend/internal/modules/staff"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 	jwtpkg "github.com/dsmes/dsmes-backend/internal/pkg/jwt"
 	"github.com/dsmes/dsmes-backend/internal/pkg/phone"
 )
 
 type patientService struct {
-	repo     PatientRepository
-	authRepo auth.AuthRepository
-	jwt      *jwtpkg.Manager
-	email    email.EmailService
-	log      *zap.Logger
+	repo         PatientRepository
+	authRepo     auth.AuthRepository
+	staffRepo    staff.StaffRepository
+	facilityRepo facility.FacilityRepository
+	jwt          *jwtpkg.Manager
+	email        email.EmailService
+	log          *zap.Logger
 }
 
-func NewPatientService(repo PatientRepository, authRepo auth.AuthRepository, jwt *jwtpkg.Manager, email email.EmailService, log *zap.Logger) PatientService {
-	return &patientService{repo: repo, authRepo: authRepo, jwt: jwt, email: email, log: log}
+func NewPatientService(repo PatientRepository, authRepo auth.AuthRepository, staffRepo staff.StaffRepository, facilityRepo facility.FacilityRepository, jwt *jwtpkg.Manager, email email.EmailService, log *zap.Logger) PatientService {
+	return &patientService{repo: repo, authRepo: authRepo, staffRepo: staffRepo, facilityRepo: facilityRepo, jwt: jwt, email: email, log: log}
 }
 
 func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatientRequest) (*auth.LoginResponse, error) {
@@ -342,6 +346,32 @@ func (s *patientService) SetupHealthProfile(ctx context.Context, patientID strin
 			MeasuredAt:         time.Now(),
 		}
 		_ = s.repo.CreateMeasurement(ctx, measurement)
+	}
+
+	return s.GetPatient(ctx, patient.ID)
+}
+
+func (s *patientService) SetupSociodemographic(ctx context.Context, patientID string, req SetupSociodemographicRequest) (*PatientDetailResponse, error) {
+	patient, err := s.repo.FindByID(ctx, patientID)
+	if err != nil {
+		return nil, err
+	}
+
+	city := strings.TrimSpace(req.City)
+	if city == "" {
+		city = "Banda Aceh"
+	}
+	patient.City = city
+
+	patient.District = strings.TrimSpace(req.District)
+	patient.HealthFacility = strings.TrimSpace(req.HealthFacility)
+	patient.Address = req.Address
+	patient.LivingArrangement = req.LivingArrangement
+	patient.EducationLevel = req.EducationLevel
+	patient.DiabetesDuration = req.DiabetesDuration
+
+	if err := s.repo.Update(ctx, patient); err != nil {
+		return nil, err
 	}
 
 	return s.GetPatient(ctx, patient.ID)
@@ -838,8 +868,63 @@ func (s *patientService) DeletePatient(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *patientService) GetStats(ctx context.Context, staffID string) (*PatientStats, error) {
-	return s.repo.GetStats(ctx, staffID)
+func (s *patientService) GetStats(ctx context.Context, facilityName string) (*PatientStats, error) {
+	return s.repo.GetStats(ctx, facilityName)
+}
+
+// resolveFacilityName maps a staff account to its assigned Puskesmas name.
+func (s *patientService) resolveFacilityName(ctx context.Context, staffID string) (string, error) {
+	if staffID == "" {
+		return "", errs.NewUnauthorized("staff not identified")
+	}
+	sa, err := s.staffRepo.FindByID(ctx, staffID)
+	if err != nil {
+		return "", err
+	}
+	if sa.HealthFacilityID == nil || *sa.HealthFacilityID == "" {
+		return "", errs.NewForbidden("staff belum memiliki puskesmas")
+	}
+	f, err := s.facilityRepo.FindByID(ctx, *sa.HealthFacilityID)
+	if err != nil {
+		return "", err
+	}
+	return f.Name, nil
+}
+
+// ListPatientsForStaff scopes the patient list to the staff's assigned facility.
+func (s *patientService) ListPatientsForStaff(ctx context.Context, staffID string, filter PatientFilterQuery) ([]PatientResponse, int64, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, 0, err
+	}
+	filter.HealthFacility = name
+	filter.StaffID = ""
+	return s.ListPatients(ctx, filter)
+}
+
+// GetStatsForStaff scopes patient stats to the staff's assigned facility.
+func (s *patientService) GetStatsForStaff(ctx context.Context, staffID string) (*PatientStats, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.GetStats(ctx, name)
+}
+
+// GetPatientForStaff returns a patient only when it belongs to the staff's facility.
+func (s *patientService) GetPatientForStaff(ctx context.Context, staffID, id string) (*PatientDetailResponse, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, err
+	}
+	patient, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if patient.HealthFacility != name {
+		return nil, errs.NewForbidden("pasien berada di luar wilayah puskesmas Anda")
+	}
+	return s.GetPatient(ctx, id)
 }
 
 func ToPatientMeasurementResponse(m *domain.PatientMeasurement) PatientMeasurementResponse {
@@ -1124,6 +1209,12 @@ func (s *patientService) UpdatePatientByAdmin(ctx context.Context, patientID str
 	}
 	if req.Address != "" {
 		patient.Address = req.Address
+	}
+	if req.HealthFacility != "" {
+		patient.HealthFacility = strings.TrimSpace(req.HealthFacility)
+	}
+	if req.TreatmentFacility != "" {
+		patient.TreatmentFacility = strings.TrimSpace(req.TreatmentFacility)
 	}
 	if req.DiabetesType != "" {
 		patient.DiabetesType = req.DiabetesType

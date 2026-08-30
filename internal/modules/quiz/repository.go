@@ -227,7 +227,7 @@ func (r *quizRepository) Delete(ctx context.Context, id string) error {
 	})
 }
 
-func (r *quizRepository) GetStats(ctx context.Context) (*QuizStats, error) {
+func (r *quizRepository) GetStats(ctx context.Context, facilityName string) (*QuizStats, error) {
 	var total, published, draft, attempts int64
 	var avgScore int
 
@@ -243,17 +243,25 @@ func (r *quizRepository) GetStats(ctx context.Context) (*QuizStats, error) {
 		return nil, errs.NewInternal("failed to count draft questionnaires", err)
 	}
 
-	if err := r.db.WithContext(ctx).Table("quiz_attempts").
+	qAttempts := r.db.WithContext(ctx).Table("quiz_attempts").
 		Joins("JOIN questionnaires ON questionnaires.id = quiz_attempts.quiz_id AND questionnaires.deleted_at IS NULL").
-		Where("quiz_attempts.deleted_at IS NULL").
-		Count(&attempts).Error; err != nil {
+		Joins("JOIN patients p ON p.id = quiz_attempts.patient_id").
+		Where("quiz_attempts.deleted_at IS NULL")
+	if facilityName != "" {
+		qAttempts = qAttempts.Where("p.health_facility = ?", facilityName)
+	}
+	if err := qAttempts.Count(&attempts).Error; err != nil {
 		return nil, errs.NewInternal("failed to count quiz attempts", err)
 	}
 
-	err := r.db.WithContext(ctx).Table("quiz_attempts").
+	qAvg := r.db.WithContext(ctx).Table("quiz_attempts").
 		Joins("JOIN questionnaires ON questionnaires.id = quiz_attempts.quiz_id AND questionnaires.deleted_at IS NULL").
-		Where("quiz_attempts.deleted_at IS NULL").
-		Select("COALESCE(ROUND(AVG(quiz_attempts.score)), 0)").
+		Joins("JOIN patients p ON p.id = quiz_attempts.patient_id").
+		Where("quiz_attempts.deleted_at IS NULL")
+	if facilityName != "" {
+		qAvg = qAvg.Where("p.health_facility = ?", facilityName)
+	}
+	err := qAvg.Select("COALESCE(ROUND(AVG(quiz_attempts.score)), 0)").
 		Scan(&avgScore).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, errs.NewInternal("failed to fetch average score", err)
@@ -275,12 +283,16 @@ func (r *quizRepository) SaveAttempt(ctx context.Context, attempt *domain.QuizAt
 	return nil
 }
 
-func (r *quizRepository) FindAttemptsByQuestionnaireID(ctx context.Context, questionnaireID string) ([]domain.QuizAttempt, error) {
+func (r *quizRepository) FindAttemptsByQuestionnaireID(ctx context.Context, questionnaireID string, facilityName string) ([]domain.QuizAttempt, error) {
 	var attempts []domain.QuizAttempt
-	err := r.db.WithContext(ctx).
+	q := r.db.WithContext(ctx).
 		Preload("Patient").
-		Where("quiz_id = ? AND deleted_at IS NULL", questionnaireID).
-		Order("completed_at DESC").
+		Joins("JOIN patients p ON p.id = quiz_attempts.patient_id AND p.deleted_at IS NULL").
+		Where("quiz_attempts.quiz_id = ? AND quiz_attempts.deleted_at IS NULL", questionnaireID)
+	if facilityName != "" {
+		q = q.Where("p.health_facility = ?", facilityName)
+	}
+	err := q.Order("quiz_attempts.completed_at DESC").
 		Limit(500). // server-side cap to bound unbounded admin queries
 		Find(&attempts).Error
 	if err != nil {
@@ -289,13 +301,17 @@ func (r *quizRepository) FindAttemptsByQuestionnaireID(ctx context.Context, ques
 	return attempts, nil
 }
 
-func (r *quizRepository) FindAttemptByID(ctx context.Context, questionnaireID string, participantID string) (*domain.QuizAttempt, error) {
+func (r *quizRepository) FindAttemptByID(ctx context.Context, questionnaireID string, participantID string, facilityName string) (*domain.QuizAttempt, error) {
 	var attempt domain.QuizAttempt
-	err := r.db.WithContext(ctx).
+	q := r.db.WithContext(ctx).
 		Preload("Patient").
 		Preload("Answers.Question.Options").
-		Where("quiz_id = ? AND patient_id = ? AND deleted_at IS NULL", questionnaireID, participantID).
-		Order("completed_at DESC").
+		Joins("JOIN patients p ON p.id = quiz_attempts.patient_id AND p.deleted_at IS NULL").
+		Where("quiz_attempts.quiz_id = ? AND quiz_attempts.patient_id = ? AND quiz_attempts.deleted_at IS NULL", questionnaireID, participantID)
+	if facilityName != "" {
+		q = q.Where("p.health_facility = ?", facilityName)
+	}
+	err := q.Order("quiz_attempts.completed_at DESC").
 		First(&attempt).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -405,22 +421,30 @@ func (r *quizRepository) FindActiveForPatient(ctx context.Context, qType string,
 	return items, total, nil
 }
 
-func (r *quizRepository) CountAttempts(ctx context.Context, questionnaireID string) (int, error) {
+func (r *quizRepository) CountAttempts(ctx context.Context, questionnaireID string, facilityName string) (int, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
-		Where("quiz_id = ? AND deleted_at IS NULL", questionnaireID).
-		Count(&count).Error
+	q := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
+		Joins("JOIN patients p ON p.id = quiz_attempts.patient_id AND p.deleted_at IS NULL").
+		Where("quiz_attempts.quiz_id = ? AND quiz_attempts.deleted_at IS NULL", questionnaireID)
+	if facilityName != "" {
+		q = q.Where("p.health_facility = ?", facilityName)
+	}
+	err := q.Count(&count).Error
 	if err != nil {
 		return 0, errs.NewInternal("failed to count attempts for questionnaire", err)
 	}
 	return int(count), nil
 }
 
-func (r *quizRepository) GetAverageScore(ctx context.Context, questionnaireID string) (*int, error) {
+func (r *quizRepository) GetAverageScore(ctx context.Context, questionnaireID string, facilityName string) (*int, error) {
 	var avg int
-	err := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
-		Where("quiz_id = ? AND deleted_at IS NULL", questionnaireID).
-		Select("COALESCE(ROUND(AVG(score)), 0)").
+	q := r.db.WithContext(ctx).Model(&domain.QuizAttempt{}).
+		Joins("JOIN patients p ON p.id = quiz_attempts.patient_id AND p.deleted_at IS NULL").
+		Where("quiz_attempts.quiz_id = ? AND quiz_attempts.deleted_at IS NULL", questionnaireID)
+	if facilityName != "" {
+		q = q.Where("p.health_facility = ?", facilityName)
+	}
+	err := q.Select("COALESCE(ROUND(AVG(quiz_attempts.score)), 0)").
 		Scan(&avg).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, errs.NewInternal("failed to get average score for questionnaire", err)
@@ -441,6 +465,23 @@ func (r *quizRepository) FindMyAttempt(ctx context.Context, patientID, questionn
 			return nil, errs.NewNotFound("no attempt found for this questionnaire")
 		}
 		return nil, errs.NewInternal("failed to fetch patient attempt", err)
+	}
+	return &attempt, nil
+}
+
+func (r *quizRepository) FindMyAttemptByID(ctx context.Context, patientID, questionnaireID, attemptID string) (*domain.QuizAttempt, error) {
+	var attempt domain.QuizAttempt
+	err := r.db.WithContext(ctx).
+		Preload("Questionnaire").
+		Preload("Questionnaire.Education").
+		Preload("Answers.Question.Options").
+		Where("id = ? AND quiz_id = ? AND patient_id = ? AND deleted_at IS NULL", attemptID, questionnaireID, patientID).
+		First(&attempt).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("attempt not found")
+		}
+		return nil, errs.NewInternal("failed to fetch attempt", err)
 	}
 	return &attempt, nil
 }

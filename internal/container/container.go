@@ -122,6 +122,7 @@ func Build() (*Container, error) {
 		&domain.PatientMeasurement{},
 		&domain.FoodMaster{},
 		&domain.MealLog{},
+		&domain.HealthFacility{},
 	); err != nil {
 		logger.Warn("container: failed to auto-migrate models", zap.Error(err))
 	}
