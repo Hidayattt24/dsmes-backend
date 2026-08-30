@@ -82,10 +82,10 @@ jobs:
       - name: Verify production image tag
         if: github.event_name != 'pull_request'
         env:
-          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dsmes-backend
           IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
           EXPECTED_TAG: ${{ github.sha }}
         run: |
+          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY,,}"
           printf '%s\n' "$IMAGE_TAGS"
           printf '%s\n' "$IMAGE_TAGS" | grep -Fx "$IMAGE_NAME:$EXPECTED_TAG"
 
