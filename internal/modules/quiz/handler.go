@@ -41,7 +41,15 @@ func (h *QuizHandler) List(c fiber.Ctx) error {
 	sortBy := c.Query("sort_by")
 	sortOrder := c.Query("sort_order")
 
-	items, total, err := h.svc.ListQuestionnaires(c.Context(), search, qType, status, sortBy, sortOrder, page, limit)
+	claims := middleware.ClaimsFromContext(c)
+	var items []QuestionnaireResponse
+	var total int64
+	var err error
+	if claims != nil && claims.Role == "staff" {
+		items, total, err = h.svc.ListQuestionnairesForStaff(c.Context(), claims.UserID, search, qType, status, sortBy, sortOrder, page, limit)
+	} else {
+		items, total, err = h.svc.ListQuestionnaires(c.Context(), search, qType, status, sortBy, sortOrder, page, limit)
+	}
 	if err != nil {
 		return err
 	}
@@ -66,9 +74,14 @@ func (h *QuizHandler) GetByID(c fiber.Ctx) error {
 	}
 
 	claims := middleware.ClaimsFromContext(c)
-	isAdminOrStaff := claims != nil && (claims.Role == "admin" || claims.Role == "staff")
-
-	item, err := h.svc.GetQuestionnaire(c.Context(), id, isAdminOrStaff)
+	var item *QuestionnaireDetailResponse
+	var err error
+	if claims != nil && claims.Role == "staff" {
+		item, err = h.svc.GetQuestionnaireForStaff(c.Context(), claims.UserID, id)
+	} else {
+		isAdminOrStaff := claims != nil && (claims.Role == "admin" || claims.Role == "staff")
+		item, err = h.svc.GetQuestionnaire(c.Context(), id, isAdminOrStaff)
+	}
 	if err != nil {
 		return err
 	}
@@ -166,7 +179,14 @@ func (h *QuizHandler) Delete(c fiber.Ctx) error {
 }
 
 func (h *QuizHandler) GetStats(c fiber.Ctx) error {
-	stats, err := h.svc.GetStats(c.Context())
+	claims := middleware.ClaimsFromContext(c)
+	var stats *QuizStats
+	var err error
+	if claims != nil && claims.Role == "staff" {
+		stats, err = h.svc.GetStatsForStaff(c.Context(), claims.UserID)
+	} else {
+		stats, err = h.svc.GetStats(c.Context())
+	}
 	if err != nil {
 		return err
 	}
@@ -207,7 +227,14 @@ func (h *QuizHandler) ListParticipants(c fiber.Ctx) error {
 		return errs.NewBadRequest("questionnaire ID is required")
 	}
 
-	participants, err := h.svc.ListParticipants(c.Context(), id)
+	claims := middleware.ClaimsFromContext(c)
+	var participants []ParticipantResponse
+	var err error
+	if claims != nil && claims.Role == "staff" {
+		participants, err = h.svc.ListParticipantsForStaff(c.Context(), claims.UserID, id)
+	} else {
+		participants, err = h.svc.ListParticipants(c.Context(), id)
+	}
 	if err != nil {
 		return err
 	}
@@ -222,7 +249,14 @@ func (h *QuizHandler) GetParticipantDetail(c fiber.Ctx) error {
 		return errs.NewBadRequest("questionnaire ID and participant ID are required")
 	}
 
-	detail, err := h.svc.GetParticipantDetail(c.Context(), id, participantID)
+	claims := middleware.ClaimsFromContext(c)
+	var detail *ParticipantDetailResponse
+	var err error
+	if claims != nil && claims.Role == "staff" {
+		detail, err = h.svc.GetParticipantDetailForStaff(c.Context(), claims.UserID, id, participantID)
+	} else {
+		detail, err = h.svc.GetParticipantDetail(c.Context(), id, participantID)
+	}
 	if err != nil {
 		return err
 	}
@@ -293,6 +327,23 @@ func (h *QuizHandler) GetMyAttemptDetail(c fiber.Ctx) error {
 		return err
 	}
 
+	return response.Success(c, "my attempt detail retrieved", res)
+}
+
+func (h *QuizHandler) GetMyAttemptDetailByID(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil || claims.UserID == "" {
+		return errs.NewUnauthorized("unauthorized")
+	}
+	questionnaireID := c.Params("id")
+	attemptID := c.Params("attempt_id")
+	if questionnaireID == "" || attemptID == "" {
+		return errs.NewBadRequest("questionnaire ID and attempt ID are required")
+	}
+	res, err := h.svc.GetMyAttemptDetailByID(c.Context(), claims.UserID, questionnaireID, attemptID)
+	if err != nil {
+		return err
+	}
 	return response.Success(c, "my attempt detail retrieved", res)
 }
 

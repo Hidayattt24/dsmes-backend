@@ -107,7 +107,15 @@ func (h *SurveyHandler) List(c fiber.Ctx) error {
 		}
 	}
 
-	items, total, err := h.svc.ListSurveys(c.Context(), surveyType, status, page, limit)
+	claims := middleware.ClaimsFromContext(c)
+	var items []SurveyListItemResponse
+	var total int64
+	var err error
+	if claims != nil && claims.Role == "staff" {
+		items, total, err = h.svc.ListSurveysForStaff(c.Context(), claims.UserID, surveyType, status, page, limit)
+	} else {
+		items, total, err = h.svc.ListSurveys(c.Context(), surveyType, status, page, limit)
+	}
 	if err != nil {
 		return err
 	}
@@ -224,7 +232,15 @@ func (h *SurveyHandler) GetResponses(c fiber.Ctx) error {
 		}
 	}
 
-	items, total, err := h.svc.GetSurveyResponses(c.Context(), id, page, limit)
+	claims := middleware.ClaimsFromContext(c)
+	var items []SurveyResponseItemResponse
+	var total int64
+	var err error
+	if claims != nil && claims.Role == "staff" {
+		items, total, err = h.svc.GetSurveyResponsesForStaff(c.Context(), claims.UserID, id, page, limit)
+	} else {
+		items, total, err = h.svc.GetSurveyResponses(c.Context(), id, page, limit)
+	}
 	if err != nil {
 		return err
 	}
@@ -248,7 +264,14 @@ func (h *SurveyHandler) GetAnalytics(c fiber.Ctx) error {
 		return errs.NewBadRequest("survey ID is required")
 	}
 
-	res, err := h.svc.GetSurveyAnalytics(c.Context(), id)
+	claims := middleware.ClaimsFromContext(c)
+	var res *SurveyAnalyticsResponse
+	var err error
+	if claims != nil && claims.Role == "staff" {
+		res, err = h.svc.GetSurveyAnalyticsForStaff(c.Context(), claims.UserID, id)
+	} else {
+		res, err = h.svc.GetSurveyAnalytics(c.Context(), id)
+	}
 	if err != nil {
 		return err
 	}
@@ -261,7 +284,15 @@ func (h *SurveyHandler) ExportCSV(c fiber.Ctx) error {
 		return errs.NewBadRequest("survey ID is required")
 	}
 
-	data, filename, err := h.svc.ExportResponsesCSV(c.Context(), id)
+	claims := middleware.ClaimsFromContext(c)
+	var data []byte
+	var filename string
+	var err error
+	if claims != nil && claims.Role == "staff" {
+		data, filename, err = h.svc.ExportResponsesCSVForStaff(c.Context(), claims.UserID, id)
+	} else {
+		data, filename, err = h.svc.ExportResponsesCSV(c.Context(), id)
+	}
 	if err != nil {
 		return err
 	}

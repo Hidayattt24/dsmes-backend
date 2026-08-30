@@ -65,7 +65,7 @@ func (r *surveyRepository) GetByID(ctx context.Context, id string) (*domain.Surv
 	return &s, nil
 }
 
-func (r *surveyRepository) List(ctx context.Context, surveyType string, status string, page int, limit int) ([]domain.Survey, int64, error) {
+func (r *surveyRepository) List(ctx context.Context, surveyType string, status string, page int, limit int, facilityName string) ([]domain.Survey, int64, error) {
 	var items []domain.Survey
 	var total int64
 
@@ -84,7 +84,14 @@ func (r *surveyRepository) List(ctx context.Context, surveyType string, status s
 
 	offset := (page - 1) * limit
 	err := q.Preload("Questions", "deleted_at IS NULL").
-		Preload("Responses", "deleted_at IS NULL").
+		Preload("Responses", func(db *gorm.DB) *gorm.DB {
+			qq := db.Where("deleted_at IS NULL")
+			if facilityName != "" {
+				qq = qq.Joins("JOIN patients p ON p.id = survey_responses.patient_id AND p.deleted_at IS NULL").
+					Where("p.health_facility = ?", facilityName)
+			}
+			return qq
+		}).
 		Order("created_at DESC").
 		Offset(offset).
 		Limit(limit).
@@ -211,12 +218,16 @@ func (r *surveyRepository) GetResponseBySurveyAndPatient(ctx context.Context, su
 	return &resp, nil
 }
 
-func (r *surveyRepository) ListResponses(ctx context.Context, surveyID string, page int, limit int) ([]domain.SurveyResponse, int64, error) {
+func (r *surveyRepository) ListResponses(ctx context.Context, surveyID string, page int, limit int, facilityName string) ([]domain.SurveyResponse, int64, error) {
 	var items []domain.SurveyResponse
 	var total int64
 
 	q := r.db.WithContext(ctx).Model(&domain.SurveyResponse{}).
-		Where("survey_id = ? AND deleted_at IS NULL", surveyID)
+		Joins("JOIN patients p ON p.id = survey_responses.patient_id AND p.deleted_at IS NULL").
+		Where("survey_responses.survey_id = ? AND survey_responses.deleted_at IS NULL", surveyID)
+	if facilityName != "" {
+		q = q.Where("p.health_facility = ?", facilityName)
+	}
 
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, errs.NewInternal("failed to count responses", err)
@@ -225,7 +236,7 @@ func (r *surveyRepository) ListResponses(ctx context.Context, surveyID string, p
 	offset := (page - 1) * limit
 	err := q.Preload("Patient").
 		Preload("Answers.Question").
-		Order("completed_at DESC").
+		Order("survey_responses.completed_at DESC").
 		Offset(offset).
 		Limit(limit).
 		Find(&items).Error
@@ -236,13 +247,17 @@ func (r *surveyRepository) ListResponses(ctx context.Context, surveyID string, p
 	return items, total, nil
 }
 
-func (r *surveyRepository) GetAllResponsesForExport(ctx context.Context, surveyID string) ([]domain.SurveyResponse, error) {
+func (r *surveyRepository) GetAllResponsesForExport(ctx context.Context, surveyID string, facilityName string) ([]domain.SurveyResponse, error) {
 	var items []domain.SurveyResponse
-	err := r.db.WithContext(ctx).
+	q := r.db.WithContext(ctx).
 		Preload("Patient").
 		Preload("Answers.Question").
-		Where("survey_id = ? AND deleted_at IS NULL", surveyID).
-		Order("completed_at ASC").
+		Joins("JOIN patients p ON p.id = survey_responses.patient_id AND p.deleted_at IS NULL").
+		Where("survey_responses.survey_id = ? AND survey_responses.deleted_at IS NULL", surveyID)
+	if facilityName != "" {
+		q = q.Where("p.health_facility = ?", facilityName)
+	}
+	err := q.Order("survey_responses.completed_at ASC").
 		Limit(10000). // server-side cap to bound large exports
 		Find(&items).Error
 
@@ -252,17 +267,21 @@ func (r *surveyRepository) GetAllResponsesForExport(ctx context.Context, surveyI
 	return items, nil
 }
 
-func (r *surveyRepository) GetAnalytics(ctx context.Context, surveyID string) (*SurveyAnalyticsResponse, error) {
+func (r *surveyRepository) GetAnalytics(ctx context.Context, surveyID string, facilityName string) (*SurveyAnalyticsResponse, error) {
 	survey, err := r.GetByID(ctx, surveyID)
 	if err != nil {
 		return nil, err
 	}
 
 	var responses []domain.SurveyResponse
-	if err := r.db.WithContext(ctx).
+	q := r.db.WithContext(ctx).
 		Preload("Answers").
-		Where("survey_id = ? AND deleted_at IS NULL", surveyID).
-		Find(&responses).Error; err != nil {
+		Joins("JOIN patients p ON p.id = survey_responses.patient_id AND p.deleted_at IS NULL").
+		Where("survey_responses.survey_id = ? AND survey_responses.deleted_at IS NULL", surveyID)
+	if facilityName != "" {
+		q = q.Where("p.health_facility = ?", facilityName)
+	}
+	if err := q.Find(&responses).Error; err != nil {
 		return nil, errs.NewInternal("failed to fetch survey responses", err)
 	}
 

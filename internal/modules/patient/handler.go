@@ -78,6 +78,37 @@ func (h *PatientHandler) SetupHealthProfile(c fiber.Ctx) error {
 	return response.Success(c, "health profile set up successfully", res)
 }
 
+// SetupSociodemographic handles POST /api/v1/patient/profile/sociodemographic
+// @Summary      Setup patient sociodemographic data
+// @Tags         patient
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  SetupSociodemographicRequest  true  "Sociodemographic payload"
+// @Success      200  {object}  map[string]any
+// @Router       /patient/profile/sociodemographic [post]
+func (h *PatientHandler) SetupSociodemographic(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req SetupSociodemographicRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.SetupSociodemographic(c.Context(), claims.UserID, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "sociodemographic profile set up successfully", res)
+}
+
 // List handles GET /api/v1/admin/patients
 // @Summary      List all patients (Admin)
 // @Tags         patient
@@ -203,8 +234,7 @@ func (h *PatientHandler) ListStaff(c fiber.Ctx) error {
 		}
 	}
 
-	items, total, err := h.svc.ListPatients(c.Context(), PatientFilterQuery{
-		StaffID:          c.Query("staff_id"),
+	items, total, err := h.svc.ListPatientsForStaff(c.Context(), claims.UserID, PatientFilterQuery{
 		Search:           c.Query("search"),
 		Gender:           c.Query("gender"),
 		Status:           c.Query("status"),
@@ -247,6 +277,20 @@ func (h *PatientHandler) ListStaff(c fiber.Ctx) error {
 func (h *PatientHandler) GetByID(c fiber.Ctx) error {
 	id := c.Params("id")
 	res, err := h.svc.GetPatient(c.Context(), id)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "patient details retrieved", res)
+}
+
+// GetByIDStaff handles GET /api/v1/staff/patients/:id — scoped to the staff's facility.
+func (h *PatientHandler) GetByIDStaff(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+	id := c.Params("id")
+	res, err := h.svc.GetPatientForStaff(c.Context(), claims.UserID, id)
 	if err != nil {
 		return err
 	}
@@ -514,7 +558,12 @@ func (h *PatientHandler) GetStats(c fiber.Ctx) error {
 
 // GetStatsStaff handles GET /api/v1/staff/patients/stats
 func (h *PatientHandler) GetStatsStaff(c fiber.Ctx) error {
-	res, err := h.svc.GetStats(c.Context(), "")
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	res, err := h.svc.GetStatsForStaff(c.Context(), claims.UserID)
 	if err != nil {
 		return err
 	}

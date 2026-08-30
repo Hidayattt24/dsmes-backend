@@ -33,6 +33,10 @@ func (r *patientRepository) FindAll(ctx context.Context, filter PatientFilterQue
 		q = q.Where("patients.assigned_staff_id = ?", filter.StaffID)
 	}
 
+	if filter.HealthFacility != "" {
+		q = q.Where("patients.health_facility = ?", filter.HealthFacility)
+	}
+
 	if filter.Search != "" {
 		searchPattern := "%" + filter.Search + "%"
 		q = q.Where("patients.full_name ILIKE ? OR patients.email ILIKE ?", searchPattern, searchPattern)
@@ -251,13 +255,13 @@ func (r *patientRepository) CreateWithOnboarding(ctx context.Context, p *domain.
 	})
 }
 
-func (r *patientRepository) GetStats(ctx context.Context, staffID string) (*PatientStats, error) {
+func (r *patientRepository) GetStats(ctx context.Context, facilityName string) (*PatientStats, error) {
 	var total int64
 	var active int64
 
 	q := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("deleted_at IS NULL")
-	if staffID != "" {
-		q = q.Where("assigned_staff_id = ?", staffID)
+	if facilityName != "" {
+		q = q.Where("health_facility = ?", facilityName)
 	}
 
 	if err := q.Count(&total).Error; err != nil {
@@ -265,8 +269,8 @@ func (r *patientRepository) GetStats(ctx context.Context, staffID string) (*Pati
 	}
 
 	qActive := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("deleted_at IS NULL AND status = ?", domain.StatusAktif)
-	if staffID != "" {
-		qActive = qActive.Where("assigned_staff_id = ?", staffID)
+	if facilityName != "" {
+		qActive = qActive.Where("health_facility = ?", facilityName)
 	}
 	if err := qActive.Count(&active).Error; err != nil {
 		return nil, errs.NewInternal("failed to count active patients for stats", err)
@@ -277,8 +281,8 @@ func (r *patientRepository) GetStats(ctx context.Context, staffID string) (*Pati
 		Oldest   float64
 	}
 	qAge := r.db.WithContext(ctx).Table("patients").Where("deleted_at IS NULL AND date_of_birth IS NOT NULL")
-	if staffID != "" {
-		qAge = qAge.Where("assigned_staff_id = ?", staffID)
+	if facilityName != "" {
+		qAge = qAge.Where("health_facility = ?", facilityName)
 	}
 	err := qAge.Select("COALESCE(MIN(EXTRACT(YEAR FROM AGE(NOW(), date_of_birth))), 0) as youngest, COALESCE(MAX(EXTRACT(YEAR FROM AGE(NOW(), date_of_birth))), 0) as oldest").Scan(&agesResult).Error
 	if err != nil {

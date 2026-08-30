@@ -9,19 +9,54 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
+	"github.com/dsmes/dsmes-backend/internal/modules/facility"
+	"github.com/dsmes/dsmes-backend/internal/modules/staff"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 )
 
 type quizService struct {
-	repo QuizRepository
-	log  *zap.Logger
+	repo         QuizRepository
+	staffRepo    staff.StaffRepository
+	facilityRepo facility.FacilityRepository
+	log          *zap.Logger
 }
 
-func NewQuizService(repo QuizRepository, log *zap.Logger) QuizService {
-	return &quizService{repo: repo, log: log}
+func NewQuizService(repo QuizRepository, staffRepo staff.StaffRepository, facilityRepo facility.FacilityRepository, log *zap.Logger) QuizService {
+	return &quizService{repo: repo, staffRepo: staffRepo, facilityRepo: facilityRepo, log: log}
+}
+
+// resolveFacilityName maps a staff account to its assigned Puskesmas name.
+func (s *quizService) resolveFacilityName(ctx context.Context, staffID string) (string, error) {
+	if staffID == "" {
+		return "", errs.NewUnauthorized("staff not identified")
+	}
+	sa, err := s.staffRepo.FindByID(ctx, staffID)
+	if err != nil {
+		return "", err
+	}
+	if sa.HealthFacilityID == nil || *sa.HealthFacilityID == "" {
+		return "", errs.NewForbidden("staff belum memiliki puskesmas")
+	}
+	f, err := s.facilityRepo.FindByID(ctx, *sa.HealthFacilityID)
+	if err != nil {
+		return "", err
+	}
+	return f.Name, nil
 }
 
 func (s *quizService) ListQuestionnaires(ctx context.Context, search, qType, status, sortBy, sortOrder string, page, limit int) ([]QuestionnaireResponse, int64, error) {
+	return s.listQuestionnaires(ctx, search, qType, status, sortBy, sortOrder, page, limit, "")
+}
+
+func (s *quizService) ListQuestionnairesForStaff(ctx context.Context, staffID string, search, qType, status, sortBy, sortOrder string, page, limit int) ([]QuestionnaireResponse, int64, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return s.listQuestionnaires(ctx, search, qType, status, sortBy, sortOrder, page, limit, name)
+}
+
+func (s *quizService) listQuestionnaires(ctx context.Context, search, qType, status, sortBy, sortOrder string, page, limit int, facilityName string) ([]QuestionnaireResponse, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -41,8 +76,8 @@ func (s *quizService) ListQuestionnaires(ctx context.Context, search, qType, sta
 		for _, cat := range q.Categories {
 			questCount += len(cat.Questions)
 		}
-		pCount, _ := s.repo.CountAttempts(ctx, q.ID)
-		avgScore, _ := s.repo.GetAverageScore(ctx, q.ID)
+		pCount, _ := s.repo.CountAttempts(ctx, q.ID, facilityName)
+		avgScore, _ := s.repo.GetAverageScore(ctx, q.ID, facilityName)
 
 		resp[i] = ToQuestionnaireResponse(&q, catCount, questCount, pCount, avgScore)
 	}
@@ -51,13 +86,25 @@ func (s *quizService) ListQuestionnaires(ctx context.Context, search, qType, sta
 }
 
 func (s *quizService) GetQuestionnaire(ctx context.Context, id string, isAdminOrStaff bool) (*QuestionnaireDetailResponse, error) {
+	return s.getQuestionnaire(ctx, id, isAdminOrStaff, "")
+}
+
+func (s *quizService) GetQuestionnaireForStaff(ctx context.Context, staffID string, id string) (*QuestionnaireDetailResponse, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, err
+	}
+	return s.getQuestionnaire(ctx, id, true, name)
+}
+
+func (s *quizService) getQuestionnaire(ctx context.Context, id string, isAdminOrStaff bool, facilityName string) (*QuestionnaireDetailResponse, error) {
 	q, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	pCount, _ := s.repo.CountAttempts(ctx, q.ID)
-	avgScore, _ := s.repo.GetAverageScore(ctx, q.ID)
+	pCount, _ := s.repo.CountAttempts(ctx, q.ID, facilityName)
+	avgScore, _ := s.repo.GetAverageScore(ctx, q.ID, facilityName)
 	resp := ToQuestionnaireDetailResponse(q, pCount, avgScore, isAdminOrStaff)
 	return &resp, nil
 }
@@ -67,8 +114,8 @@ func (s *quizService) GetActivePreTest(ctx context.Context, isAdminOrStaff bool)
 	if err != nil {
 		return nil, err
 	}
-	pCount, _ := s.repo.CountAttempts(ctx, q.ID)
-	avgScore, _ := s.repo.GetAverageScore(ctx, q.ID)
+	pCount, _ := s.repo.CountAttempts(ctx, q.ID, "")
+	avgScore, _ := s.repo.GetAverageScore(ctx, q.ID, "")
 	resp := ToQuestionnaireDetailResponse(q, pCount, avgScore, isAdminOrStaff)
 	return &resp, nil
 }
@@ -81,8 +128,8 @@ func (s *quizService) GetPostTestByEducation(ctx context.Context, educationID st
 	if err != nil {
 		return nil, err
 	}
-	pCount, _ := s.repo.CountAttempts(ctx, q.ID)
-	avgScore, _ := s.repo.GetAverageScore(ctx, q.ID)
+	pCount, _ := s.repo.CountAttempts(ctx, q.ID, "")
+	avgScore, _ := s.repo.GetAverageScore(ctx, q.ID, "")
 	resp := ToQuestionnaireDetailResponse(q, pCount, avgScore, isAdminOrStaff)
 	return &resp, nil
 }
@@ -293,7 +340,15 @@ func (s *quizService) DeleteQuestionnaire(ctx context.Context, id string) error 
 }
 
 func (s *quizService) GetStats(ctx context.Context) (*QuizStats, error) {
-	return s.repo.GetStats(ctx)
+	return s.repo.GetStats(ctx, "")
+}
+
+func (s *quizService) GetStatsForStaff(ctx context.Context, staffID string) (*QuizStats, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.GetStats(ctx, name)
 }
 
 func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string, questionnaireID string, req SubmitQuestionnaireRequest) (*SubmitResultResponse, error) {
@@ -301,14 +356,48 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 	if err != nil {
 		return nil, err
 	}
+	if status := strings.ToLower(strings.TrimSpace(q.Status)); status != "aktif" && status != "terbit" {
+		return nil, errs.NewBadRequest("Kuisioner belum aktif")
+	}
 
 	totalQuestions := 0
+	questionIDs := make(map[string]domain.Question)
+	optionIDs := make(map[string]map[string]bool)
 	for _, cat := range q.Categories {
-		totalQuestions += len(cat.Questions)
+		for _, question := range cat.Questions {
+			totalQuestions++
+			questionIDs[question.ID] = question
+			optionIDs[question.ID] = make(map[string]bool)
+			for _, option := range question.Options {
+				optionIDs[question.ID][option.ID] = true
+			}
+		}
 	}
 
 	if totalQuestions == 0 {
 		return nil, errs.NewBadRequest("Kuisioner tidak memiliki pertanyaan")
+	}
+	if len(req.Answers) != totalQuestions {
+		return nil, errs.NewBadRequest("Semua pertanyaan wajib dijawab")
+	}
+	seen := make(map[string]bool, len(req.Answers))
+	for _, answer := range req.Answers {
+		if _, exists := questionIDs[answer.QuestionID]; !exists {
+			return nil, errs.NewBadRequest("Jawaban mengandung pertanyaan yang tidak valid")
+		}
+		if seen[answer.QuestionID] {
+			return nil, errs.NewBadRequest("Jawaban pertanyaan tidak boleh duplikat")
+		}
+		seen[answer.QuestionID] = true
+		if q.Type == domain.TypePreTest {
+			if answer.SelectedValue == nil || *answer.SelectedValue < 1 || *answer.SelectedValue > 5 {
+				return nil, errs.NewBadRequest("Nilai Pre-Test harus berada di antara 1 dan 5")
+			}
+		} else {
+			if answer.OptionID == nil || !optionIDs[answer.QuestionID][*answer.OptionID] {
+				return nil, errs.NewBadRequest("Pilihan jawaban tidak valid")
+			}
+		}
 	}
 
 	if q.Type == domain.TypePreTest {
@@ -348,13 +437,16 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 			return nil, err
 		}
 
-		// Return PRE_TEST completion response (Score & Passed omitted from user display)
+		// Return PRE_TEST completion response (Score & Self-Efficacy category
+		// included so the mobile result screen can display the full result).
 		return &SubmitResultResponse{
-			AttemptID:       attempt.ID,
-			QuestionnaireID: q.ID,
-			Type:            "PRE_TEST",
-			Message:         "Jawaban Anda telah berhasil disimpan dan akan digunakan untuk membantu memahami tingkat keyakinan Anda dalam mengelola diabetes.",
-			TotalQuestions:  totalQuestions,
+			AttemptID:            attempt.ID,
+			QuestionnaireID:      q.ID,
+			Type:                 "PRE_TEST",
+			Message:              "Jawaban Anda telah berhasil disimpan dan akan digunakan untuk membantu memahami tingkat keyakinan Anda dalam mengelola diabetes.",
+			Score:                &totalDMSESScore,
+			TotalQuestions:       totalQuestions,
+			SelfEfficacyCategory: selfEfficacyCat,
 		}, nil
 	}
 
@@ -427,7 +519,19 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 }
 
 func (s *quizService) ListParticipants(ctx context.Context, questionnaireID string) ([]ParticipantResponse, error) {
-	attempts, err := s.repo.FindAttemptsByQuestionnaireID(ctx, questionnaireID)
+	return s.listParticipants(ctx, questionnaireID, "")
+}
+
+func (s *quizService) ListParticipantsForStaff(ctx context.Context, staffID string, questionnaireID string) ([]ParticipantResponse, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, err
+	}
+	return s.listParticipants(ctx, questionnaireID, name)
+}
+
+func (s *quizService) listParticipants(ctx context.Context, questionnaireID string, facilityName string) ([]ParticipantResponse, error) {
+	attempts, err := s.repo.FindAttemptsByQuestionnaireID(ctx, questionnaireID, facilityName)
 	if err != nil {
 		return nil, err
 	}
@@ -436,9 +540,13 @@ func (s *quizService) ListParticipants(ctx context.Context, questionnaireID stri
 	for i, a := range attempts {
 		name := "-"
 		avatar := ""
+		puskesmas := "DSMES Platform"
 		if a.Patient != nil {
 			name = a.Patient.FullName
 			avatar = a.Patient.ProfilePhotoURL
+			if a.Patient.HealthFacility != "" {
+				puskesmas = a.Patient.HealthFacility
+			}
 		}
 		catStr := ""
 		if a.SelfEfficacyCategory != nil {
@@ -449,7 +557,7 @@ func (s *quizService) ListParticipants(ctx context.Context, questionnaireID stri
 			PatientID:            a.PatientID,
 			PatientName:          name,
 			PatientAvatar:        avatar,
-			Puskesmas:            "DSMES Platform",
+			Puskesmas:            puskesmas,
 			CompletionDate:       a.CompletedAt,
 			Score:                a.Score,
 			Passed:               a.Passed,
@@ -461,21 +569,37 @@ func (s *quizService) ListParticipants(ctx context.Context, questionnaireID stri
 }
 
 func (s *quizService) GetParticipantDetail(ctx context.Context, questionnaireID string, participantID string) (*ParticipantDetailResponse, error) {
+	return s.getParticipantDetail(ctx, questionnaireID, participantID, "")
+}
+
+func (s *quizService) GetParticipantDetailForStaff(ctx context.Context, staffID string, questionnaireID string, participantID string) (*ParticipantDetailResponse, error) {
+	name, err := s.resolveFacilityName(ctx, staffID)
+	if err != nil {
+		return nil, err
+	}
+	return s.getParticipantDetail(ctx, questionnaireID, participantID, name)
+}
+
+func (s *quizService) getParticipantDetail(ctx context.Context, questionnaireID string, participantID string, facilityName string) (*ParticipantDetailResponse, error) {
 	q, err := s.repo.FindByID(ctx, questionnaireID)
 	if err != nil {
 		return nil, err
 	}
 
-	attempt, err := s.repo.FindAttemptByID(ctx, questionnaireID, participantID)
+	attempt, err := s.repo.FindAttemptByID(ctx, questionnaireID, participantID, facilityName)
 	if err != nil {
 		return nil, err
 	}
 
 	patientName := "-"
 	patientAvatar := ""
+	puskesmas := "DSMES Platform"
 	if attempt.Patient != nil {
 		patientName = attempt.Patient.FullName
 		patientAvatar = attempt.Patient.ProfilePhotoURL
+		if attempt.Patient.HealthFacility != "" {
+			puskesmas = attempt.Patient.HealthFacility
+		}
 	}
 
 	attemptCatStr := ""
@@ -488,7 +612,7 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, questionnaireID 
 		PatientID:            attempt.PatientID,
 		PatientName:          patientName,
 		PatientAvatar:        patientAvatar,
-		Puskesmas:            "DSMES Platform",
+		Puskesmas:            puskesmas,
 		CompletionDate:       attempt.CompletedAt,
 		Score:                attempt.Score,
 		Passed:               attempt.Passed,
@@ -556,6 +680,7 @@ func (s *quizService) GetParticipantDetail(ctx context.Context, questionnaireID 
 	return &ParticipantDetailResponse{
 		Participant:      partResp,
 		QuizTitle:        q.Title,
+		Type:             string(q.Type),
 		QuestionAnalysis: analysis,
 	}, nil
 }
@@ -612,6 +737,83 @@ func (s *quizService) GetMyAttempt(ctx context.Context, patientID, questionnaire
 
 func (s *quizService) GetMyAttemptDetail(ctx context.Context, patientID, questionnaireID string) (*ParticipantDetailResponse, error) {
 	return s.GetParticipantDetail(ctx, questionnaireID, patientID)
+}
+
+func (s *quizService) GetMyAttemptDetailByID(ctx context.Context, patientID, questionnaireID, attemptID string) (*ParticipantDetailResponse, error) {
+	q, err := s.repo.FindByID(ctx, questionnaireID)
+	if err != nil {
+		return nil, err
+	}
+	attempt, err := s.repo.FindMyAttemptByID(ctx, patientID, questionnaireID, attemptID)
+	if err != nil {
+		return nil, err
+	}
+
+	patientName := "-"
+	puskesmas := "DSMES Platform"
+	if attempt.Patient != nil {
+		patientName = attempt.Patient.FullName
+		if attempt.Patient.HealthFacility != "" {
+			puskesmas = attempt.Patient.HealthFacility
+		}
+	}
+	category := ""
+	if attempt.SelfEfficacyCategory != nil {
+		category = *attempt.SelfEfficacyCategory
+	}
+	answers := make(map[string]domain.QuizAnswer)
+	for _, answer := range attempt.Answers {
+		answers[answer.QuestionID] = answer
+	}
+	analysis := make([]QuestionAnalysisResponse, 0)
+	questionNumber := 1
+	for _, cat := range q.Categories {
+		for _, question := range cat.Questions {
+			answerText := "-"
+			correctText := "-"
+			isCorrect := false
+			if q.Type == domain.TypePreTest {
+				correctText = ""
+				isCorrect = true
+				if answer, ok := answers[question.ID]; ok && answer.SelectedValue != nil {
+					value := *answer.SelectedValue
+					label := "Cukup Yakin"
+					for _, choice := range DefaultLikertChoices {
+						if choice.ID == strconv.Itoa(value) {
+							label = choice.OptionText
+							break
+						}
+					}
+					answerText = strconv.Itoa(value) + ". " + label
+				}
+			} else if answer, ok := answers[question.ID]; ok {
+				for _, option := range question.Options {
+					if option.IsCorrect {
+						correctText = option.OptionText
+					}
+					if answer.OptionID != nil && *answer.OptionID == option.ID {
+						answerText = option.OptionText
+					}
+				}
+				isCorrect = answer.IsCorrect
+			}
+			analysis = append(analysis, QuestionAnalysisResponse{
+				ID: question.ID, QuestionNumber: questionNumber, QuestionText: question.QuestionText,
+				PatientAnswer: answerText, CorrectAnswer: correctText, IsCorrect: isCorrect,
+				Explanation: question.Explanation,
+			})
+			questionNumber++
+		}
+	}
+	return &ParticipantDetailResponse{
+		Participant: ParticipantResponse{
+			ID: attempt.ID, PatientID: attempt.PatientID, PatientName: patientName,
+			Puskesmas: puskesmas, CompletionDate: attempt.CompletedAt, Score: attempt.Score,
+			Passed: attempt.Passed, Duration: formatDuration(attempt.DurationSeconds),
+			SelfEfficacyCategory: category,
+		},
+		QuizTitle: q.Title, Type: string(q.Type), QuestionAnalysis: analysis,
+	}, nil
 }
 
 func (s *quizService) GetMyHistory(ctx context.Context, patientID, qType string) ([]MyHistoryItemResponse, error) {

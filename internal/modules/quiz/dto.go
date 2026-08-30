@@ -137,6 +137,7 @@ type QuestionAnalysisResponse struct {
 type ParticipantDetailResponse struct {
 	Participant      ParticipantResponse        `json:"participant"`
 	QuizTitle        string                     `json:"quiz_title"`
+	Type             string                     `json:"type"`
 	QuestionAnalysis []QuestionAnalysisResponse `json:"question_analysis"`
 }
 
@@ -179,14 +180,15 @@ func DetermineSelfEfficacyCategory(score int) string {
 }
 
 type SubmitResultResponse struct {
-	AttemptID       string `json:"attempt_id"`
-	QuestionnaireID string `json:"questionnaire_id"`
-	Type            string `json:"type,omitempty"`
-	Message         string `json:"message,omitempty"`
-	Score           *int   `json:"score,omitempty"`
-	Passed          *bool  `json:"passed,omitempty"`
-	TotalQuestions  int    `json:"total_questions,omitempty"`
-	CorrectCount    *int   `json:"correct_count,omitempty"`
+	AttemptID            string `json:"attempt_id"`
+	QuestionnaireID      string `json:"questionnaire_id"`
+	Type                 string `json:"type,omitempty"`
+	Message              string `json:"message,omitempty"`
+	Score                *int   `json:"score,omitempty"`
+	Passed               *bool  `json:"passed,omitempty"`
+	TotalQuestions       int    `json:"total_questions,omitempty"`
+	CorrectCount         *int   `json:"correct_count,omitempty"`
+	SelfEfficacyCategory string `json:"self_efficacy_category,omitempty"`
 }
 
 // MyAttemptResponse is the patient-facing view of their own attempt for a specific questionnaire.

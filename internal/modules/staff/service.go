@@ -8,17 +8,19 @@ import (
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/modules/auth"
+	"github.com/dsmes/dsmes-backend/internal/modules/facility"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 )
 
 type staffService struct {
-	repo     StaffRepository
-	authRepo auth.AuthRepository
-	log      *zap.Logger
+	repo         StaffRepository
+	authRepo     auth.AuthRepository
+	facilityRepo facility.FacilityRepository
+	log          *zap.Logger
 }
 
-func NewStaffService(repo StaffRepository, authRepo auth.AuthRepository, log *zap.Logger) StaffService {
-	return &staffService{repo: repo, authRepo: authRepo, log: log}
+func NewStaffService(repo StaffRepository, authRepo auth.AuthRepository, facilityRepo facility.FacilityRepository, log *zap.Logger) StaffService {
+	return &staffService{repo: repo, authRepo: authRepo, facilityRepo: facilityRepo, log: log}
 }
 
 func (s *staffService) ListStaff(ctx context.Context, search, status string, role *domain.StaffRole, page, limit int) ([]StaffResponse, int64, error) {
@@ -67,25 +69,48 @@ func (s *staffService) CreateStaff(ctx context.Context, req CreateStaffRequest) 
 		return nil, errs.NewInternal("failed to hash password", err)
 	}
 
+	var healthFacilityID *string
+	if req.HealthFacilityID != "" {
+		if err := s.validateFacility(ctx, req.HealthFacilityID); err != nil {
+			return nil, err
+		}
+		healthFacilityID = &req.HealthFacilityID
+	}
+
 	staff := &domain.StaffAccount{
-		FullName:        req.FullName,
-		Username:        req.Username,
-		Email:           req.Email,
-		PasswordHash:    string(hash),
-		WhatsappNumber:  req.WhatsappNumber,
-		Role:            req.Role,
-		Status:          domain.StatusAktif,
-		PositionTitle:   req.PositionTitle,
-		ShortBio:        req.ShortBio,
-		ProfilePhotoURL: req.ProfilePhotoURL,
+		FullName:         req.FullName,
+		Username:         req.Username,
+		Email:            req.Email,
+		PasswordHash:     string(hash),
+		WhatsappNumber:   req.WhatsappNumber,
+		Role:             req.Role,
+		Status:           domain.StatusAktif,
+		PositionTitle:    req.PositionTitle,
+		ShortBio:         req.ShortBio,
+		ProfilePhotoURL:  req.ProfilePhotoURL,
+		HealthFacilityID: healthFacilityID,
 	}
 
 	if err = s.repo.Create(ctx, staff); err != nil {
 		return nil, err
 	}
 
+	// Reload so the HealthFacility relation is populated for the response.
+	staff, err = s.repo.FindByID(ctx, staff.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	res := ToStaffResponse(staff)
 	return &res, nil
+}
+
+// validateFacility ensures the referenced facility exists.
+func (s *staffService) validateFacility(ctx context.Context, id string) error {
+	if _, err := s.facilityRepo.FindByID(ctx, id); err != nil {
+		return errs.NewBadRequest("puskesmas tidak ditemukan")
+	}
+	return nil
 }
 
 func (s *staffService) UpdateStaff(ctx context.Context, id string, req UpdateStaffRequest) (*StaffResponse, error) {
@@ -115,6 +140,15 @@ func (s *staffService) UpdateStaff(ctx context.Context, id string, req UpdateSta
 	staff.PositionTitle = req.PositionTitle
 	staff.ShortBio = req.ShortBio
 	staff.ProfilePhotoURL = req.ProfilePhotoURL
+
+	if req.HealthFacilityID != "" {
+		if err := s.validateFacility(ctx, req.HealthFacilityID); err != nil {
+			return nil, err
+		}
+		staff.HealthFacilityID = &req.HealthFacilityID
+	} else {
+		staff.HealthFacilityID = nil
+	}
 
 	if err = s.repo.Update(ctx, staff); err != nil {
 		return nil, err

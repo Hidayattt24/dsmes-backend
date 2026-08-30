@@ -43,7 +43,7 @@ func (r *staffRepository) FindAll(ctx context.Context, search, status string, ro
 	}
 
 	offset := (page - 1) * limit
-	if err := q.Offset(offset).Limit(limit).Order("created_at DESC").Find(&items).Error; err != nil {
+	if err := q.Preload("HealthFacility").Offset(offset).Limit(limit).Order("created_at DESC").Find(&items).Error; err != nil {
 		return nil, 0, errs.NewInternal("failed to fetch staff", err)
 	}
 
@@ -52,7 +52,7 @@ func (r *staffRepository) FindAll(ctx context.Context, search, status string, ro
 
 func (r *staffRepository) FindByID(ctx context.Context, id string) (*domain.StaffAccount, error) {
 	var s domain.StaffAccount
-	err := r.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", id).First(&s).Error
+	err := r.db.WithContext(ctx).Preload("HealthFacility").Where("id = ? AND deleted_at IS NULL", id).First(&s).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.NewNotFound("staff not found")

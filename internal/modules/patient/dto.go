@@ -48,6 +48,16 @@ type SetupHealthProfileRequest struct {
 	PhysicalActivityLevel string  `json:"physical_activity_level"`
 }
 
+type SetupSociodemographicRequest struct {
+	City              string `json:"city"`
+	District          string `json:"district"`
+	Address           string `json:"address"`
+	HealthFacility    string `json:"health_facility"`
+	LivingArrangement string `json:"living_arrangement"`
+	EducationLevel    string `json:"education_level"`
+	DiabetesDuration  string `json:"diabetes_duration"`
+}
+
 func (r *SetupHealthProfileRequest) GetActivity() string {
 	if r.ActivityLevel != "" {
 		return r.ActivityLevel
@@ -79,6 +89,12 @@ type UpdatePatientProfileRequest struct {
 	Allergies             string  `json:"allergies"`
 	SmokingStatus         string  `json:"smoking_status"`
 	PhysicalActivityLevel string  `json:"physical_activity_level"`
+	City                  string  `json:"city"`
+	District              string  `json:"district"`
+	HealthFacility        string  `json:"health_facility"`
+	LivingArrangement     string  `json:"living_arrangement"`
+	EducationLevel        string  `json:"education_level"`
+	DiabetesDuration      string  `json:"diabetes_duration"`
 }
 
 type AssignStaffRequest struct {
@@ -120,6 +136,12 @@ type PatientResponse struct {
 	Allergies             string                            `json:"allergies"`
 	SmokingStatus         string                            `json:"smoking_status"`
 	PhysicalActivityLevel string                            `json:"physical_activity_level"`
+	City                  string                            `json:"city"`
+	District              string                            `json:"district"`
+	HealthFacility        string                            `json:"health_facility"`
+	LivingArrangement     string                            `json:"living_arrangement"`
+	EducationLevel        string                            `json:"education_level"`
+	DiabetesDuration      string                            `json:"diabetes_duration"`
 	LastActiveAt          *string                           `json:"last_active_at,omitempty"`
 
 	// Summary statistics fields
@@ -274,6 +296,12 @@ func ToPatientResponse(p *domain.Patient) PatientResponse {
 		Allergies:             p.Allergies,
 		SmokingStatus:         p.SmokingStatus,
 		PhysicalActivityLevel: p.PhysicalActivityLevel,
+		City:                  p.City,
+		District:              p.District,
+		HealthFacility:        p.HealthFacility,
+		LivingArrangement:     p.LivingArrangement,
+		EducationLevel:        p.EducationLevel,
+		DiabetesDuration:      p.DiabetesDuration,
 		LastActiveAt:          lastActiveAt,
 		BMI:                   bmiVal,
 		BMICategory:           bmiCat,
@@ -326,6 +354,7 @@ func ToPatientDetailResponse(p *domain.Patient) PatientDetailResponse {
 
 type PatientFilterQuery struct {
 	StaffID          string
+	HealthFacility   string
 	Search           string
 	Gender           string
 	Status           string
@@ -411,6 +440,12 @@ type UpdatePatientRequest struct {
 	Allergies             string   `json:"allergies"`
 	SmokingStatus         string   `json:"smoking_status"`
 	PhysicalActivityLevel string   `json:"physical_activity_level"`
+	City                  string   `json:"city"`
+	District              string   `json:"district"`
+	HealthFacility        string   `json:"health_facility"`
+	LivingArrangement     string   `json:"living_arrangement"`
+	EducationLevel        string   `json:"education_level"`
+	DiabetesDuration      string   `json:"diabetes_duration"`
 }
 
 type PatientMeasurementResponse struct {
