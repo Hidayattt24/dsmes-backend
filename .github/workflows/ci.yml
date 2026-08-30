@@ -132,3 +132,4 @@ jobs:
         run: |
           ssh "$VPS_USER@$VPS_HOST" "cd ~/dsmes/backend && BACKEND_TAG=$IMAGE_TAG docker compose -f docker-compose.production.yml pull && BACKEND_TAG=$IMAGE_TAG docker compose -f docker-compose.production.yml up -d --remove-orphans"
           ssh "$VPS_USER@$VPS_HOST" 'for i in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8080/api/health && exit 0; sleep 2; done; docker compose -f ~/dsmes/backend/docker-compose.production.yml logs --tail=100; exit 1'
+
