@@ -69,11 +69,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/dsmes-backend
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix=
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix=,format=long
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
