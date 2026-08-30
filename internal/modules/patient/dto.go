@@ -139,6 +139,7 @@ type PatientResponse struct {
 	City                  string                            `json:"city"`
 	District              string                            `json:"district"`
 	HealthFacility        string                            `json:"health_facility"`
+	TreatmentFacility     string                            `json:"treatment_facility"`
 	LivingArrangement     string                            `json:"living_arrangement"`
 	EducationLevel        string                            `json:"education_level"`
 	DiabetesDuration      string                            `json:"diabetes_duration"`
@@ -299,6 +300,7 @@ func ToPatientResponse(p *domain.Patient) PatientResponse {
 		City:                  p.City,
 		District:              p.District,
 		HealthFacility:        p.HealthFacility,
+		TreatmentFacility:     p.TreatmentFacility,
 		LivingArrangement:     p.LivingArrangement,
 		EducationLevel:        p.EducationLevel,
 		DiabetesDuration:      p.DiabetesDuration,
@@ -443,6 +445,7 @@ type UpdatePatientRequest struct {
 	City                  string   `json:"city"`
 	District              string   `json:"district"`
 	HealthFacility        string   `json:"health_facility"`
+	TreatmentFacility     string   `json:"treatment_facility"`
 	LivingArrangement     string   `json:"living_arrangement"`
 	EducationLevel        string   `json:"education_level"`
 	DiabetesDuration      string   `json:"diabetes_duration"`

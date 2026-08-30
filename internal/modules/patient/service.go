@@ -1210,6 +1210,12 @@ func (s *patientService) UpdatePatientByAdmin(ctx context.Context, patientID str
 	if req.Address != "" {
 		patient.Address = req.Address
 	}
+	if req.HealthFacility != "" {
+		patient.HealthFacility = strings.TrimSpace(req.HealthFacility)
+	}
+	if req.TreatmentFacility != "" {
+		patient.TreatmentFacility = strings.TrimSpace(req.TreatmentFacility)
+	}
 	if req.DiabetesType != "" {
 		patient.DiabetesType = req.DiabetesType
 	}
