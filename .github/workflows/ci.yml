@@ -5,6 +5,10 @@ on:
     branches: [main, develop]
   pull_request:
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 env:
   GO_VERSION: "1.26"
   GOLANGCI_VERSION: v1.64.8
@@ -75,6 +79,16 @@ jobs:
           type=sha,prefix=,format=long
           type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
+      - name: Verify production image tag
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dsmes-backend
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          EXPECTED_TAG: ${{ github.sha }}
+        run: |
+          printf '%s\n' "$IMAGE_TAGS"
+          printf '%s\n' "$IMAGE_TAGS" | grep -Fx "$IMAGE_NAME:$EXPECTED_TAG"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -130,7 +144,42 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          ssh "$VPS_USER@$VPS_HOST" "cd ~/dsmes/backend && BACKEND_TAG=$IMAGE_TAG docker compose -f docker-compose.production.yml pull && BACKEND_TAG=$IMAGE_TAG docker compose -f docker-compose.production.yml up -d --remove-orphans"
-          ssh "$VPS_USER@$VPS_HOST" 'for i in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8080/api/health && exit 0; sleep 2; done; docker compose -f ~/dsmes/backend/docker-compose.production.yml logs --tail=100; exit 1'
+          ssh "$VPS_USER@$VPS_HOST" "IMAGE_TAG=$IMAGE_TAG bash -s" <<'REMOTE_SCRIPT'
+          set -eu
+          cd ~/dsmes/backend
+          compose='docker compose -f docker-compose.production.yml'
+          previous_image=$(docker inspect --format '{{.Config.Image}}' dsmes_backend 2>/dev/null || true)
+          previous_tag=${previous_image##*:}
+
+          BACKEND_TAG="$IMAGE_TAG" $compose pull
+          BACKEND_TAG="$IMAGE_TAG" $compose up -d --remove-orphans
+
+          healthy=0
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/api/health >/dev/null; then
+              healthy=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$healthy" -ne 1 ]; then
+            echo 'Deployment health check failed.'
+            echo 'Current container status:'
+            docker ps -a --filter name=dsmes_backend
+            docker inspect dsmes_backend 2>/dev/null || true
+            docker logs --tail=200 dsmes_backend 2>&1 || true
+
+            if [ -n "$previous_tag" ] && [ "$previous_tag" != "$IMAGE_TAG" ]; then
+              echo "Rolling back application image to $previous_tag"
+              BACKEND_TAG="$previous_tag" $compose up -d --remove-orphans || true
+            else
+              echo 'No previous tagged image was available for rollback.'
+            fi
+            exit 1
+          fi
+
+          echo "Backend deployment succeeded with image tag $IMAGE_TAG"
+          REMOTE_SCRIPT
 
 
