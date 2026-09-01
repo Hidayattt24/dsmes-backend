@@ -1196,6 +1196,9 @@ func (s *patientService) UpdatePatientByAdmin(ctx context.Context, patientID str
 	if req.FullName != "" {
 		patient.FullName = req.FullName
 	}
+	if req.ProfilePhotoURL != "" {
+		patient.ProfilePhotoURL = req.ProfilePhotoURL
+	}
 	if req.WhatsappNumber != "" {
 		patient.WhatsappNumber = req.WhatsappNumber
 	}

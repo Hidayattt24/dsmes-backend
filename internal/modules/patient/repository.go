@@ -614,7 +614,7 @@ func (r *patientRepository) GetPatientActivityAnalytics(ctx context.Context, pat
 
 	bsQuery := r.db.WithContext(ctx).Table("blood_sugar_logs").Where("patient_id = ? AND deleted_at IS NULL", patientID)
 	mealQuery := r.db.WithContext(ctx).Table("meal_logs").Where("patient_id = ? AND deleted_at IS NULL", patientID)
-	actQuery := r.db.WithContext(ctx).Table("routine_log_entries").Where("patient_id = ? AND status = 'Completed' AND deleted_at IS NULL", patientID)
+	freeActQuery := r.db.WithContext(ctx).Table("patient_activity_logs").Where("patient_id = ? AND deleted_at IS NULL", patientID)
 	medQuery := r.db.WithContext(ctx).Table("daily_reminder_logs d").
 		Joins("JOIN reminders r ON r.id = d.reminder_id AND r.deleted_at IS NULL").
 		Where("r.patient_id = ? AND d.status = 'selesai' AND d.deleted_at IS NULL", patientID)
@@ -623,7 +623,7 @@ func (r *patientRepository) GetPatientActivityAnalytics(ctx context.Context, pat
 		cutoff := time.Now().AddDate(0, 0, -days)
 		bsQuery = bsQuery.Where("measured_at >= ?", cutoff)
 		mealQuery = mealQuery.Where("logged_at >= ?", cutoff)
-		actQuery = actQuery.Where("logged_at >= ?", cutoff)
+		freeActQuery = freeActQuery.Where("logged_at >= ?", cutoff)
 		medQuery = medQuery.Where("d.log_date >= ?", cutoff)
 	}
 
@@ -635,9 +635,11 @@ func (r *patientRepository) GetPatientActivityAnalytics(ctx context.Context, pat
 		return nil, errs.NewInternal("failed to count meal logs", err)
 	}
 
-	if err := actQuery.Count(&actCount).Error; err != nil {
-		return nil, errs.NewInternal("failed to count activity logs", err)
+	var freeActCount int64
+	if err := freeActQuery.Count(&freeActCount).Error; err != nil {
+		return nil, errs.NewInternal("failed to count free activity logs", err)
 	}
+	actCount += freeActCount
 
 	if err := medQuery.Count(&medCount).Error; err != nil {
 		return nil, errs.NewInternal("failed to count medication logs", err)
@@ -783,13 +785,11 @@ func (r *patientRepository) GetPatientDailyLogsAggregates(ctx context.Context, p
 	}
 	var actGroups []ActGroup
 	if err := r.db.WithContext(ctx).Raw(`
-		SELECT le.patient_id, TO_CHAR(le.logged_at, 'YYYY-MM-DD') as date_str,
-			COUNT(*) * 30 as total_minutes
-		FROM routine_log_entries le
-		JOIN routine_times rt ON rt.id = le.routine_time_id AND rt.deleted_at IS NULL
-		JOIN routines r ON r.id = rt.routine_id AND r.deleted_at IS NULL
-		WHERE le.patient_id IN (?) AND le.logged_at >= ? AND le.logged_at <= ? AND le.status = 'Completed' AND le.deleted_at IS NULL
-		GROUP BY le.patient_id, date_str
+		SELECT al.patient_id, TO_CHAR(al.logged_at, 'YYYY-MM-DD') as date_str,
+			COALESCE(SUM(al.duration_minutes), 0) as total_minutes
+		FROM patient_activity_logs al
+		WHERE al.patient_id IN (?) AND al.logged_at >= ? AND al.logged_at <= ? AND al.deleted_at IS NULL
+		GROUP BY al.patient_id, date_str
 	`, patientIDs, startDate, endDate).Scan(&actGroups).Error; err != nil {
 		return nil, errs.NewInternal("failed to aggregate activity logs", err)
 	}

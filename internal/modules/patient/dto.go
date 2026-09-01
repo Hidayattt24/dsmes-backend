@@ -449,6 +449,7 @@ type UpdatePatientRequest struct {
 	LivingArrangement     string   `json:"living_arrangement"`
 	EducationLevel        string   `json:"education_level"`
 	DiabetesDuration      string   `json:"diabetes_duration"`
+	ProfilePhotoURL       string   `json:"profile_photo_url"`
 }
 
 type PatientMeasurementResponse struct {
