@@ -18,3 +18,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  # FCM reminder worker. Runs the same image but overrides the entrypoint so it
+  # executes /app/worker directly instead of entrypoint.sh — therefore it never
+  # runs database migrations (those stay with the backend API container).
+  worker:
+    image: ghcr.io/hidayattt24/dsmes-backend:${BACKEND_TAG:?BACKEND_TAG is required}
+    container_name: dsmes_worker
+    restart: unless-stopped
+    depends_on:
+      - backend
+    entrypoint: ["/app/worker"]
+    env_file:
+      - .env.production
+    environment:
+      DB_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

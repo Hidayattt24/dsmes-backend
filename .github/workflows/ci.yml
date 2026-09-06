@@ -42,7 +42,7 @@ jobs:
         run: go test -race -count=1 ./...
 
       - name: Build binaries
-        run: go build -o /tmp/server ./cmd/api && go build -o /tmp/migrate ./cmd/migrate
+        run: go build -o /tmp/server ./cmd/api && go build -o /tmp/migrate ./cmd/migrate && go build -o /tmp/worker ./cmd/worker
 
       - name: Generate Swagger
         run: swag init -g cmd/api/main.go -o ./docs --parseDependency --parseInternal
@@ -180,6 +180,17 @@ jobs:
           fi
 
           echo "Backend deployment succeeded with image tag $IMAGE_TAG"
+
+          # ── Worker verification ───────────────────────────────────────────
+          # The same immutable image serves both the API and the FCM reminder
+          # worker. Confirm the worker container is up and did not exit.
+          worker_status=$(docker inspect --format '{{.State.Status}}' dsmes_worker 2>/dev/null || true)
+          if [ "$worker_status" != "running" ]; then
+            echo "Worker deployment failed. Status: ${worker_status:-missing}"
+            docker logs --tail=200 dsmes_worker 2>&1 || true
+            exit 1
+          fi
+          echo "Worker deployment succeeded with image tag $IMAGE_TAG"
           REMOTE_SCRIPT
 
 

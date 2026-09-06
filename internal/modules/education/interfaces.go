@@ -7,6 +7,10 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/domain"
 )
 
+type PushSender interface {
+	Send(ctx context.Context, token, title, body string, data map[string]string) (string, error)
+}
+
 type EducationRepository interface {
 	FindAllCategories(ctx context.Context) ([]domain.ArticleCategory, error)
 	FindCategoryByID(ctx context.Context, id string) (*domain.ArticleCategory, error)
@@ -31,6 +35,7 @@ type EducationRepository interface {
 	// BroadcastEducationNotification inserts an education notification into
 	// every active patient's notification_logs inbox.
 	BroadcastEducationNotification(ctx context.Context, message string, articleID string) error
+	FindAllDeviceTokens(ctx context.Context) ([]domain.DeviceToken, error)
 
 	// Transactional updates for sections/steps
 	ReplaceSections(ctx context.Context, articleID string, sections []domain.ArticleSection) error
@@ -63,4 +68,3 @@ type EducationService interface {
 	GetRatingSummary(ctx context.Context, educationID string, patientID *string) (*ArticleRatingResponse, error)
 	GetAdminReviews(ctx context.Context, educationID string) (*AdminArticleReviewsResponse, error)
 }
-

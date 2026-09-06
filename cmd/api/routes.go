@@ -12,10 +12,14 @@
 package main
 
 import (
+	"context"
+
 	"github.com/gofiber/contrib/v3/swaggerui"
 	"github.com/gofiber/fiber/v3"
+	"go.uber.org/zap"
 
 	"github.com/dsmes/dsmes-backend/internal/container"
+	"github.com/dsmes/dsmes-backend/internal/infrastructure/notifications"
 	"github.com/dsmes/dsmes-backend/internal/middleware"
 	"github.com/dsmes/dsmes-backend/internal/modules/ai_chat"
 	"github.com/dsmes/dsmes-backend/internal/modules/auth"
@@ -111,7 +115,15 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 
 	// 8. Education
 	eduRepo := education.NewEducationRepository(c.DB, c.Logger)
-	eduSvc := education.NewEducationService(eduRepo, c.Logger)
+	var pushSender education.PushSender
+	if c.Config.FCM.CredentialsJSON != "" {
+		if sender, err := notifications.NewFCMSender(context.Background(), c.Config.FCM.CredentialsJSON); err != nil {
+			c.Logger.Warn("education FCM notifications disabled", zap.Error(err))
+		} else {
+			pushSender = sender
+		}
+	}
+	eduSvc := education.NewEducationService(eduRepo, c.Logger, pushSender)
 	eduHandler := education.NewEducationHandler(eduSvc, c.Logger)
 
 	// 9. Education Progress
@@ -337,6 +349,8 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Put("/reminders/:id", reminderHandler.Update)
 		patientGroup.Patch("/reminders/:id/toggle", reminderHandler.Toggle)
 		patientGroup.Delete("/reminders/:id", reminderHandler.Delete)
+		patientGroup.Post("/device-tokens", reminderHandler.RegisterDeviceToken)
+		patientGroup.Delete("/device-tokens", reminderHandler.DeleteDeviceToken)
 		patientGroup.Post("/medications/log", reminderHandler.LogMedication)
 
 		// Notifications inbox

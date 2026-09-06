@@ -1,11 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # DSMES Backend — Multi-stage Dockerfile
 #
-# Stage 1 (builder):  compiles the server + migrate binaries, generates the
-#                     Swagger spec, and keeps the migration files.
-# Stage 2 (runtime):  slim Alpine image with both binaries + migrations + docs.
+# Stage 1 (builder):  compiles the server + migrate + worker binaries, generates
+#                     the Swagger spec, and keeps the migration files.
+# Stage 2 (runtime):  slim Alpine image with all three binaries + migrations + docs.
 #
-# The container runs migrations automatically on start (see entrypoint.sh).
+# The API container runs migrations automatically on start (see entrypoint.sh).
+# The worker container overrides the entrypoint to run /app/worker directly, so
+# it never executes migrations.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
@@ -32,7 +34,9 @@ RUN swag init -g cmd/api/main.go -o ./docs --parseDependency --parseInternal
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o /app/server ./cmd/api \
  && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-s -w" -o /app/migrate ./cmd/migrate
+    go build -ldflags="-s -w" -o /app/migrate ./cmd/migrate \
+ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-s -w" -o /app/worker ./cmd/worker
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM alpine:3.20
@@ -45,6 +49,7 @@ WORKDIR /app
 # Binaries
 COPY --from=builder /app/server  /app/server
 COPY --from=builder /app/migrate /app/migrate
+COPY --from=builder /app/worker  /app/worker
 
 # Runtime data the server needs (migrations for the entrypoint, docs for Swagger)
 COPY --from=builder /app/migrations /app/migrations

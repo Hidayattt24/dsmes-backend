@@ -19,6 +19,10 @@ type ReminderRepository interface {
 	MarkNotificationReadByID(ctx context.Context, patientID string, notifID string) error
 	DeleteNotificationByID(ctx context.Context, patientID string, notifID string) error
 	FindLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.DailyReminderLog, error)
+	UpsertDeviceToken(ctx context.Context, token *domain.DeviceToken) error
+	DeleteDeviceToken(ctx context.Context, patientID string, token string) error
+	FindDueReminders(ctx context.Context, timePrefix string) ([]domain.Reminder, error)
+	FindDeviceTokens(ctx context.Context, patientID string) ([]domain.DeviceToken, error)
 }
 
 type ReminderService interface {
@@ -34,4 +38,6 @@ type ReminderService interface {
 	MarkReadByID(ctx context.Context, patientID string, notifID string) error
 	DeleteNotificationByID(ctx context.Context, patientID string, notifID string) error
 	GetPatientMedicationLogs(ctx context.Context, patientID string, dateStr string) ([]MedicationLogResponse, error)
+	RegisterDeviceToken(ctx context.Context, patientID string, req DeviceTokenRequest) error
+	DeleteDeviceToken(ctx context.Context, patientID string, token string) error
 }

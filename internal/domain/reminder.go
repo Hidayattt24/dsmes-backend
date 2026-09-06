@@ -92,3 +92,12 @@ type NotificationLog struct {
 }
 
 func (NotificationLog) TableName() string { return "notification_logs" }
+
+type DeviceToken struct {
+	Token     string    `gorm:"primaryKey;type:text" json:"token"`
+	PatientID string    `gorm:"type:uuid;not null;index" json:"patient_id"`
+	Platform  string    `gorm:"type:varchar(20);not null" json:"platform"`
+	LastSeen  time.Time `gorm:"not null;default:now()" json:"last_seen"`
+}
+
+func (DeviceToken) TableName() string { return "patient_device_tokens" }

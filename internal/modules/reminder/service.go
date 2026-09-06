@@ -33,6 +33,16 @@ func (s *reminderService) ListReminders(ctx context.Context, patientID string) (
 	return resp, nil
 }
 
+func (s *reminderService) RegisterDeviceToken(ctx context.Context, patientID string, req DeviceTokenRequest) error {
+	return s.repo.UpsertDeviceToken(ctx, &domain.DeviceToken{
+		Token: req.Token, PatientID: patientID, Platform: req.Platform, LastSeen: time.Now().UTC(),
+	})
+}
+
+func (s *reminderService) DeleteDeviceToken(ctx context.Context, patientID string, token string) error {
+	return s.repo.DeleteDeviceToken(ctx, patientID, token)
+}
+
 func (s *reminderService) CreateReminder(ctx context.Context, patientID string, req CreateReminderRequest) (*ReminderResponse, error) {
 	rem := &domain.Reminder{
 		PatientID:          patientID,

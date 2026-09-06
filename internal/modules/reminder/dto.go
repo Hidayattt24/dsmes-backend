@@ -37,6 +37,11 @@ type NotificationResponse struct {
 	ArticleID   *string `json:"article_id"`
 }
 
+type DeviceTokenRequest struct {
+	Token    string `json:"token" validate:"required,min=20"`
+	Platform string `json:"platform" validate:"required,oneof=android ios"`
+}
+
 func ToReminderResponse(r *domain.Reminder) ReminderResponse {
 	days := make([]int, len(r.ActiveDays))
 	for i, d := range r.ActiveDays {

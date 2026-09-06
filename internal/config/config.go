@@ -21,6 +21,7 @@ type Config struct {
 	Swagger SwaggerConfig
 	Email   EmailConfig
 	AI      AIConfig
+	FCM     FCMConfig
 }
 
 // AppConfig holds HTTP server and general application settings.
@@ -96,6 +97,10 @@ type AIConfig struct {
 	LogPrompts bool `mapstructure:"AI_LOG_PROMPTS"`
 }
 
+type FCMConfig struct {
+	CredentialsJSON string `mapstructure:"FCM_CREDENTIALS_JSON"`
+}
+
 // Load reads configuration from the .env file and environment variables.
 // Environment variables always override .env values (12-factor app).
 func Load() (*Config, error) {
@@ -140,6 +145,7 @@ func Load() (*Config, error) {
 	v.SetDefault("AI_PROVIDER", "gemini")
 	v.SetDefault("AI_MODEL", "gemini-1.5-flash-latest")
 	v.SetDefault("AI_LOG_PROMPTS", false)
+	v.SetDefault("FCM_CREDENTIALS_JSON", "")
 
 	// ── .env file ─────────────────────────────────────────────────────────────
 	v.SetConfigName(".env")
@@ -213,6 +219,7 @@ func Load() (*Config, error) {
 		Model:      v.GetString("AI_MODEL"),
 		LogPrompts: v.GetBool("AI_LOG_PROMPTS"),
 	}
+	cfg.FCM = FCMConfig{CredentialsJSON: v.GetString("FCM_CREDENTIALS_JSON")}
 
 	// ── Production safety guards ──────────────────────────────────────────────
 	// Refuse to start in production/staging with the default or weak JWT secret.

@@ -282,6 +282,14 @@ func (r *educationRepository) BroadcastEducationNotification(ctx context.Context
 	return nil
 }
 
+func (r *educationRepository) FindAllDeviceTokens(ctx context.Context) ([]domain.DeviceToken, error) {
+	var devices []domain.DeviceToken
+	if err := r.db.WithContext(ctx).Find(&devices).Error; err != nil {
+		return nil, errs.NewInternal("failed to fetch patient device tokens", err)
+	}
+	return devices, nil
+}
+
 func (r *educationRepository) ReplaceSections(ctx context.Context, articleID string, sections []domain.ArticleSection) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Clean steps

@@ -39,6 +39,42 @@ func (h *ReminderHandler) List(c fiber.Ctx) error {
 	return response.Success(c, "reminders retrieved", items)
 }
 
+func (h *ReminderHandler) RegisterDeviceToken(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+	var req DeviceTokenRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+	if err := h.svc.RegisterDeviceToken(c.Context(), claims.UserID, req); err != nil {
+		return err
+	}
+	return response.Success(c, "device token registered", nil)
+}
+
+func (h *ReminderHandler) DeleteDeviceToken(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+	var req DeviceTokenRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if req.Token == "" {
+		return errs.NewBadRequest("token is required")
+	}
+	if err := h.svc.DeleteDeviceToken(c.Context(), claims.UserID, req.Token); err != nil {
+		return err
+	}
+	return response.Success(c, "device token deleted", nil)
+}
+
 // Create handles POST /api/v1/patient/reminders
 // @Summary      Create personal reminder
 // @Tags         reminder

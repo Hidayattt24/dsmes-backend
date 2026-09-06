@@ -13,10 +13,11 @@ import (
 type educationService struct {
 	repo EducationRepository
 	log  *zap.Logger
+	push PushSender
 }
 
-func NewEducationService(repo EducationRepository, log *zap.Logger) EducationService {
-	return &educationService{repo: repo, log: log}
+func NewEducationService(repo EducationRepository, log *zap.Logger, push PushSender) EducationService {
+	return &educationService{repo: repo, log: log, push: push}
 }
 
 func (s *educationService) ListCategories(ctx context.Context) ([]CategoryResponse, error) {
@@ -286,6 +287,26 @@ func (s *educationService) broadcastEducationNotif(ctx context.Context, title st
 				zap.Error(err),
 			)
 		}
+		if s.push == nil {
+			return
+		}
+		devices, err := s.repo.FindAllDeviceTokens(bgCtx)
+		if err != nil {
+			s.log.Warn("failed to fetch device tokens for education notification",
+				zap.String("article_id", articleID), zap.Error(err))
+			return
+		}
+		for _, device := range devices {
+			if _, err := s.push.Send(bgCtx, device.Token, "Materi Edukasi Baru", message, map[string]string{
+				"type":       "education",
+				"article_id": articleID,
+			}); err != nil {
+				s.log.Warn("failed to send education push notification",
+					zap.String("article_id", articleID),
+					zap.String("patient_id", device.PatientID),
+					zap.Error(err))
+			}
+		}
 	}()
 }
 
@@ -484,4 +505,3 @@ func (s *educationService) GetAdminReviews(ctx context.Context, educationID stri
 		Reviews:            list,
 	}, nil
 }
-

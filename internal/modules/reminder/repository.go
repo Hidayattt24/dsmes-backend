@@ -180,3 +180,42 @@ func (r *reminderRepository) FindLogsByPatientAndDate(ctx context.Context, patie
 	}
 	return logs, nil
 }
+
+func (r *reminderRepository) UpsertDeviceToken(ctx context.Context, token *domain.DeviceToken) error {
+	result := r.db.WithContext(ctx).Save(token)
+	if result.Error != nil {
+		return errs.NewInternal("failed to save device token", result.Error)
+	}
+	return nil
+}
+
+func (r *reminderRepository) DeleteDeviceToken(ctx context.Context, patientID string, token string) error {
+	result := r.db.WithContext(ctx).
+		Where("token = ? AND patient_id = ?", token, patientID).
+		Delete(&domain.DeviceToken{})
+	if result.Error != nil {
+		return errs.NewInternal("failed to delete device token", result.Error)
+	}
+	return nil
+}
+
+func (r *reminderRepository) FindDueReminders(ctx context.Context, timePrefix string) ([]domain.Reminder, error) {
+	var reminders []domain.Reminder
+	err := r.db.WithContext(ctx).
+		Preload("ActiveDays").
+		Where("is_active = TRUE AND scheduled_time::text LIKE ?", timePrefix+"%").
+		Find(&reminders).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch due reminders", err)
+	}
+	return reminders, nil
+}
+
+func (r *reminderRepository) FindDeviceTokens(ctx context.Context, patientID string) ([]domain.DeviceToken, error) {
+	var tokens []domain.DeviceToken
+	err := r.db.WithContext(ctx).Where("patient_id = ?", patientID).Find(&tokens).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch device tokens", err)
+	}
+	return tokens, nil
+}
