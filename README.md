@@ -1,267 +1,286 @@
-# DSMES Aceh Backend
+# DSMES Aceh Backend — Developer & Architecture Guide
 
-Backend REST API untuk platform DSMES Aceh (Diabetes Self-Management Education and Support). Backend menjadi pusat aturan bisnis, autentikasi, validasi, penyimpanan data, klasifikasi medis, dan komunikasi antara aplikasi pasien, portal web, serta PostgreSQL.
+Pusat backend REST API untuk platform **DSMES Aceh** (*Diabetes Self-Management Education and Support*). Backend ini menjadi pusat aturan bisnis, klasifikasi medis, autentikasi multi-peran, kalkulasi nutrisi, dan penyimpanan data bagi dua platform klien: **Aplikasi Mobile Pasien (Flutter)** dan **Portal Web Admin/Staff (Next.js)**.
 
-## Tujuan Sistem
+---
 
-Backend dibangun untuk membantu pasien mengelola diabetes secara mandiri dan membantu staff/admin memantau perkembangan pasien. Seluruh client menggunakan API yang sama agar data dan aturan bisnis tetap konsisten.
+## Daftar Isi
+1. [Arsitektur Integrasi Multi-Platform (Mobile & Web)](#arsitektur-integrasi-multi-platform-mobile--web)
+2. [Tech Stack & Pustaka Utama](#tech-stack--pustaka-utama)
+3. [Struktur Proyek & Clean Modular Pattern (`internal/`)](#struktur-proyek--clean-modular-pattern-internal)
+4. [Standar Penamaan Variabel & Kode (Coding Standards)](#standar-penamaan-variabel--kode-coding-standards)
+5. [Logika Medis & Single Source of Truth](#logika-medis--single-source-of-truth)
+6. [Arsitektur Database, GORM & Migrasi](#arsitektur-database-gorm--migrasi)
+7. [Konfigurasi Environment (`.env`)](#konfigurasi-environment-env)
+8. [Konfigurasi Docker & Containerisasi](#konfigurasi-docker--containerisasi)
+9. [Konfigurasi CI/CD Pipeline & Deployment VPS](#konfigurasi-cicd-pipeline--deployment-vps)
+10. [Instalasi Lokal & Skrip Verifikasi](#instalasi-lokal--skrip-verifikasi)
 
-## Fitur Utama
+---
 
-- Authentication: register, login, JWT access token, refresh token, logout, OTP, dan reset password.
-- Role-based access: pasien, staff/Puskesmas, dan admin.
-- Patient profile: data pribadi, sosiodemografi, kondisi kesehatan, fasilitas kesehatan, dan foto profil.
-- Health records: gula darah, berat/tinggi badan, BMI, makanan, kalori, aktivitas fisik, obat, dan reminder.
-- Blood sugar classification: kategori, severity, rentang referensi, rekomendasi, dan warna dihasilkan oleh classifier backend.
-- Education: artikel, video, progress belajar, dan review.
-- Assessment: pre-test, questionnaire, quiz, survey, scoring, dan hasil assessment.
-- Monitoring: dashboard, statistik agregat, riwayat kesehatan, dan pemantauan pasien.
-- AI assistant: percakapan bantuan personal untuk edukasi diabetes.
-- Staff management: pengelolaan akun dan akses staff.
-- Infrastructure: PostgreSQL migrations, structured logging, CORS, recovery middleware, dan Swagger UI.
+## Arsitektur Integrasi Multi-Platform (Mobile & Web)
 
-## Teknologi
-
-- Go `1.26.4`
-- Go Fiber `3.3.0`
-- PostgreSQL dengan GORM `1.31.2` dan pgx
-- JWT `v5` dan bcrypt
-- Viper untuk konfigurasi
-- Validator v10
-- Zap untuk logging
-- Swagger untuk dokumentasi API
-- Resend untuk email transaksional/OTP
-
-## Struktur Proyek
+Backend melayani dua klien dengan kebutuhan berbeda melalui satu basis kode (Unified REST API):
 
 ```text
-cmd/api/          Entry point REST API
-cmd/migrate/      Database migration runner
-cmd/seed/         Data seed
-internal/domain/  Entity dan aturan domain
-internal/modules/ Modul fitur backend
-internal/bootstrap/Database, logger, dan aplikasi Fiber
-internal/middleware/ Auth, RBAC, CORS, recovery, dan logging
-migrations/       SQL migration up/down
-docs/              Dokumentasi Swagger
+ ┌─────────────────────────┐               ┌─────────────────────────┐
+ │   Aplikasi Mobile Pasien│               │   Portal Web Admin/Staff│
+ │         (Flutter)       │               │        (Next.js)        │
+ └────────────┬────────────┘               └────────────┬────────────┘
+              │                                         │
+              │  /api/v1/patient/*                      │  /api/v1/admin/*
+              │  /api/v1/routines/*                     │  /api/v1/staff/*
+              │                                         │
+              └───────────────────┬─────────────────────┘
+                                  │
+                      ┌───────────▼───────────┐
+                      │   DSMES Aceh Backend  │
+                      │    (Go Fiber v3)      │
+                      └───────────┬───────────┘
+                                  │
+                      ┌───────────▼───────────┐
+                      │  PostgreSQL Database  │
+                      └───────────────────────┘
 ```
 
-## Prasyarat
+### Multi-Role Access Control (RBAC)
+* **Role `patient` (Mobile Flutter):** Digunakan oleh penderita diabetes melitus. Mengakses pencatatan glukosa mandiri, log makanan dan kalori, aktivitas fisik, jadwal pengingat (reminder/routine), kuis, dan pengisian survei penelitian.
+* **Role `staff` (Web Portal Puskesmas):** Digunakan oleh dokter/perawat di Puskesmas. Memantau tren gula darah populasi pasien terdaftar di wilayah fasilitasnya, melihat kepatuhan minum obat, dan menganalisis respons kuesioner pasien.
+* **Role `admin` (Web Portal Dinas/Superadmin):** Memiliki hak penuh atas konfigurasi sistem, data faskes, akun staff tenaga medis, data seluruh pasien, materi edukasi, bank soal assessment, serta instrumen survei penelitian (SUS & Kepuasan).
 
-- Go `1.26.4` atau lebih baru
-- PostgreSQL `15` atau `16`
-- Docker Compose (opsional)
-- Air (opsional untuk live reload)
+---
 
-## Konfigurasi Environment
+## Tech Stack & Pustaka Utama
 
-Salin template konfigurasi:
+* **Language:** Go `1.26.4`
+* **HTTP Framework:** Go Fiber `v3.3.0` (Fast HTTP router, zero memory allocation)
+* **ORM:** GORM `v1.31.2` dengan PostgreSQL driver (`pgx/v5`)
+* **Database:** PostgreSQL `15+`
+* **Authentication:** JWT `golang-jwt/jwt/v5` + Password hashing `bcrypt`
+* **Validation:** `go-playground/validator/v10`
+* **Configuration:** Viper (Twelve-factor app configuration)
+* **Logger:** Uber Zap (High-performance structured JSON logging)
+* **API Documentation:** Swaggo / Swagger UI OpenAPI spec
+* **Email Service:** Resend API (Pengiriman token OTP & reset password)
 
-```powershell
-Copy-Item .env.example .env
-```
+---
 
-Key yang tersedia:
+## Struktur Proyek & Clean Modular Pattern (`internal/`)
+
+Backend menggunakan pendekatan **Domain-Driven Modular Architecture**:
 
 ```text
-APP_NAME
-APP_ENV                 # development, staging, atau production
-APP_PORT
-APP_BASE_URL
-APP_ALLOWED_ORIGINS
-APP_TIMEZONE
-APP_READ_TIMEOUT
-APP_WRITE_TIMEOUT
-APP_IDLE_TIMEOUT
-
-DB_HOST
-DB_PORT
-DB_NAME
-DB_USER
-DB_PASSWORD
-DB_SSLMODE
-DB_MAX_IDLE_CONNS
-DB_MAX_OPEN_CONNS
-DB_CONN_MAX_LIFETIME_MINUTES
-
-JWT_SECRET
-JWT_ACCESS_TOKEN_TTL
-JWT_REFRESH_TOKEN_TTL
-JWT_ISSUER
-
-LOG_LEVEL
-LOG_FORMAT
-SWAGGER_ENABLED
-SWAGGER_HOST
-
-RESEND_API_KEY
-RESEND_FROM_EMAIL
-
-AI_CHATBOT
-AI_PROVIDER
-AI_MODEL
-AI_LOG_PROMPTS
+dsmes-backend/
+├── cmd/
+│   ├── api/
+│   │   ├── main.go              # Entry point bootstrap server
+│   │   └── routes.go            # Registrasi rute HTTP Fiber & middleware group
+│   ├── migrate/
+│   │   └── main.go              # CLI Runner migrasi database terstruktur
+│   └── seed/
+│       └── main.go              # CLI Seeder data awal (admin, faskes, instrumen)
+│
+├── internal/
+│   ├── domain/                  # Pure Core Domain Entities & Contract Enums
+│   │   ├── patient.go           # Struct Patient, Gender, AccountStatus
+│   │   ├── blood_sugar.go       # Struct BloodSugarLog, GlucoseSeverity
+│   │   ├── nutrition.go         # Struct MealLog, CalorieRecommendation
+│   │   ├── survey.go            # Struct Survey, Question, SurveyResponse
+│   │   ├── reminder.go          # Struct Routine, ReminderLog
+│   │   └── staff.go             # Struct Staff, StaffRole
+│   │
+│   ├── modules/                 # Feature Modules (Vertical Slicing)
+│   │   ├── auth/                # Login, Register, Refresh Token, OTP
+│   │   ├── patient/             # Profil, data medis, sosiodemografi, compliance
+│   │   ├── survey/              # Survey SUS & Kepuasan Pengguna
+│   │   ├── quiz/                # Bank soal, kuis pre/post-test
+│   │   ├── education/           # Artikel edukasi, video, tracking progress
+│   │   ├── nutrition/           # Database makanan, tracking kalori
+│   │   ├── reminder/            # Jadwal pengingat rutin harian
+│   │   ├── routine/             # Onboarding rutinitas pasien
+│   │   └── staff/               # Manajemen akun dan hak akses staff
+│   │
+│   ├── bootstrap/               # Inisialisasi Database, Logger, dan Fiber
+│   └── middleware/              # Auth JWT, RBAC Role Guard, CORS, Panic Recovery
+│
+├── migrations/                  # File migrasi SQL mentah (000001_...up.sql & down.sql)
+├── docs/                        # Generated Swagger JSON/YAML
+└── Dockerfile                   # Multi-stage production container build
 ```
 
-Jangan commit `.env`, password database, JWT secret, email key, atau AI key. User database runtime tidak harus menjadi owner tabel; jalankan migration dengan database owner/superuser jika diperlukan.
+### Anatomi Setiap Modul (`internal/modules/<fitur>/`)
+Setiap modul fitur terisolasi dengan struktur internal seragam:
+1. `interfaces.go`: Kontrak interface untuk `Repository` dan `Service`.
+2. `handler.go`: Layer HTTP. Mengurai request body, validasi payload, dan mengembalikan response JSON.
+3. `service.go`: Layer logika bisnis. Tempat kalkulasi medis, integrasi antar-domain, dan orchestration.
+4. `repository.go`: Layer akses data. Eksekusi query database GORM ke PostgreSQL.
+5. `dto.go`: Data Transfer Object untuk binding request dan response serializer.
 
-## Menjalankan Backend
+---
 
-```powershell
-go mod download
-go run ./cmd/api
-```
+## Standar Penamaan Variabel & Kode (Coding Standards)
 
-Dengan Air:
+Untuk menjaga konsistensi pada codebase Go:
 
-```powershell
-air
-```
+| Komponen | Standar | Contoh | Keterangan |
+| :--- | :--- | :--- | :--- |
+| **Exported Identifiers** | `PascalCase` | `PatientService`, `ListPatients` | Dapat diakses dari luar package |
+| **Unexported Identifiers**| `camelCase` | `patientRepo`, `calculateBMI` | Hanya dipakai internal package |
+| **Struct Fields (Go)** | `PascalCase` | `FullName`, `SmokingStatus` | Field pada model domain / DTO |
+| **JSON DTO Tag** | `snake_case` | `json:"smoking_status"` | Kunci JSON pada body request/response |
+| **Database Column** | `snake_case` | `date_of_birth`, `health_facility` | Nama kolom di tabel PostgreSQL |
+| **URL Endpoints** | `kebab-case` | `/api/v1/patient/meal-logs` | Standar rute REST API |
+| **Query Parameters** | `snake_case` | `?compliance_min=70&page=1` | Standar parameter pencarian URL |
 
-Health check:
+---
 
-```text
-GET http://localhost:8080/api/health
-```
+## Logika Medis & Single Source of Truth
 
-Swagger:
+**Penting:** Seluruh klien (Web Portal dan Mobile Flutter) **dilarang** mengkalkulasi status klinis atau skor kepatuhan secara independen di sisi klien. Backend menjadi **Single Source of Truth** untuk:
 
-```text
-http://localhost:8080/swagger/index.html
-```
+### 1. Klasifikasi Gula Darah (`domain.CalculateGlucoseStatus`)
+Glukosa darah diklasifikasikan berdasarkan waktu pengukuran (Puasa, 2 Jam PP, Sewaktu, Sebelum Tidur) ke dalam kategori:
+* `normal`: Rentang target aman
+* `hipoglikemia` & `severe_hypoglycemia`: Gula darah di bawah batas aman
+* `prediabetes` / `tinggi`: Gula darah di atas batas optimal
+* `hiperglikemia` & `severe_hyperglycemia`: Gula darah tinggi membutuhkan intervensi
 
-## Database Migration
+### 2. Kepatuhan Pasien (`complianceFromAggregates`)
+Skor kepatuhan dihitung harian dari agregat pencatatan:
+* `≥ 70%`: **Patuh** (Tercapai target pemantauan harian)
+* `40% - 69%`: **Kurang Patuh**
+* `< 40%`: **Tidak Patuh** (Perlu perhatian tenaga medis Puskesmas)
 
-Jalankan dari root `dsmes-backend` menggunakan user database yang memiliki hak mengubah schema:
+### 3. Kebutuhan Kalori Harian (Rumus DSMES)
+Dihitung otomatis berdasarkan jenis kelamin, tinggi badan, berat badan aktual, usia, dan tingkat aktivitas fisik pasien.
 
-```powershell
+---
+
+## Arsitektur Database, GORM & Migrasi
+
+### 1. Migrasi Terstruktur
+Migrasi dikelola melalui runner terpusat `cmd/migrate`. Versi migrasi dicatat pada tabel `dsmes_migrations`.
+```bash
+# Menjalankan migrasi database
 go run ./cmd/migrate
 ```
 
-Migration baru dicatat pada tabel `dsmes_migrations`. Jangan menjalankan migration production menggunakan user aplikasi yang tidak memiliki hak owner schema.
+### 2. Aturan Query GORM (Pencegahan SQL Ambiguity)
+Karena tabel-tabel di DSMES menggunakan soft-delete (`deleted_at`), setiap query yang menggabungkan beberapa tabel (`Joins` atau `Preload`) **wajib mencantumkan nama tabel secara eksplisit**.
 
-## CI/CD dan DevOps
+Contoh pola yang benar:
+```go
+// BENAR: Menggunakan kualifikasi nama tabel secara eksplisit
+db.Preload("Responses", func(db *gorm.DB) *gorm.DB {
+    return db.Where("survey_responses.deleted_at IS NULL").
+        Joins("JOIN patients p ON p.id = survey_responses.patient_id AND p.deleted_at IS NULL").
+        Where("p.health_facility = ?", facilityName)
+})
+```
+*Hindari menulis `Where("deleted_at IS NULL")` tanpa nama tabel pada query berelasi karena PostgreSQL akan mengembalikan `ERROR: column reference "deleted_at" is ambiguous` (HTTP 500).*
 
-Workflow CI/CD berada di:
+---
 
-```text
-.github/workflows/ci.yml
+## Konfigurasi Environment (`.env`)
+
+Buat file `.env` di folder root `dsmes-backend`:
+
+```env
+# Server
+APP_NAME=dsmes-backend
+APP_ENV=development
+APP_PORT=8080
+APP_BASE_URL=http://localhost:8080
+APP_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+APP_TIMEZONE=Asia/Jakarta
+
+# Database PostgreSQL
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=dsmes_db
+DB_USER=dsmes_user
+DB_PASSWORD=secret_password
+DB_SSLMODE=disable
+
+# JWT Authentication
+JWT_SECRET=super_secret_jwt_key_min_32_characters
+JWT_ACCESS_TOKEN_TTL=15m
+JWT_REFRESH_TOKEN_TTL=168h
+JWT_ISSUER=dsmes-backend
+
+# Resend Mail (OTP & Password Reset)
+RESEND_API_KEY=re_xxxxxxxxxxxx
+RESEND_FROM_EMAIL=no-reply@dsmes-aceh.id
+
+# Dokumentasi Swagger
+SWAGGER_ENABLED=true
+SWAGGER_HOST=localhost:8080
 ```
 
-Pipeline berjalan pada setiap push ke branch `main` atau `develop`, serta setiap Pull Request.
+---
 
-### Continuous Integration (CI)
+## Konfigurasi Docker & Containerisasi
 
-Job `test` menjalankan pemeriksaan berikut pada runner Ubuntu:
+### Multi-stage Dockerfile (`Dockerfile`)
+* **Stage 1 (Builder):** Menggunakan `golang:1.24-alpine`, meng-compile binary statis `api` dan `migrate`, serta menghasilkan Swagger docs.
+* **Stage 2 (Runtime):** Menggunakan `alpine:latest` dengan user non-root `appuser`.
+* **Entrypoint (`entrypoint.sh`):** Secara otomatis mengeksekusi migrasi database (`/app/migrate`) sebelum menyalakan API server (`/app/api`).
 
-1. Checkout source code.
-2. Setup Go sesuai versi yang ditentukan workflow.
-3. Menjalankan `golangci-lint`.
-4. Menjalankan `go vet ./...`.
-5. Menjalankan `go test -race -count=1 ./...`.
-6. Build binary API dan migration runner.
-7. Generate Swagger documentation.
-
-Pull Request harus melewati job CI sebelum perubahan digabungkan.
-
-### Container Build
-
-Setelah job CI berhasil, job `docker`:
-
-- Membuat multi-stage Docker image menggunakan `Dockerfile`.
-- Menghasilkan binary statis untuk Linux.
-- Menyertakan server, migration runner, migrations, dan Swagger docs.
-- Memberi tag image berdasarkan branch, Pull Request, dan commit SHA.
-- Push image ke GitHub Container Registry (`ghcr.io`) untuk push non-PR.
-- Menggunakan GitHub Actions cache untuk mempercepat build berikutnya.
-
-Pull Request hanya melakukan build image tanpa push ke registry.
-
-### Continuous Deployment (CD)
-
-Deployment production hanya berjalan ketika push berhasil ke branch `main`.
-
-Alurnya:
-
-```text
-Push ke main
-    -> CI lint, vet, test, dan build
-    -> Build Docker image
-    -> Push image ke GHCR
-    -> SSH ke VPS
-    -> Pull image berdasarkan commit SHA
-    -> docker compose up -d
-    -> Health check API
-    -> Rollback ke image sebelumnya jika health check gagal
-```
-
-Deployment menggunakan:
-
-```text
-docker-compose.production.yml
-```
-
-Health check production:
-
-```text
-GET http://127.0.0.1:8080/api/health
-```
-
-Pipeline menunggu health check hingga 30 percobaan. Jika service tidak sehat, container sebelumnya digunakan kembali bila image sebelumnya tersedia.
-
-### GitHub Actions Secrets
-
-Secret berikut dikonfigurasi pada GitHub Actions, terutama environment `production`:
-
-```text
-VPS_HOST
-VPS_USER
-VPS_SSH_KEY
-VPS_KNOWN_HOSTS
-GHCR_DEPLOY_TOKEN
-```
-
-`GITHUB_TOKEN` disediakan otomatis oleh GitHub Actions untuk push ke GHCR sesuai permission workflow. Jangan menulis nilai secret di workflow, source code, README, atau log.
-
-### Docker Runtime
-
-`Dockerfile` menggunakan dua stage:
-
-```text
-builder  -> compile server, migrate, dan generate Swagger
-runtime  -> Alpine minimal dengan user non-root
-```
-
-Container menjalankan `/app/migrate` sebelum `/app/server` melalui `entrypoint.sh`. Migration harus idempotent dan database user yang digunakan container harus memiliki hak schema yang diperlukan. Jika runtime user tidak memiliki hak `ALTER TABLE`, gunakan migration job terpisah dengan database owner sebelum deployment aplikasi.
-
-### Local DevOps Commands
-
-```powershell
-# Menyalakan PostgreSQL local
+### Menjalankan dengan Docker Compose
+```bash
+# Menjalankan PostgreSQL lokal
 docker compose up -d postgres
 
-# Menjalankan seluruh service Docker
+# Menjalankan seluruh stack backend
 docker compose --profile app up -d
+```
 
-# Melihat log service
-docker compose logs -f
+---
 
-# Build image local
-docker build -t dsmes-backend:local .
+## Konfigurasi CI/CD Pipeline & Deployment VPS
 
-# Menjalankan quality checks yang sama secara manual
+File workflow CI/CD berada di `.github/workflows/ci.yml`. Pipeline berjalan otomatis pada event `push` dan `pull_request`:
+
+### 1. Continuous Integration (CI)
+* Memeriksa static analysis kode (`go vet ./...`).
+* Menjalankan unit & integration test dengan race detection (`go test -race -count=1 ./...`).
+* Memeriksa kelulusan kompilasi binary `cmd/api` dan `cmd/migrate`.
+
+### 2. Continuous Deployment (CD ke VPS)
+Ketika commit di-merge ke branch `main`:
+1. GitHub Actions meng-compile Docker Image dan mempublikasikannya ke GitHub Container Registry (`ghcr.io`).
+2. Melakukan koneksi SSH ke VPS produksi.
+3. Menarik (*pull*) image terbaru dan menjalankan zero-downtime update via `docker-compose.production.yml`.
+4. Menguji health check endpoint (`GET /api/health`). Jika gagal setelah 30x percobaan, pipeline secara otomatis melakukan rollback ke image stabil sebelumnya.
+
+---
+
+## Instalasi Lokal & Skrip Verifikasi
+
+### Menjalankan Backend Lokal
+```bash
+# 1. Download module dependencies
+go mod download
+
+# 2. Jalankan migrasi database
+go run ./cmd/migrate
+
+# 3. Jalankan REST API server
+go run ./cmd/api
+```
+Layanan aktif pada:
+* **API Root:** `http://localhost:8080`
+* **Health Check:** `http://localhost:8080/api/health`
+* **Swagger UI:** `http://localhost:8080/swagger/index.html`
+
+### Menjalankan Uji Mutu Kode (Self-Verification)
+```bash
+# 1. Format & vet
 go vet ./...
-go test -race -count=1 ./...
-go build ./cmd/api
-```
 
-Untuk shortcut yang tersedia, gunakan `make help`. Target penting meliputi `make test`, `make lint`, `make migrate`, `make docker-up`, dan `make docker-build`.
-
-## Testing dan Build
-
-```powershell
+# 2. Jalankan test suite
 go test ./...
-go build -o bin/api ./cmd/api
-```
 
-API tidak menyimpan business logic di frontend. Client seharusnya menggunakan response backend untuk klasifikasi gula darah, rekomendasi, statistik, dan data monitoring.
+# 3. Kompilasi binary API
+go build -o /dev/null ./cmd/api
+```
