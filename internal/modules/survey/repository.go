@@ -85,7 +85,7 @@ func (r *surveyRepository) List(ctx context.Context, surveyType string, status s
 	offset := (page - 1) * limit
 	err := q.Preload("Questions", "deleted_at IS NULL").
 		Preload("Responses", func(db *gorm.DB) *gorm.DB {
-			qq := db.Where("deleted_at IS NULL")
+			qq := db.Where("survey_responses.deleted_at IS NULL")
 			if facilityName != "" {
 				qq = qq.Joins("JOIN patients p ON p.id = survey_responses.patient_id AND p.deleted_at IS NULL").
 					Where("p.health_facility = ?", facilityName)
