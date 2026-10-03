@@ -320,14 +320,22 @@ func (r *educationRepository) ReplaceSections(ctx context.Context, articleID str
 }
 
 func (r *educationRepository) DeleteArticle(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Model(&domain.Article{}).Where("id = ?", id).Update("deleted_at", gorm.Expr("NOW()"))
-	if result.Error != nil {
-		return errs.NewInternal("failed to soft delete article", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return errs.NewNotFound("article not found")
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&domain.Article{}).Where("id = ?", id).Update("deleted_at", gorm.Expr("NOW()"))
+		if result.Error != nil {
+			return errs.NewInternal("failed to soft delete article", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return errs.NewNotFound("article not found")
+		}
+		// Education notifications for this article must disappear from patients' inbox.
+		if err := tx.Model(&domain.NotificationLog{}).
+			Where("article_id = ? AND deleted_at IS NULL", id).
+			Update("deleted_at", gorm.Expr("NOW()")).Error; err != nil {
+			return errs.NewInternal("failed to remove article notifications", err)
+		}
+		return nil
+	})
 }
 
 func (r *educationRepository) GetStats(ctx context.Context) (*EducationStats, error) {

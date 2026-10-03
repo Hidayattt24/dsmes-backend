@@ -108,6 +108,7 @@ func (r *reminderRepository) FindNotificationsByPatientID(ctx context.Context, p
 	var items []domain.NotificationLog
 	err := r.db.WithContext(ctx).
 		Where("patient_id = ? AND deleted_at IS NULL", patientID).
+		Where("article_id IS NULL OR article_id IN (SELECT id FROM articles WHERE deleted_at IS NULL)").
 		Order("notified_at DESC").
 		Limit(50).
 		Find(&items).Error
