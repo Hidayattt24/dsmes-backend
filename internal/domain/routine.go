@@ -10,6 +10,7 @@ const (
 	RoutineJalanPagi RoutineType = "Jalan_Pagi"
 	RoutineMinumAir  RoutineType = "Minum_Air"
 	RoutineCekGula   RoutineType = "Cek_Gula"
+	RoutineOlahraga  RoutineType = "Olahraga"
 )
 
 type WaktuType string
@@ -46,7 +47,6 @@ type Routine struct {
 	BaseFrequency   string      `gorm:"type:varchar(50);not null;default:'Daily'" json:"base_frequency"`
 	IsActive        bool        `gorm:"not null;default:true" json:"is_active"`
 
-
 	// Relations
 	Patient      *Patient      `gorm:"foreignKey:PatientID" json:"patient,omitempty"`
 	RoutineTimes []RoutineTime `gorm:"foreignKey:RoutineID;constraint:OnDelete:CASCADE" json:"routine_times,omitempty"`
@@ -63,6 +63,9 @@ type RoutineTime struct {
 	ScheduledTime  *string     `gorm:"type:time" json:"scheduled_time"` // time string e.g. "08:00:00"
 	Status         WaktuStatus `gorm:"type:waktu_status_enum;not null;default:Unset" json:"status"`
 	ReminderActive bool        `gorm:"not null;default:false" json:"reminder_active"`
+
+	// Relations
+	Routine *Routine `gorm:"foreignKey:RoutineID" json:"routine,omitempty"`
 }
 
 func (RoutineTime) TableName() string { return "routine_times" }

@@ -310,7 +310,11 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 		val := latestBS.GlucoseValue
 		summary.LatestBloodSugar = &val
 		summary.LatestBloodSugarTime = &latestBS.MeasuredAt
-		statusStr := string(latestBS.Category)
+		mType := domain.NormalizeMeasurementType(string(latestBS.MeasurementTimeType))
+		mTypeStr := string(mType)
+		summary.LatestBloodSugarType = &mTypeStr
+		classified := domain.ClassifyBloodGlucose(val, mType, nil)
+		statusStr := string(classified.Category)
 		summary.LatestBloodSugarStatus = &statusStr
 	} else {
 		// Fallback to patient_measurements table
@@ -323,7 +327,15 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 			val := *latestM.BloodSugar
 			summary.LatestBloodSugar = &val
 			summary.LatestBloodSugarTime = &latestM.MeasuredAt
-			st := string(domain.CalculateGlucoseStatus(val, domain.TimeSewaktu))
+			rawType := ""
+			if latestM.BloodSugarTimeType != nil {
+				rawType = *latestM.BloodSugarTimeType
+			}
+			mType := domain.NormalizeMeasurementType(rawType)
+			mTypeStr := string(mType)
+			summary.LatestBloodSugarType = &mTypeStr
+			classified := domain.ClassifyBloodGlucose(val, mType, nil)
+			st := string(classified.Category)
 			summary.LatestBloodSugarStatus = &st
 		}
 	}
@@ -439,23 +451,20 @@ func (r *patientRepository) GetPatientSummaries(ctx context.Context, patientIDs 
 		PatientID    string
 		GlucoseValue int
 		MeasuredAt   time.Time
+		TimeType     string
 		Status       string
 	}
 	var bsResults []BSResult
 	r.db.WithContext(ctx).Raw(`
-		SELECT DISTINCT ON (patient_id) patient_id, glucose_value, measured_at, status
+		SELECT DISTINCT ON (patient_id) patient_id, glucose_value, measured_at, time_type, status
 		FROM (
-			SELECT bs.patient_id, bs.glucose_value, bs.measured_at, bs.status::text
+			SELECT bs.patient_id, bs.glucose_value, bs.measured_at, bs.measurement_time_type::text AS time_type, bs.status::text
 			FROM blood_sugar_logs bs
 			WHERE bs.patient_id IN ? AND bs.deleted_at IS NULL
 			UNION ALL
 			SELECT pm.patient_id, pm.blood_sugar AS glucose_value, pm.measured_at,
-				CASE
-					WHEN pm.blood_sugar < 70 THEN 'rendah'
-					WHEN pm.blood_sugar >= 200 THEN 'sangat_tinggi'
-					WHEN pm.blood_sugar >= 140 THEN 'tinggi'
-					ELSE 'normal'
-				END AS status
+				COALESCE(pm.blood_sugar_time_type, 'sewaktu') AS time_type,
+				'normal' AS status
 			FROM patient_measurements pm
 			WHERE pm.patient_id IN ? AND pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 AND pm.deleted_at IS NULL
 		) combined
@@ -566,11 +575,15 @@ func (r *patientRepository) GetPatientSummaries(ctx context.Context, patientIDs 
 	for _, pid := range patientIDs {
 		summary := &PatientSummaryData{}
 
-		if bs, ok := bsMap[pid]; ok {
+		if bs, ok := bsMap[pid]; ok && bs.GlucoseValue > 0 {
 			val := bs.GlucoseValue
 			summary.LatestBloodSugar = &val
 			summary.LatestBloodSugarTime = &bs.MeasuredAt
-			statusStr := bs.Status
+			mType := domain.NormalizeMeasurementType(bs.TimeType)
+			mTypeStr := string(mType)
+			summary.LatestBloodSugarType = &mTypeStr
+			classified := domain.ClassifyBloodGlucose(val, mType, nil)
+			statusStr := string(classified.Category)
 			summary.LatestBloodSugarStatus = &statusStr
 		}
 

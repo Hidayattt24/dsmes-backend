@@ -34,15 +34,15 @@ func NewAuthService(repo AuthRepository, jwt *jwtpkg.Manager, email email.EmailS
 func (s *authService) StaffLogin(ctx context.Context, req StaffLoginRequest) (*LoginResponse, error) {
 	staff, err := s.repo.FindStaffByEmail(ctx, req.Email)
 	if err != nil {
-		return nil, errs.NewUnauthorized("invalid email or password")
+		return nil, errs.NewUnauthorized("Email tidak terdaftar")
 	}
 
 	if staff.Status == StatusNonaktif {
-		return nil, errs.NewForbidden("account is deactivated — contact administrator")
+		return nil, errs.NewForbidden("Akun Anda telah dinonaktifkan — hubungi administrator")
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(staff.PasswordHash), []byte(req.Password)); err != nil {
-		return nil, errs.NewUnauthorized("invalid email or password")
+		return nil, errs.NewUnauthorized("Kata sandi yang Anda masukkan salah")
 	}
 
 	tokens, err := s.jwt.GenerateTokenPair(staff.ID, staff.Email, string(staff.Role))

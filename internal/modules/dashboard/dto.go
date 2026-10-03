@@ -109,9 +109,10 @@ type PopulationMetricsResponse struct {
 // PatientContribution lists a patient and how many logs they contributed within
 // the dashboard range. Used to show "which patients have data" under each card.
 type PatientContribution struct {
-	PatientID string `json:"patient_id"`
-	FullName  string `json:"full_name"`
-	Count     int64  `json:"count"`
+	PatientID       string `json:"patient_id"`
+	FullName        string `json:"full_name"`
+	ProfilePhotoURL string `json:"profile_photo_url"`
+	Count           int64  `json:"count"`
 }
 
 type TrendPatient struct {

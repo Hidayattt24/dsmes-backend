@@ -148,6 +148,7 @@ type PatientResponse struct {
 	// Summary statistics fields
 	LatestBloodSugar       *int               `json:"latest_blood_sugar,omitempty"`
 	LatestBloodSugarTime   *string            `json:"latest_blood_sugar_time,omitempty"`
+	LatestBloodSugarType   *string            `json:"latest_blood_sugar_type,omitempty"`
 	LatestBloodSugarStatus *string            `json:"latest_blood_sugar_status,omitempty"`
 	AverageBloodSugar      *float64           `json:"average_blood_sugar,omitempty"`
 	LatestWeight           *float64           `json:"latest_weight,omitempty"`
@@ -207,6 +208,7 @@ type PatientActivityAnalyticsResponse struct {
 type PatientSummaryData struct {
 	LatestBloodSugar       *int       `json:"latest_blood_sugar,omitempty"`
 	LatestBloodSugarTime   *time.Time `json:"latest_blood_sugar_time,omitempty"`
+	LatestBloodSugarType   *string    `json:"latest_blood_sugar_type,omitempty"`
 	LatestBloodSugarStatus *string    `json:"latest_blood_sugar_status,omitempty"`
 	AverageBloodSugar      *float64   `json:"average_blood_sugar,omitempty"`
 	LatestWeight           *float64   `json:"latest_weight,omitempty"`

@@ -17,9 +17,10 @@ func TestClassifyGDP(t *testing.T) {
 		expected GlucoseCategory
 	}{
 		{"GDP 65 (hypoglycemia)", 65, CategoryHypoglycemia},
+		{"GDP 75 (low_warning)", 75, CategoryLowWarning},
 		{"GDP 90 (normal)", 90, CategoryNormal},
-		{"GDP 110 (prediabetes)", 110, CategoryPrediabetes},
-		{"GDP 135 (hyperglycemia)", 135, CategoryHyperglycemia},
+		{"GDP 150 (elevated)", 150, CategoryElevated},
+		{"GDP 200 (hyperglycemia)", 200, CategoryHyperglycemia},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -37,8 +38,9 @@ func TestClassifyGD2PP(t *testing.T) {
 		val      int
 		expected GlucoseCategory
 	}{
+		{"GD2PP 60 (hypoglycemia)", 60, CategoryHypoglycemia},
 		{"GD2PP 130 (normal)", 130, CategoryNormal},
-		{"GD2PP 160 (prediabetes)", 160, CategoryPrediabetes},
+		{"GD2PP 170 (normal)", 170, CategoryNormal},
 		{"GD2PP 230 (hyperglycemia)", 230, CategoryHyperglycemia},
 	}
 	for _, tt := range tests {
@@ -57,8 +59,9 @@ func TestClassifyGDS(t *testing.T) {
 		val      int
 		expected GlucoseCategory
 	}{
+		{"GDS 60 (hypoglycemia)", 60, CategoryHypoglycemia},
 		{"GDS 100 (normal)", 100, CategoryNormal},
-		{"GDS 180 (normal)", 180, CategoryNormal},
+		{"GDS 160 (prediabetes/tgt)", 160, CategoryPrediabetes},
 		{"GDS 250 (hyperglycemia)", 250, CategoryHyperglycemia},
 	}
 	for _, tt := range tests {
@@ -77,7 +80,8 @@ func TestClassifyBeforeBed(t *testing.T) {
 		val      int
 		expected GlucoseCategory
 	}{
-		{"BeforeBed 90 (target)", 90, CategoryTarget},
+		{"BeforeBed 80 (hypoglycemia)", 80, CategoryHypoglycemia},
+		{"BeforeBed 120 (normal)", 120, CategoryNormal},
 		{"BeforeBed 160 (elevated)", 160, CategoryElevated},
 		{"BeforeBed 220 (hyperglycemia)", 220, CategoryHyperglycemia},
 	}
@@ -107,7 +111,9 @@ func TestClassifyBeforeMealTarget(t *testing.T) {
 		val      int
 		expected GlucoseCategory
 	}{
-		{"BeforeMeal 85 (target)", 85, CategoryTarget},
+		{"BeforeMeal 65 (hypoglycemia)", 65, CategoryHypoglycemia},
+		{"BeforeMeal 75 (low_warning)", 75, CategoryLowWarning},
+		{"BeforeMeal 85 (normal)", 85, CategoryNormal},
 		{"BeforeMeal 150 (elevated)", 150, CategoryElevated},
 		{"BeforeMeal 210 (hyperglycemia)", 210, CategoryHyperglycemia},
 	}

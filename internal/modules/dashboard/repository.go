@@ -56,8 +56,12 @@ func (r *dashboardRepository) GetAdminStats(ctx context.Context) (*AdminDashboar
 	var totalMealLogs int64
 	var totalActivityLogs int64
 	var totalMedicationLogs int64
+	var routineActivityCount int64
+	var freeActivityCount int64
 	_ = r.db.WithContext(ctx).Model(&domain.MealLog{}).Where("deleted_at IS NULL").Count(&totalMealLogs)
-	_ = r.db.WithContext(ctx).Model(&domain.RoutineLogEntry{}).Where("deleted_at IS NULL").Count(&totalActivityLogs)
+	_ = r.db.WithContext(ctx).Model(&domain.RoutineLogEntry{}).Where("deleted_at IS NULL").Count(&routineActivityCount)
+	_ = r.db.WithContext(ctx).Model(&domain.PatientActivityLog{}).Where("deleted_at IS NULL").Count(&freeActivityCount)
+	totalActivityLogs = routineActivityCount + freeActivityCount
 	_ = r.db.WithContext(ctx).Model(&domain.DailyReminderLog{}).Where("deleted_at IS NULL").Count(&totalMedicationLogs)
 
 	var avgBloodSugar float64
@@ -68,10 +72,12 @@ func (r *dashboardRepository) GetAdminStats(ctx context.Context) (*AdminDashboar
 	var todaySugarLogs int64
 	var todayMealLogs int64
 	var todayCheckins int64
+	var todayFreeActs int64
 	_ = r.db.WithContext(ctx).Model(&domain.BloodSugarLog{}).Where("measured_at >= CURRENT_DATE AND measured_at < (CURRENT_DATE + INTERVAL '1 day') AND deleted_at IS NULL").Count(&todaySugarLogs)
 	_ = r.db.WithContext(ctx).Model(&domain.MealLog{}).Where("logged_at >= CURRENT_DATE AND logged_at < (CURRENT_DATE + INTERVAL '1 day') AND deleted_at IS NULL").Count(&todayMealLogs)
 	_ = r.db.WithContext(ctx).Model(&domain.RoutineLogEntry{}).Where("logged_at >= CURRENT_DATE AND logged_at < (CURRENT_DATE + INTERVAL '1 day') AND deleted_at IS NULL").Count(&todayCheckins)
-	todayRecords := todaySugarLogs + todayMealLogs + todayCheckins
+	_ = r.db.WithContext(ctx).Model(&domain.PatientActivityLog{}).Where("logged_at >= CURRENT_DATE AND logged_at < (CURRENT_DATE + INTERVAL '1 day') AND deleted_at IS NULL").Count(&todayFreeActs)
+	todayRecords := todaySugarLogs + todayMealLogs + todayCheckins + todayFreeActs
 
 	var newRegistrations int64
 	if err := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("created_at >= CURRENT_DATE AND created_at < (CURRENT_DATE + INTERVAL '1 day') AND deleted_at IS NULL").Count(&newRegistrations).Error; err != nil {
@@ -208,61 +214,71 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, healthFacility 
 	}
 
 	// Fetch priority patients (sangat_tinggi or rendah in last 7 days)
-	var priorityPatientsRaw []struct {
-		ID                  string
-		FullName            string
-		Nickname            string
-		Email               string
-		WhatsappNumber      string
-		DiabetesType        string
-		Compliance          int
-		LastActiveAt        *gorm.DeletedAt // map to nullable time
-		GlucoseValue        int
-		LatestGlucoseStatus string
+	type RawPriorityPatient struct {
+		ID             string
+		FullName       string
+		Nickname       string
+		Email          string
+		WhatsappNumber string
+		DiabetesType   string
+		Compliance     int
+		LastActiveAt   *gorm.DeletedAt
+		GlucoseValue   int
+		TimeType       string
 	}
+	var priorityPatientsRaw []RawPriorityPatient
 
 	err = r.db.WithContext(ctx).Raw(`
 		SELECT DISTINCT ON (combined.patient_id) 
 			p.id, p.full_name, p.nickname, p.email, p.whatsapp_number, p.diabetes_type, p.compliance, p.last_active_at,
-			combined.glucose_value, combined.status AS latest_glucose_status
+			combined.glucose_value, combined.time_type
 		FROM patients p
 		JOIN (
-			SELECT bs.patient_id, bs.glucose_value, bs.measured_at, bs.status::text
+			SELECT bs.patient_id, bs.glucose_value, bs.measured_at, bs.measurement_time_type::text AS time_type
 			FROM blood_sugar_logs bs
 			WHERE bs.deleted_at IS NULL AND bs.measured_at >= NOW() - INTERVAL '7 days'
 			UNION ALL
 			SELECT pm.patient_id, pm.blood_sugar AS glucose_value, pm.measured_at,
-				COALESCE(pm.status, 'normal')
+				COALESCE(pm.blood_sugar_time_type, 'sewaktu') AS time_type
 			FROM patient_measurements pm
 			WHERE pm.blood_sugar IS NOT NULL AND pm.blood_sugar > 0 AND pm.deleted_at IS NULL AND pm.measured_at >= NOW() - INTERVAL '7 days'
 		) combined ON combined.patient_id = p.id
 		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) 
 		  AND p.deleted_at IS NULL 
-		  AND (combined.status IN ('hypoglycemia', 'prediabetes', 'elevated', 'hyperglycemia') OR combined.glucose_value >= 140 OR combined.glucose_value <= 70)
 		ORDER BY combined.patient_id, combined.measured_at DESC
 	`, healthFacility, healthFacility).Scan(&priorityPatientsRaw).Error
 
 	var priorityPatients []PriorityPatient
 	if err == nil {
 		for _, p := range priorityPatientsRaw {
-			var activeTime *time.Time
-			if p.LastActiveAt != nil && p.LastActiveAt.Valid {
-				activeTime = &p.LastActiveAt.Time
+			if p.GlucoseValue <= 0 {
+				continue
 			}
 			val := p.GlucoseValue
-			priorityPatients = append(priorityPatients, PriorityPatient{
-				ID:                  p.ID,
-				FullName:            p.FullName,
-				Nickname:            p.Nickname,
-				Email:               p.Email,
-				WhatsappNumber:      p.WhatsappNumber,
-				DiabetesType:        p.DiabetesType,
-				Compliance:          p.Compliance,
-				LastActiveAt:        activeTime,
-				PriorityReason:      "Log kadar gula darah berada di tingkat kritis (" + p.LatestGlucoseStatus + ") dalam 7 hari terakhir",
-				LatestGlucose:       &val,
-				LatestGlucoseStatus: p.LatestGlucoseStatus,
-			})
+			mType := domain.NormalizeMeasurementType(p.TimeType)
+			classified := domain.ClassifyBloodGlucose(val, mType, nil)
+
+			// Only include if warning or danger (hypo, low warning, elevated, hyperglycemia)
+			if classified.Severity == domain.SeverityDanger || classified.Severity == domain.SeverityWarning {
+				var activeTime *time.Time
+				if p.LastActiveAt != nil && p.LastActiveAt.Valid {
+					activeTime = &p.LastActiveAt.Time
+				}
+				statusLabel := classified.CategoryLabel
+				priorityPatients = append(priorityPatients, PriorityPatient{
+					ID:                  p.ID,
+					FullName:            p.FullName,
+					Nickname:            p.Nickname,
+					Email:               p.Email,
+					WhatsappNumber:      p.WhatsappNumber,
+					DiabetesType:        p.DiabetesType,
+					Compliance:          p.Compliance,
+					LastActiveAt:        activeTime,
+					PriorityReason:      "Log gula darah berada pada status " + statusLabel + " (" + fmt.Sprintf("%d mg/dL", val) + ") dalam 7 hari terakhir",
+					LatestGlucose:       &val,
+					LatestGlucoseStatus: string(classified.Category),
+				})
+			}
 		}
 	}
 
@@ -335,13 +351,24 @@ func (r *dashboardRepository) GetStaffStats(ctx context.Context, healthFacility 
 	qMeal.Count(&totalMealLogs)
 
 	var totalActivityLogs int64
+	var routineActLogs int64
+	var freeActLogs int64
 	qAct := r.db.WithContext(ctx).Model(&domain.RoutineLogEntry{}).
 		Joins("JOIN patients p ON p.id = routine_log_entries.patient_id").
 		Where("routine_log_entries.deleted_at IS NULL AND p.deleted_at IS NULL")
 	if healthFacility != "" {
 		qAct = qAct.Where("p.health_facility = ?", healthFacility)
 	}
-	qAct.Count(&totalActivityLogs)
+	qAct.Count(&routineActLogs)
+
+	qFreeAct := r.db.WithContext(ctx).Model(&domain.PatientActivityLog{}).
+		Joins("JOIN patients p ON p.id = patient_activity_logs.patient_id").
+		Where("patient_activity_logs.deleted_at IS NULL AND p.deleted_at IS NULL")
+	if healthFacility != "" {
+		qFreeAct = qFreeAct.Where("p.health_facility = ?", healthFacility)
+	}
+	qFreeAct.Count(&freeActLogs)
+	totalActivityLogs = routineActLogs + freeActLogs
 
 	var totalMedicationLogs int64
 	qMed := r.db.WithContext(ctx).Model(&domain.DailyReminderLog{}).
@@ -404,6 +431,8 @@ func (r *dashboardRepository) GetActivityChart(ctx context.Context) ([]ActivityC
 			SELECT patient_id, DATE(measured_at) AS dt FROM blood_sugar_logs WHERE deleted_at IS NULL AND measured_at >= NOW() - INTERVAL '7 days'
 			UNION
 			SELECT patient_id, DATE(logged_at) AS dt FROM meal_logs WHERE deleted_at IS NULL AND logged_at >= NOW() - INTERVAL '7 days'
+			UNION
+			SELECT patient_id, DATE(logged_at) AS dt FROM patient_activity_logs WHERE deleted_at IS NULL AND logged_at >= NOW() - INTERVAL '7 days'
 			UNION
 			SELECT patient_id, DATE(logged_at) AS dt FROM routine_log_entries WHERE deleted_at IS NULL AND logged_at >= NOW() - INTERVAL '7 days'
 			UNION
@@ -604,12 +633,12 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, healthFa
 
 	// Per-patient contributions so each card can list which patients have data.
 	foodPatientSQL := fmt.Sprintf(`
-		SELECT p.id AS patient_id, p.full_name, COUNT(*) AS count
+		SELECT p.id AS patient_id, p.full_name, COALESCE(p.profile_photo_url, '') AS profile_photo_url, COUNT(*) AS count
 		FROM meal_logs ml
 		JOIN patients p ON p.id = ml.patient_id
 		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND ml.deleted_at IS NULL AND p.deleted_at IS NULL
 		AND ml.logged_at >= NOW() - INTERVAL '%d days'
-		GROUP BY p.id, p.full_name
+		GROUP BY p.id, p.full_name, p.profile_photo_url
 		ORDER BY count DESC
 	`, rangeDays)
 	foodPatients, err := r.scanPatientContributions(ctx, healthFacility, foodPatientSQL)
@@ -618,7 +647,7 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, healthFa
 	}
 
 	activityPatientSQL := fmt.Sprintf(`
-		SELECT p.id AS patient_id, p.full_name, COUNT(*) AS count
+		SELECT p.id AS patient_id, p.full_name, COALESCE(p.profile_photo_url, '') AS profile_photo_url, COUNT(*) AS count
 		FROM (
 			SELECT pal.patient_id
 			FROM patient_activity_logs pal
@@ -630,7 +659,7 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, healthFa
 		) act
 		JOIN patients p ON p.id = act.patient_id
 		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND p.deleted_at IS NULL
-		GROUP BY p.id, p.full_name
+		GROUP BY p.id, p.full_name, p.profile_photo_url
 		ORDER BY count DESC
 	`, rangeDays, rangeDays)
 	activityPatients, err := r.scanPatientContributions(ctx, healthFacility, activityPatientSQL)
@@ -639,13 +668,13 @@ func (r *dashboardRepository) GetPopulationMetrics(ctx context.Context, healthFa
 	}
 
 	medicationPatientSQL := fmt.Sprintf(`
-		SELECT p.id AS patient_id, p.full_name, COUNT(*) AS count
+		SELECT p.id AS patient_id, p.full_name, COALESCE(p.profile_photo_url, '') AS profile_photo_url, COUNT(*) AS count
 		FROM daily_reminder_logs drl
 		JOIN reminders r ON r.id = drl.reminder_id
 		JOIN patients p ON p.id = r.patient_id
 		WHERE (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND drl.deleted_at IS NULL AND p.deleted_at IS NULL
 		AND drl.log_date >= CURRENT_DATE - INTERVAL '%d days'
-		GROUP BY p.id, p.full_name
+		GROUP BY p.id, p.full_name, p.profile_photo_url
 		ORDER BY count DESC
 	`, rangeDays)
 	medicationPatients, err := r.scanPatientContributions(ctx, healthFacility, medicationPatientSQL)

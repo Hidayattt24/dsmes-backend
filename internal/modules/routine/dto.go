@@ -89,6 +89,7 @@ type ActivityLogResponse struct {
 	ActivityName    string                  `json:"activity_name"`
 	DurationMinutes int                     `json:"duration_minutes"`
 	Intensity       string                  `json:"intensity"`
+	CaloriesBurned  float64                 `json:"calories_burned"`
 	ScheduledTime   *string                 `json:"scheduled_time"`
 	Status          domain.RoutineLogStatus `json:"status"`
 	LoggedAt        string                  `json:"logged_at"`

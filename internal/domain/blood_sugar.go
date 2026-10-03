@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -69,6 +68,7 @@ type GlucoseCategory string
 
 const (
 	CategoryHypoglycemia  GlucoseCategory = "hypoglycemia"
+	CategoryLowWarning    GlucoseCategory = "low_warning"
 	CategoryNormal        GlucoseCategory = "normal"
 	CategoryTarget        GlucoseCategory = "target"
 	CategoryPrediabetes   GlucoseCategory = "prediabetes"
@@ -120,42 +120,49 @@ var categoryInfo = map[GlucoseCategory]CategoryInfo{
 		Label:       "Hipoglikemia",
 		Color:       "#DC2626",
 		Severity:    SeverityDanger,
-		Description: "Kadar gula darah di bawah rentang normal. Memerlukan tindakan segera.",
+		Description: "Kadar gula darah terlalu rendah. Memerlukan tindakan segera.",
+	},
+	CategoryLowWarning: {
+		Category:    CategoryLowWarning,
+		Label:       "Waspada Rendah",
+		Color:       "#F59E0B",
+		Severity:    SeverityWarning,
+		Description: "Kadar gula darah mendekati batas bawah normal. Waspadai gejala hipoglikemia.",
 	},
 	CategoryNormal: {
 		Category:    CategoryNormal,
 		Label:       "Normal",
 		Color:       "#10B981",
 		Severity:    SeverityNormal,
-		Description: "Kadar gula darah berada dalam rentang normal.",
+		Description: "Kadar gula darah berada dalam target ideal / terkontrol.",
 	},
 	CategoryTarget: {
 		Category:    CategoryTarget,
-		Label:       "Target",
+		Label:       "Normal",
 		Color:       "#10B981",
 		Severity:    SeverityNormal,
-		Description: "Kadar gula darah dalam rentang target pengelolaan diabetes.",
+		Description: "Kadar gula darah dalam rentang target aman pengelolaan diabetes.",
 	},
 	CategoryPrediabetes: {
 		Category:    CategoryPrediabetes,
-		Label:       "Prediabetes",
+		Label:       "Waspada",
 		Color:       "#F59E0B",
 		Severity:    SeverityWarning,
-		Description: "Kadar gula darah berada di rentang prediabetes. Risiko berkembang menjadi diabetes.",
+		Description: "Kadar gula darah berada di atas target ideal (toleransi glukosa terganggu / prediabetes).",
 	},
 	CategoryElevated: {
 		Category:    CategoryElevated,
-		Label:       "Elevated",
-		Color:       "#F97316",
+		Label:       "Waspada",
+		Color:       "#F59E0B",
 		Severity:    SeverityWarning,
-		Description: "Kadar gula darah di atas target pengelolaan.",
+		Description: "Kadar gula darah di atas target pengelolaan / elevated.",
 	},
 	CategoryHyperglycemia: {
 		Category:    CategoryHyperglycemia,
 		Label:       "Hiperglikemia",
 		Color:       "#DC2626",
 		Severity:    SeverityDanger,
-		Description: "Kadar gula darah di atas ambang diabetes. Perlu perhatian medis.",
+		Description: "Kadar gula darah tinggi di atas target aman. Perlu perhatian medis.",
 	},
 }
 
@@ -189,65 +196,44 @@ func (BloodSugarLog) TableName() string { return "blood_sugar_logs" }
 func ClassifyBloodGlucose(val int, mType MeasurementTime, dob *time.Time) BloodSugarClassification {
 	normType := NormalizeMeasurementType(string(mType))
 
-	age := 30
-	if dob != nil && !dob.IsZero() {
-		now := time.Now()
-		age = now.Year() - dob.Year()
-		if now.YearDay() < dob.YearDay() {
-			age--
-		}
-	}
-
 	var refMin, refMax int
 	var refRange string
 
 	switch normType {
 	case TimeFasting:
-		refMin = 70
-		refMax = 100
-		refRange = fmt.Sprintf("%d – %d mg/dL (Puasa)", refMin, refMax)
-		info := classifyGDP(val, refMin, refMax, refRange)
-		adjustRangeForAge(&info, age, normType)
-		return info
+		refMin = 80
+		refMax = 130
+		refRange = "80 – 130 mg/dL (Puasa)"
+		return classifyGDP(val, refMin, refMax, refRange)
 
 	case TimeBeforeMeal:
-		refMin = 70
-		refMax = 100
-		refRange = fmt.Sprintf("%d – %d mg/dL (Sebelum Makan)", refMin, refMax)
-		info := classifyBeforeMeal(val, refMin, refMax, refRange)
-		adjustRangeForAge(&info, age, normType)
-		return info
+		refMin = 80
+		refMax = 130
+		refRange = "80 – 130 mg/dL (Sebelum Makan)"
+		return classifyBeforeMeal(val, refMin, refMax, refRange)
 
 	case TimeAfterMeal:
 		refMin = 70
-		if age < 50 {
-			refMax = 140
-			refRange = "< 140 mg/dL (2 Jam Sesudah Makan)"
-		} else if age <= 60 {
-			refMax = 150
-			refRange = "< 150 mg/dL (2 Jam Sesudah Makan)"
-		} else {
-			refMax = 160
-			refRange = "< 160 mg/dL (2 Jam Sesudah Makan)"
-		}
+		refMax = 179
+		refRange = "< 180 mg/dL (2 Jam Sesudah Makan)"
 		return classifyGD2PP(val, refMin, refMax, refRange)
 
 	case TimeBeforeBed:
-		refMin = 70
+		refMin = 100
 		refMax = 140
-		refRange = fmt.Sprintf("%d – %d mg/dL (Sebelum Tidur)", refMin, refMax)
+		refRange = "100 – 140 mg/dL (Sebelum Tidur)"
 		return classifyBeforeBed(val, refMin, refMax, refRange)
 
 	case TimeRandom:
 		refMin = 70
-		refMax = 200
-		refRange = "< 200 mg/dL (Sewaktu)"
+		refMax = 139
+		refRange = "< 140 mg/dL (Sewaktu)"
 		return classifyGDS(val, refMin, refMax, refRange)
 
 	default:
 		refMin = 70
-		refMax = 140
-		refRange = "< 140 mg/dL"
+		refMax = 139
+		refRange = "< 140 mg/dL (Sewaktu)"
 		return classifyGDS(val, refMin, refMax, refRange)
 	}
 }
@@ -256,30 +242,49 @@ func ClassifyBloodGlucose(val int, mType MeasurementTime, dob *time.Time) BloodS
 
 // GDP (Gula Darah Puasa):
 //
-//	< 70             → Hypoglycemia
-//	70 – 99          → Normal
-//	100 – 125        → Prediabetes
-//	≥ 126            → Hyperglycemia
+//	< 70             → Hipoglikemia (Kritis)
+//	70 – 79          → Waspada Rendah
+//	80 – 130         → Normal / Terkontrol
+//	131 – 180        → Waspada / Elevated
+//	> 180            → Hiperglikemia
 func classifyGDP(val, refMin, refMax int, refRange string) BloodSugarClassification {
 	if val < 70 {
 		return hypoResult(refMin, refMax, refRange)
 	}
-	if val < 100 {
+	if val <= 79 {
+		return catResult(CategoryLowWarning, refMin, refMax, refRange)
+	}
+	if val <= 130 {
 		return catResult(CategoryNormal, refMin, refMax, refRange)
 	}
-	if val < 126 {
-		return catResult(CategoryPrediabetes, refMin, refMax, refRange)
+	if val <= 180 {
+		return catResult(CategoryElevated, refMin, refMax, refRange)
 	}
 	return catResult(CategoryHyperglycemia, refMin, refMax, refRange)
 }
 
 // GD2PP (2 Jam Setelah Makan):
 //
-//	< 70             → Hypoglycemia
-//	70 – 139         → Normal
-//	140 – 199        → Prediabetes
-//	≥ 200            → Hyperglycemia
+//	< 70             → Hipoglikemia
+//	70 – 179         → Normal / Terkontrol
+//	≥ 180            → Hiperglikemia
 func classifyGD2PP(val, refMin, refMax int, refRange string) BloodSugarClassification {
+	if val < 70 {
+		return hypoResult(refMin, refMax, refRange)
+	}
+	if val < 180 {
+		return catResult(CategoryNormal, refMin, refMax, refRange)
+	}
+	return catResult(CategoryHyperglycemia, refMin, refMax, refRange)
+}
+
+// GDS (Sewaktu):
+//
+//	< 70             → Hipoglikemia
+//	70 – 139         → Normal / Terkontrol
+//	140 – 199        → Waspada / TGT
+//	≥ 200            → Hiperglikemia
+func classifyGDS(val, refMin, refMax int, refRange string) BloodSugarClassification {
 	if val < 70 {
 		return hypoResult(refMin, refMax, refRange)
 	}
@@ -292,54 +297,41 @@ func classifyGD2PP(val, refMin, refMax int, refRange string) BloodSugarClassific
 	return catResult(CategoryHyperglycemia, refMin, refMax, refRange)
 }
 
-// GDS (Sewaktu):
+// before_meal (Sebelum Makan):
 //
-//	< 70             → Hypoglycemia
-//	70 – 199         → Normal
-//	≥ 200            → Hyperglycemia
-func classifyGDS(val, refMin, refMax int, refRange string) BloodSugarClassification {
-	if val < 70 {
-		return hypoResult(refMin, refMax, refRange)
-	}
-	if val < 200 {
-		return catResult(CategoryNormal, refMin, refMax, refRange)
-	}
-	return catResult(CategoryHyperglycemia, refMin, refMax, refRange)
-}
-
-// before_meal (Sebelum Makan — management class):
-//
-//	< 70             → Hypoglycemia
-//	70 – 99          → Target
-//	100 – 199        → Elevated
-//	≥ 200            → Hyperglycemia
+//	< 70             → Hipoglikemia
+//	70 – 79          → Waspada Rendah
+//	80 – 130         → Normal / Terkontrol
+//	> 130            → Waspada / Elevated
 func classifyBeforeMeal(val, refMin, refMax int, refRange string) BloodSugarClassification {
 	if val < 70 {
 		return hypoResult(refMin, refMax, refRange)
 	}
-	if val < 100 {
-		return catResult(CategoryTarget, refMin, refMax, refRange)
+	if val <= 79 {
+		return catResult(CategoryLowWarning, refMin, refMax, refRange)
 	}
-	if val < 200 {
+	if val <= 130 {
+		return catResult(CategoryNormal, refMin, refMax, refRange)
+	}
+	if val <= 180 {
 		return catResult(CategoryElevated, refMin, refMax, refRange)
 	}
 	return catResult(CategoryHyperglycemia, refMin, refMax, refRange)
 }
 
-// before_bed (Sebelum Tidur — management class):
+// before_bed (Sebelum Tidur):
 //
-//	< 70             → Hypoglycemia
-//	70 – 139         → Target
-//	140 – 199        → Elevated
-//	≥ 200            → Hyperglycemia
+//	< 100            → Hipoglikemia (Risiko Hipoglikemia Malam)
+//	100 – 140        → Normal / Terkontrol
+//	> 140            → Waspada / Elevated
 func classifyBeforeBed(val, refMin, refMax int, refRange string) BloodSugarClassification {
-	if val < 70 {
+	if val < 100 {
 		return hypoResult(refMin, refMax, refRange)
 	}
-	if val < 140 {
-		return catResult(CategoryTarget, refMin, refMax, refRange)
+	if val <= 140 {
+		return catResult(CategoryNormal, refMin, refMax, refRange)
 	}
-	if val < 200 {
+	if val <= 180 {
 		return catResult(CategoryElevated, refMin, refMax, refRange)
 	}
 	return catResult(CategoryHyperglycemia, refMin, refMax, refRange)

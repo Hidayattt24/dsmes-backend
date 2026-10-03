@@ -197,20 +197,22 @@ func (s *routineService) LogActivity(ctx context.Context, patientID string, req 
 }
 
 func (s *routineService) GetPatientActivityLogs(ctx context.Context, patientID string, dateStr string) ([]ActivityLogResponse, error) {
-	if dateStr == "" {
-		dateStr = time.Now().Format("2006-01-02")
-	}
-
 	var resp []ActivityLogResponse
 
-	// Include free-form activity logs from patient_activity_logs
+	// 1. Include free-form activity logs from patient_activity_logs
 	freeLogs, err := s.repo.FindFreeActivityLogsByPatientAndDate(ctx, patientID, dateStr)
 	if err == nil {
 		for _, fl := range freeLogs {
 			intensity := "Ringan"
-			if fl.Intensity == "Sedang" || fl.Intensity == "Berat" {
-				intensity = fl.Intensity
+			multiplier := 3.5
+			if fl.Intensity == "Sedang" || fl.Intensity == "sedang" {
+				intensity = "Sedang"
+				multiplier = 5.0
+			} else if fl.Intensity == "Berat" || fl.Intensity == "berat" {
+				intensity = "Berat"
+				multiplier = 7.5
 			}
+			calBurned := float64(fl.DurationMinutes) * multiplier
 			resp = append(resp, ActivityLogResponse{
 				ID:              fl.ID,
 				RoutineType:     "",
@@ -218,9 +220,34 @@ func (s *routineService) GetPatientActivityLogs(ctx context.Context, patientID s
 				ActivityName:    fl.ActivityName,
 				DurationMinutes: fl.DurationMinutes,
 				Intensity:       intensity,
+				CaloriesBurned:  calBurned,
 				ScheduledTime:   nil,
 				Status:          domain.LogCompleted,
 				LoggedAt:        fl.LoggedAt.Format(time.RFC3339),
+			})
+		}
+	}
+
+	// 2. Include routine log entries
+	routineLogs, err := s.repo.FindLogsByPatientAndDate(ctx, patientID, dateStr)
+	if err == nil {
+		for _, rl := range routineLogs {
+			name := "Aktivitas Fisik Rutin"
+			var scheduled *string
+			if rl.RoutineTime != nil {
+				scheduled = rl.RoutineTime.ScheduledTime
+			}
+			resp = append(resp, ActivityLogResponse{
+				ID:              rl.ID,
+				RoutineType:     domain.RoutineJalanPagi,
+				DescriptiveName: name,
+				ActivityName:    name,
+				DurationMinutes: 30,
+				Intensity:       "Sedang",
+				CaloriesBurned:  120,
+				ScheduledTime:   scheduled,
+				Status:          rl.Status,
+				LoggedAt:        rl.LoggedAt.Format(time.RFC3339),
 			})
 		}
 	}

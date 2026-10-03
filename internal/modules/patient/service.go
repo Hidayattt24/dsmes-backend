@@ -448,6 +448,7 @@ func populateSummary(res *PatientResponse, summary *PatientSummaryData) {
 		tStr := summary.LatestBloodSugarTime.Format("2006-01-02T15:04:05Z07:00")
 		res.LatestBloodSugarTime = &tStr
 	}
+	res.LatestBloodSugarType = summary.LatestBloodSugarType
 	res.LatestBloodSugarStatus = summary.LatestBloodSugarStatus
 	res.AverageBloodSugar = summary.AverageBloodSugar
 	res.LatestWeight = summary.LatestWeight
