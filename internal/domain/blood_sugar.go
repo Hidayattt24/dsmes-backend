@@ -378,11 +378,6 @@ func catResult(cat GlucoseCategory, refMin, refMax int, refRange string) BloodSu
 	}
 }
 
-func adjustRangeForAge(info *BloodSugarClassification, age int, _ MeasurementTime) {
-	// Age adjustments are handled per measurement type in the caller.
-	_ = age
-}
-
 // ── Backward Compatibility ────────────────────────────────────────────────────
 //
 // CalculateBloodSugarMedicalResult and CalculateGlucoseStatus remain as thin
