@@ -75,7 +75,7 @@ func (r *educationRepository) FindAllArticles(ctx context.Context, categoryID st
 	var items []domain.Article
 	var total int64
 
-	q := r.db.WithContext(ctx).Model(&domain.Article{}).Where("deleted_at IS NULL")
+	q := r.db.WithContext(ctx).Model(&domain.Article{})
 
 	if categoryID != "" {
 		q = q.Where("category_id = ?", categoryID)
@@ -90,8 +90,7 @@ func (r *educationRepository) FindAllArticles(ctx context.Context, categoryID st
 	}
 
 	offset := (page - 1) * limit
-	err := q.Select("articles.*, COALESCE(views.count, 0) as read_count").
-		Joins("LEFT JOIN (SELECT article_id, COUNT(*) as count FROM article_views WHERE deleted_at IS NULL GROUP BY article_id) views ON views.article_id = articles.id").
+	err := q.Select("articles.*, (SELECT COUNT(*) FROM article_views WHERE article_views.article_id = articles.id AND article_views.deleted_at IS NULL) as read_count").
 		Preload("Category").
 		Offset(offset).Limit(limit).
 		Order("articles.created_at DESC").
@@ -106,8 +105,7 @@ func (r *educationRepository) FindAllArticles(ctx context.Context, categoryID st
 func (r *educationRepository) FindArticleByID(ctx context.Context, id string) (*domain.Article, error) {
 	var a domain.Article
 	err := r.db.WithContext(ctx).
-		Select("articles.*, COALESCE(views.count, 0) as read_count").
-		Joins("LEFT JOIN (SELECT article_id, COUNT(*) as count FROM article_views WHERE deleted_at IS NULL GROUP BY article_id) views ON views.article_id = articles.id").
+		Select("articles.*, (SELECT COUNT(*) FROM article_views WHERE article_views.article_id = articles.id AND article_views.deleted_at IS NULL) as read_count").
 		Preload("Category").
 		Preload("ArticleSections", func(db *gorm.DB) *gorm.DB {
 			return db.Order("article_sections.section_order ASC")
@@ -115,7 +113,7 @@ func (r *educationRepository) FindArticleByID(ctx context.Context, id string) (*
 		Preload("ArticleSections.Steps", func(db *gorm.DB) *gorm.DB {
 			return db.Order("article_section_steps.step_order ASC")
 		}).
-		Where("articles.id = ? AND articles.deleted_at IS NULL", id).
+		Where("articles.id = ?", id).
 		First(&a).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -239,9 +237,8 @@ func (r *educationRepository) GetPatientCompletedMap(ctx context.Context, patien
 func (r *educationRepository) FindSavedArticles(ctx context.Context, patientID string) ([]domain.Article, error) {
 	var items []domain.Article
 	err := r.db.WithContext(ctx).
-		Select("articles.*, COALESCE(views.count, 0) as read_count").
+		Select("articles.*, (SELECT COUNT(*) FROM article_views WHERE article_views.article_id = articles.id AND article_views.deleted_at IS NULL) as read_count").
 		Joins("JOIN user_saved_articles usa ON usa.article_id = articles.id").
-		Joins("LEFT JOIN (SELECT article_id, COUNT(*) as count FROM article_views WHERE deleted_at IS NULL GROUP BY article_id) views ON views.article_id = articles.id").
 		Preload("Category").
 		Where("usa.patient_id = ? AND articles.deleted_at IS NULL", patientID).
 		Order("usa.saved_at DESC").

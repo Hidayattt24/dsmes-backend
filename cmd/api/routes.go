@@ -290,9 +290,13 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		staff.Get("/dashboard/population-metrics", dashboardHandler.GetPopulationMetrics)
 		staff.Get("/dashboard/patient-trends", dashboardHandler.GetPatientTrends)
 
-		// Education articles list
-		staff.Get("/education/articles", eduHandler.ListPublished)
+		// Education Monitoring
+		staff.Get("/education/stats", eduHandler.GetStats)
+		staff.Get("/education/articles", eduHandler.ListAdmin)
 		staff.Get("/education/articles/:id", eduHandler.GetByID)
+		staff.Get("/education/:id/progress", eduProgressHandler.GetArticleProgress)
+		staff.Get("/education/:id/progress/analytics", eduProgressHandler.GetArticleAnalytics)
+		staff.Get("/education/:id/reviews", eduHandler.GetAdminReviews)
 
 		// Quiz Monitoring
 		staff.Get("/quiz/stats", quizHandler.GetStats)
