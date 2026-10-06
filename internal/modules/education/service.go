@@ -277,7 +277,8 @@ func (s *educationService) PublishArticle(ctx context.Context, id string) error 
 // broadcastEducationNotif asynchronously pushes a notification_log entry to
 // every active patient. It runs in a goroutine so it never blocks the request.
 func (s *educationService) broadcastEducationNotif(ctx context.Context, title string, articleID string) {
-	message := fmt.Sprintf("Materi edukasi baru: %s", title)
+	message := fmt.Sprintf("Yuk pelajari \"%s\" untuk panduan sehatmu hari ini ✨", title)
+	notifTitle := fmt.Sprintf("Edukasi Baru: %s 📖", title)
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -297,9 +298,10 @@ func (s *educationService) broadcastEducationNotif(ctx context.Context, title st
 			return
 		}
 		for _, device := range devices {
-			if _, err := s.push.Send(bgCtx, device.Token, "Materi Edukasi Baru", message, map[string]string{
+			if _, err := s.push.Send(bgCtx, device.Token, notifTitle, message, map[string]string{
 				"type":       "education",
 				"article_id": articleID,
+				"title":      title,
 			}); err != nil {
 				s.log.Warn("failed to send education push notification",
 					zap.String("article_id", articleID),
