@@ -10,6 +10,7 @@ type QuizRepository interface {
 	FindAll(ctx context.Context, search, qType, status, sortBy, sortOrder string, page, limit int) ([]domain.Questionnaire, int64, error)
 	FindByID(ctx context.Context, id string) (*domain.Questionnaire, error)
 	GetActivePreTest(ctx context.Context) (*domain.Questionnaire, error)
+	GetAnyPreTest(ctx context.Context) (*domain.Questionnaire, error)
 	GetPostTestByEducation(ctx context.Context, educationID string) (*domain.Questionnaire, error)
 	Create(ctx context.Context, q *domain.Questionnaire) error
 	Update(ctx context.Context, q *domain.Questionnaire) error

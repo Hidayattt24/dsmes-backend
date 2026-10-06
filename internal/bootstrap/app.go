@@ -29,6 +29,9 @@ func NewFiberApp(cfg *config.Config, log *zap.Logger) *fiber.App {
 		// AppName appears in the Server header and in Swagger info.
 		AppName: cfg.App.Name,
 
+		// BodyLimit: Set payload size limit to 20MB for requests containing media/images
+		BodyLimit: 20 * 1024 * 1024,
+
 		// StrictRouting: "/foo" and "/foo/" are treated as different routes.
 		StrictRouting: true,
 

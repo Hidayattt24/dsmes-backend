@@ -57,6 +57,7 @@ type ArticleListResponse struct {
 	Summary              string               `json:"summary"`
 	Status               domain.ArticleStatus `json:"status"`
 	CreatedAt            string               `json:"created_at"`
+	UpdatedAt            string               `json:"updated_at"`
 	Content              string               `json:"content"`
 	YoutubeLink          string               `json:"youtube_link"`
 	ReadCount            int64                `json:"read_count"`
@@ -104,6 +105,7 @@ func ToArticleListResponse(a *domain.Article) ArticleListResponse {
 		Summary:              a.Summary,
 		Status:               a.Status,
 		CreatedAt:            a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:            a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		Content:              a.Content,
 		YoutubeLink:          a.YoutubeLink,
 		ReadCount:            a.ReadCount,
@@ -176,4 +178,3 @@ type AdminArticleReviewsResponse struct {
 	RatingDistribution RatingDistribution        `json:"rating_distribution"`
 	Reviews            []EducationReviewResponse `json:"reviews"`
 }
-

@@ -268,12 +268,32 @@ func (r *patientRepository) GetStats(ctx context.Context, facilityName string) (
 		return nil, errs.NewInternal("failed to count total patients for stats", err)
 	}
 
-	qActive := r.db.WithContext(ctx).Model(&domain.Patient{}).Where("deleted_at IS NULL AND status = ?", domain.StatusAktif)
-	if facilityName != "" {
-		qActive = qActive.Where("health_facility = ?", facilityName)
-	}
-	if err := qActive.Count(&active).Error; err != nil {
-		return nil, errs.NewInternal("failed to count active patients for stats", err)
+	// Count unique patients active TODAY across all activity streams (same rules as user activity chart)
+	var activeTodayCount int64
+	sqlActive := `
+		SELECT COALESCE(COUNT(DISTINCT activity.patient_id), 0)
+		FROM (
+			SELECT id AS patient_id FROM patients WHERE deleted_at IS NULL AND (health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND last_active_at IS NOT NULL AND DATE(last_active_at) = CURRENT_DATE
+			UNION
+			SELECT b.patient_id FROM blood_sugar_logs b JOIN patients p ON p.id = b.patient_id WHERE b.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(b.measured_at) = CURRENT_DATE
+			UNION
+			SELECT pm.patient_id FROM patient_measurements pm JOIN patients p ON p.id = pm.patient_id WHERE pm.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(pm.measured_at) = CURRENT_DATE
+			UNION
+			SELECT ml.patient_id FROM meal_logs ml JOIN patients p ON p.id = ml.patient_id WHERE ml.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(ml.logged_at) = CURRENT_DATE
+			UNION
+			SELECT pal.patient_id FROM patient_activity_logs pal JOIN patients p ON p.id = pal.patient_id WHERE pal.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(pal.logged_at) = CURRENT_DATE
+			UNION
+			SELECT rle.patient_id FROM routine_log_entries rle JOIN patients p ON p.id = rle.patient_id WHERE rle.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(rle.logged_at) = CURRENT_DATE
+			UNION
+			SELECT qa.patient_id FROM quiz_attempts qa JOIN patients p ON p.id = qa.patient_id WHERE qa.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(qa.completed_at) = CURRENT_DATE
+			UNION
+			SELECT av.patient_id FROM article_views av JOIN patients p ON p.id = av.patient_id WHERE av.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(av.viewed_at) = CURRENT_DATE
+		) activity
+	`
+	if err := r.db.WithContext(ctx).Raw(sqlActive, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName).Scan(&activeTodayCount).Error; err != nil {
+		r.log.Warn("failed to count active patients today for stats", zap.Error(err))
+	} else {
+		active = activeTodayCount
 	}
 
 	var agesResult struct {

@@ -125,6 +125,30 @@ func (r *quizRepository) GetActivePreTest(ctx context.Context) (*domain.Question
 	return &item, nil
 }
 
+func (r *quizRepository) GetAnyPreTest(ctx context.Context) (*domain.Questionnaire, error) {
+	var item domain.Questionnaire
+	err := r.db.WithContext(ctx).
+		Preload("Categories", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions.Options", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Where("type = ? AND deleted_at IS NULL", domain.TypePreTest).
+		Order("created_at DESC").
+		First(&item).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("Pre-Test not found")
+		}
+		return nil, errs.NewInternal("failed to fetch Pre-Test", err)
+	}
+	return &item, nil
+}
+
 func (r *quizRepository) GetPostTestByEducation(ctx context.Context, educationID string) (*domain.Questionnaire, error) {
 	var item domain.Questionnaire
 	err := r.db.WithContext(ctx).

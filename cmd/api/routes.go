@@ -233,6 +233,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Education content CRUD
 		admin.Get("/education/stats", eduHandler.GetStats)
 		admin.Get("/education/articles", eduHandler.ListAdmin)
+		admin.Get("/education/articles/:id", eduHandler.GetByID)
 		admin.Post("/education/articles", eduHandler.Create)
 		admin.Put("/education/articles/:id", eduHandler.Update)
 		admin.Patch("/education/articles/:id/publish", eduHandler.Publish)

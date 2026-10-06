@@ -139,12 +139,10 @@ func (s *quizService) validateQuestionnairePayload(ctx context.Context, question
 	status := normalizeStatus(req.Status)
 
 	if qType == domain.TypePreTest {
-		// Pre-Test rules
-		if status == "aktif" {
-			activePre, err := s.repo.GetActivePreTest(ctx)
-			if err == nil && activePre != nil && activePre.ID != questionnaireID {
-				return qType, status, errs.NewBadRequest("Sistem hanya memperbolehkan 1 Pre-Test aktif")
-			}
+		// Strict Rule: System can ONLY ever have 1 Pre-Test (DMSES) in total.
+		anyPre, err := s.repo.GetAnyPreTest(ctx)
+		if err == nil && anyPre != nil && anyPre.ID != questionnaireID {
+			return qType, status, errs.NewBadRequest("Sistem hanya memperbolehkan 1 Pre-Test (DMSES). Silakan edit atau hapus Pre-Test yang sudah ada.")
 		}
 		if len(req.Categories) == 0 && len(req.Questions) == 0 {
 			return qType, status, errs.NewBadRequest("Pre-Test wajib memiliki minimal 1 Pertanyaan")
