@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"html/template"
 	"path/filepath"
+
+	"github.com/dsmes/dsmes-backend/templates"
 )
 
 // TemplateEngine handles loading and rendering HTML templates.
@@ -19,8 +21,18 @@ func NewTemplateEngine(basePath string) *TemplateEngine {
 
 // Render renders the template at name using the provided data.
 func (t *TemplateEngine) Render(name string, data any) (string, error) {
+	// 1. Try embedded templates first (self-contained in binary)
+	tmpl, err := template.ParseFS(templates.FS, name)
+	if err == nil {
+		var buf bytes.Buffer
+		if execErr := tmpl.ExecuteTemplate(&buf, name, data); execErr == nil {
+			return buf.String(), nil
+		}
+	}
+
+	// 2. Fallback to filesystem if embedded lookup failed
 	path := filepath.Join(t.basePath, name)
-	tmpl, err := template.ParseFiles(path)
+	tmpl, err = template.ParseFiles(path)
 	if err != nil {
 		return "", fmt.Errorf("email: failed to parse template %s: %w", name, err)
 	}

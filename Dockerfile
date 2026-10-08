@@ -51,9 +51,10 @@ COPY --from=builder /app/server  /app/server
 COPY --from=builder /app/migrate /app/migrate
 COPY --from=builder /app/worker  /app/worker
 
-# Runtime data the server needs (migrations for the entrypoint, docs for Swagger)
+# Runtime data the server needs (migrations for the entrypoint, docs for Swagger, email templates)
 COPY --from=builder /app/migrations /app/migrations
 COPY --from=builder /app/docs       /app/docs
+COPY --from=builder /app/templates  /app/templates
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
