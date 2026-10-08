@@ -98,7 +98,10 @@ func (s *resendEmailService) send(ctx context.Context, to, subject, html, templa
 		return errs.NewInternal("email service misconfigured: missing sender email", nil)
 	}
 
-	from := s.fromEmail
+	from := strings.TrimSpace(s.fromEmail)
+	if !strings.Contains(from, "@") {
+		from = "noreply@" + from
+	}
 	if !strings.Contains(from, "<") {
 		from = fmt.Sprintf("DSMES Aceh <%s>", from)
 	}
