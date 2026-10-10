@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func TestConfigDefaults(t *testing.T) {
@@ -100,5 +101,30 @@ func TestProductionGuardsWeakJWTSecret(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Error("expected error when production uses the default JWT secret")
+	}
+}
+
+func TestJWTDurationParsing(t *testing.T) {
+	os.Setenv("JWT_SECRET", "this-is-a-strong-random-secret-for-testing-only-1234")
+	os.Setenv("JWT_ACCESS_TOKEN_TTL", "2h")
+	os.Setenv("JWT_REFRESH_TOKEN_TTL", "30d")
+
+	defer func() {
+		os.Unsetenv("JWT_SECRET")
+		os.Unsetenv("JWT_ACCESS_TOKEN_TTL")
+		os.Unsetenv("JWT_REFRESH_TOKEN_TTL")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected no error loading config, got: %v", err)
+	}
+
+	if cfg.JWT.AccessTokenTTL != 2*time.Hour {
+		t.Errorf("expected AccessTokenTTL to be 2h, got %v", cfg.JWT.AccessTokenTTL)
+	}
+
+	if cfg.JWT.RefreshTokenTTL != 30*24*time.Hour {
+		t.Errorf("expected RefreshTokenTTL to be 720h (30d), got %v", cfg.JWT.RefreshTokenTTL)
 	}
 }

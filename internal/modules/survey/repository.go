@@ -148,10 +148,13 @@ func (r *surveyRepository) ListActiveSurveys(ctx context.Context, surveyType str
 
 func (r *surveyRepository) SetActive(ctx context.Context, id string, surveyType string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Deactivate other surveys of the same type
+		// Deactivate other surveys of the same type and set status to draft
 		if err := tx.Model(&domain.Survey{}).
 			Where("type = ? AND id != ? AND deleted_at IS NULL", surveyType, id).
-			Update("is_active", false).Error; err != nil {
+			Updates(map[string]interface{}{
+				"is_active": false,
+				"status":    domain.SurveyStatusDraft,
+			}).Error; err != nil {
 			return errs.NewInternal("failed to deactivate other surveys", err)
 		}
 		// Activate target survey

@@ -49,3 +49,11 @@ func (s *FCMSender) Send(ctx context.Context, token, title, body string, data ma
 		},
 	})
 }
+
+// IsUnregistered checks whether the FCM error indicates the device token is no longer valid.
+func IsUnregistered(err error) bool {
+	if err == nil {
+		return false
+	}
+	return messaging.IsUnregistered(err) || messaging.IsInvalidArgument(err)
+}

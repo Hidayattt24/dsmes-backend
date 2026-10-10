@@ -53,7 +53,7 @@ func (s *authService) StaffLogin(ctx context.Context, req StaffLoginRequest) (*L
 	session := &AuthSession{
 		OwnerType:    OwnerTypeStaff,
 		OwnerID:      staff.ID,
-		RefreshToken: hashRefreshToken(tokens.RefreshToken),
+		RefreshToken: HashRefreshToken(tokens.RefreshToken),
 		ExpiresAt:    time.Now().Add(s.jwt.RefreshTTL()),
 	}
 	if err = s.repo.CreateSession(ctx, session); err != nil {
@@ -100,7 +100,7 @@ func (s *authService) PatientLogin(ctx context.Context, req PatientLoginRequest)
 	session := &AuthSession{
 		OwnerType:    OwnerTypePatient,
 		OwnerID:      patient.ID,
-		RefreshToken: hashRefreshToken(tokens.RefreshToken),
+		RefreshToken: HashRefreshToken(tokens.RefreshToken),
 		ExpiresAt:    time.Now().Add(s.jwt.RefreshTTL()),
 	}
 	if err = s.repo.CreateSession(ctx, session); err != nil {
@@ -122,7 +122,7 @@ func (s *authService) PatientLogin(ctx context.Context, req PatientLoginRequest)
 // ── Logout ────────────────────────────────────────────────────────────────────
 
 func (s *authService) Logout(ctx context.Context, refreshToken string) error {
-	return s.repo.RevokeSession(ctx, hashRefreshToken(refreshToken))
+	return s.repo.RevokeSession(ctx, HashRefreshToken(refreshToken))
 }
 
 // ── ForgotPassword ────────────────────────────────────────────────────────────
@@ -359,7 +359,7 @@ func (s *authService) ResetPasswordByEmail(ctx context.Context, req ResetPasswor
 // ── RefreshToken ──────────────────────────────────────────────────────────────
 
 func (s *authService) RefreshToken(ctx context.Context, req RefreshTokenRequest) (*TokenResponse, error) {
-	refreshHash := hashRefreshToken(req.RefreshToken)
+	refreshHash := HashRefreshToken(req.RefreshToken)
 
 	session, err := s.repo.FindSession(ctx, refreshHash)
 	if err != nil {
@@ -382,7 +382,7 @@ func (s *authService) RefreshToken(ctx context.Context, req RefreshTokenRequest)
 		OwnerType:    session.OwnerType,
 		OwnerID:      session.OwnerID,
 		DeviceInfo:   session.DeviceInfo,
-		RefreshToken: hashRefreshToken(tokens.RefreshToken),
+		RefreshToken: HashRefreshToken(tokens.RefreshToken),
 		ExpiresAt:    time.Now().Add(s.jwt.RefreshTTL()),
 	}
 	if err = s.repo.CreateSession(ctx, newSession); err != nil {
@@ -392,9 +392,9 @@ func (s *authService) RefreshToken(ctx context.Context, req RefreshTokenRequest)
 	return &TokenResponse{Tokens: *tokens}, nil
 }
 
-// hashRefreshToken stores a one-way SHA-256 digest of the refresh token in the
+// HashRefreshToken stores a one-way SHA-256 digest of the refresh token in the
 // database so a leaked auth_sessions table cannot be replayed as valid tokens.
-func hashRefreshToken(token string) string {
+func HashRefreshToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }

@@ -39,8 +39,8 @@ func main() {
 
 	run := func() {
 		now := time.Now().In(location)
-		if err := dispatchDueReminders(ctx, repo, sender, now); err != nil {
-			c.Logger.Error("reminder dispatch failed", zap.Error(err))
+		if err := dispatchDueReminders(ctx, repo, sender, now, c.Logger); err != nil {
+			c.Logger.Error("reminder dispatch query failed", zap.Error(err))
 		}
 	}
 
@@ -117,6 +117,7 @@ func dispatchDueReminders(
 	repo reminder.ReminderRepository,
 	sender *notifications.FCMSender,
 	now time.Time,
+	logger *zap.Logger,
 ) error {
 	items, err := repo.FindDueReminders(ctx, now.Format("15:04"))
 	if err != nil {
@@ -133,7 +134,11 @@ func dispatchDueReminders(
 		}
 		tokens, err := repo.FindDeviceTokens(ctx, item.PatientID)
 		if err != nil {
-			return err
+			logger.Warn("failed to fetch device tokens for patient",
+				zap.String("patient_id", item.PatientID),
+				zap.Error(err),
+			)
+			continue
 		}
 
 		title, body := buildReminderNotification(item)
@@ -146,7 +151,19 @@ func dispatchDueReminders(
 				"activity_name": item.ActivityName,
 			})
 			if err != nil {
-				return err
+				if notifications.IsUnregistered(err) {
+					logger.Info("deleting stale device token",
+						zap.String("patient_id", item.PatientID),
+						zap.String("token", token.Token),
+					)
+					_ = repo.DeleteDeviceToken(ctx, item.PatientID, token.Token)
+				} else {
+					logger.Warn("failed to send reminder notification",
+						zap.String("patient_id", item.PatientID),
+						zap.String("reminder_id", item.ID),
+						zap.Error(err),
+					)
+				}
 			}
 		}
 	}

@@ -38,6 +38,7 @@ func RegisterRoutes(router fiber.Router, c *container.Container) {
 	// Refresh is rate-limited but more lenient than OTP (valid JWT needed).
 	auth.Post("/refresh", middleware.RateLimiter(), h.RefreshToken)
 
-	// Protected: logout requires a valid JWT (to extract session info)
-	auth.Post("/logout", middleware.JWT(c.Config), h.Logout)
+	// Logout revokes the session associated with the provided refresh token.
+	// Uses RateLimiter so clients can successfully log out even when access token expired.
+	auth.Post("/logout", middleware.RateLimiter(), h.Logout)
 }

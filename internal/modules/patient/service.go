@@ -206,7 +206,7 @@ func (s *patientService) RegisterPatient(ctx context.Context, req RegisterPatien
 	session := &auth.AuthSession{
 		OwnerType:    auth.OwnerTypePatient,
 		OwnerID:      patient.ID,
-		RefreshToken: tokens.RefreshToken,
+		RefreshToken: auth.HashRefreshToken(tokens.RefreshToken),
 		ExpiresAt:    time.Now().Add(s.jwt.RefreshTTL()),
 	}
 	if err = s.authRepo.CreateSession(ctx, session); err != nil {

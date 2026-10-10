@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,8 +129,8 @@ func Load() (*Config, error) {
 	v.SetDefault("DB_CONN_MAX_LIFETIME_MINUTES", 60)
 
 	v.SetDefault("JWT_SECRET", "change-me-in-production")
-	v.SetDefault("JWT_ACCESS_TOKEN_TTL", 15*time.Minute)
-	v.SetDefault("JWT_REFRESH_TOKEN_TTL", 7*24*time.Hour)
+	v.SetDefault("JWT_ACCESS_TOKEN_TTL", 2*time.Hour)
+	v.SetDefault("JWT_REFRESH_TOKEN_TTL", 30*24*time.Hour)
 	v.SetDefault("JWT_ISSUER", "dsmes-backend")
 
 	v.SetDefault("LOG_LEVEL", "info")
@@ -197,8 +198,8 @@ func Load() (*Config, error) {
 	}
 	cfg.JWT = JWTConfig{
 		Secret:          v.GetString("JWT_SECRET"),
-		AccessTokenTTL:  v.GetDuration("JWT_ACCESS_TOKEN_TTL"),
-		RefreshTokenTTL: v.GetDuration("JWT_REFRESH_TOKEN_TTL"),
+		AccessTokenTTL:  parseFlexibleDuration(v, "JWT_ACCESS_TOKEN_TTL", 2*time.Hour),
+		RefreshTokenTTL: parseFlexibleDuration(v, "JWT_REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		Issuer:          v.GetString("JWT_ISSUER"),
 	}
 	cfg.Log = LogConfig{
@@ -258,4 +259,26 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
+}
+
+// parseFlexibleDuration parses a duration key from viper with support for
+// standard Go duration strings as well as days ("d"/"D", e.g. "30d" -> 720h).
+func parseFlexibleDuration(v *viper.Viper, key string, fallback time.Duration) time.Duration {
+	valStr := strings.TrimSpace(v.GetString(key))
+	if valStr == "" {
+		return fallback
+	}
+	if strings.HasSuffix(valStr, "d") || strings.HasSuffix(valStr, "D") {
+		daysStr := valStr[:len(valStr)-1]
+		if days, err := strconv.Atoi(daysStr); err == nil && days > 0 {
+			return time.Duration(days) * 24 * time.Hour
+		}
+	}
+	if d, err := time.ParseDuration(valStr); err == nil && d > 0 {
+		return d
+	}
+	if dur := v.GetDuration(key); dur > 0 {
+		return dur
+	}
+	return fallback
 }

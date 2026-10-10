@@ -4,10 +4,10 @@ import "testing"
 
 func TestHashRefreshToken(t *testing.T) {
 	// Must be deterministic for the same input (lookup key stability).
-	a := hashRefreshToken("some-random-token")
-	b := hashRefreshToken("some-random-token")
+	a := HashRefreshToken("some-random-token")
+	b := HashRefreshToken("some-random-token")
 	if a != b {
-		t.Error("expected hashRefreshToken to be deterministic")
+		t.Error("expected HashRefreshToken to be deterministic")
 	}
 
 	// Must be a SHA-256 hex digest (64 chars) so it fits the column.
@@ -16,7 +16,7 @@ func TestHashRefreshToken(t *testing.T) {
 	}
 
 	// Different inputs must produce different digests.
-	c := hashRefreshToken("some-other-token")
+	c := HashRefreshToken("some-other-token")
 	if a == c {
 		t.Error("expected different tokens to produce different hashes")
 	}
