@@ -3,16 +3,16 @@ package food
 import "github.com/dsmes/dsmes-backend/internal/domain"
 
 type CreateFoodRequest struct {
-	Name         string  `json:"name"          validate:"required,min=2,max=255"`
-	Manufacturer string  `json:"manufacturer"  validate:"required"`
-	ServingSize  string  `json:"serving_size"  validate:"required"`
-	EnergyKcal   float64 `json:"energy_kcal"   validate:"gte=0"`
-	ProteinG     float64 `json:"protein_g"     validate:"gte=0"`
+	Name          string  `json:"name"          validate:"required,min=2,max=255"`
+	Manufacturer  string  `json:"manufacturer"  validate:"required"`
+	ServingSize   string  `json:"serving_size"  validate:"required"`
+	EnergyKcal    float64 `json:"energy_kcal"   validate:"gte=0"`
+	ProteinG      float64 `json:"protein_g"     validate:"gte=0"`
 	CarbohydrateG float64 `json:"carbohydrate_g" validate:"gte=0"`
-	FatG         float64 `json:"fat_g"         validate:"gte=0"`
-	SugarG       float64 `json:"sugar_g"       validate:"gte=0"`
-	SodiumMg     float64 `json:"sodium_mg"     validate:"gte=0"`
-	FiberG       float64 `json:"fiber_g"       validate:"gte=0"`
+	FatG          float64 `json:"fat_g"         validate:"gte=0"`
+	SugarG        float64 `json:"sugar_g"       validate:"gte=0"`
+	SodiumMg      float64 `json:"sodium_mg"     validate:"gte=0"`
+	FiberG        float64 `json:"fiber_g"       validate:"gte=0"`
 	SaturatedFatG float64 `json:"saturated_fat_g" validate:"gte=0"`
 
 	EnergyPercentageDV       float64 `json:"energy_percentage_dv" validate:"gte=0"`
@@ -29,7 +29,7 @@ type CreateFoodRequest struct {
 	DietaryFiber      float64 `json:"dietary_fiber" validate:"gte=0"`
 	Energy            float64 `json:"energy" validate:"gte=0"`
 
-	NutritionBasis string `json:"nutrition_basis" validate:"omitempty,oneof=PER_100G PER_SERVING PER_PACKAGE"`
+	NutritionBasis string `json:"nutrition_basis" validate:"omitempty,oneof=PER_100G PER_SERVING PER_PACKAGE UNVERIFIED"`
 	Source         string `json:"source"`
 	Barcode        string `json:"barcode"`
 	ImageURL       string `json:"image_url"`
@@ -37,16 +37,16 @@ type CreateFoodRequest struct {
 }
 
 type UpdateFoodRequest struct {
-	Name         string  `json:"name"          validate:"omitempty,min=2,max=255"`
-	Manufacturer string  `json:"manufacturer"`
-	ServingSize  string  `json:"serving_size"`
-	EnergyKcal   float64 `json:"energy_kcal"   validate:"gte=0"`
-	ProteinG     float64 `json:"protein_g"     validate:"gte=0"`
+	Name          string  `json:"name"          validate:"omitempty,min=2,max=255"`
+	Manufacturer  string  `json:"manufacturer"`
+	ServingSize   string  `json:"serving_size"`
+	EnergyKcal    float64 `json:"energy_kcal"   validate:"gte=0"`
+	ProteinG      float64 `json:"protein_g"     validate:"gte=0"`
 	CarbohydrateG float64 `json:"carbohydrate_g" validate:"gte=0"`
-	FatG         float64 `json:"fat_g"         validate:"gte=0"`
-	SugarG       float64 `json:"sugar_g"       validate:"gte=0"`
-	SodiumMg     float64 `json:"sodium_mg"     validate:"gte=0"`
-	FiberG       float64 `json:"fiber_g"       validate:"gte=0"`
+	FatG          float64 `json:"fat_g"         validate:"gte=0"`
+	SugarG        float64 `json:"sugar_g"       validate:"gte=0"`
+	SodiumMg      float64 `json:"sodium_mg"     validate:"gte=0"`
+	FiberG        float64 `json:"fiber_g"       validate:"gte=0"`
 	SaturatedFatG float64 `json:"saturated_fat_g" validate:"gte=0"`
 
 	EnergyPercentageDV       float64 `json:"energy_percentage_dv" validate:"gte=0"`
@@ -63,7 +63,7 @@ type UpdateFoodRequest struct {
 	DietaryFiber      float64 `json:"dietary_fiber" validate:"gte=0"`
 	Energy            float64 `json:"energy" validate:"gte=0"`
 
-	NutritionBasis string `json:"nutrition_basis" validate:"omitempty,oneof=PER_100G PER_SERVING PER_PACKAGE"`
+	NutritionBasis string `json:"nutrition_basis" validate:"omitempty,oneof=PER_100G PER_SERVING PER_PACKAGE UNVERIFIED"`
 	Source         string `json:"source"`
 	Barcode        string `json:"barcode"`
 	ImageURL       string `json:"image_url"`
@@ -83,10 +83,10 @@ type FoodFilterQuery struct {
 }
 
 type FoodMasterResponse struct {
-	ID           string  `json:"id"`
-	Name         string  `json:"name"`
-	Manufacturer string  `json:"manufacturer"`
-	ServingSize  string  `json:"serving_size"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Manufacturer string `json:"manufacturer"`
+	ServingSize  string `json:"serving_size"`
 
 	EnergyKcal    float64 `json:"energy_kcal"`
 	ProteinG      float64 `json:"protein_g"`
@@ -123,7 +123,7 @@ type FoodMasterResponse struct {
 func ToFoodMasterResponse(f *domain.FoodMaster) FoodMasterResponse {
 	nutritionBasis := f.NutritionBasis
 	if nutritionBasis == "" {
-		nutritionBasis = "PER_100G"
+		nutritionBasis = "UNVERIFIED"
 	}
 	return FoodMasterResponse{
 		ID:           f.ID,

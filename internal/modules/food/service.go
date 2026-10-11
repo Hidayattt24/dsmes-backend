@@ -78,18 +78,18 @@ func (s *foodService) Create(ctx context.Context, req CreateFoodRequest) (*FoodM
 		BaseModel: domain.BaseModel{
 			ID: uuid.NewString(),
 		},
-		Name:           strings.TrimSpace(req.Name),
-		Manufacturer:   strings.TrimSpace(req.Manufacturer),
-		ServingSize:    strings.TrimSpace(req.ServingSize),
-		Calories:       req.EnergyKcal,
-		EnergyKcal:     req.EnergyKcal,
-		ProteinG:       req.ProteinG,
-		CarbohydrateG:  req.CarbohydrateG,
-		FatG:           req.FatG,
-		SugarG:         req.SugarG,
-		SodiumMg:       req.SodiumMg,
-		FiberG:         req.FiberG,
-		SaturatedFatG:  req.SaturatedFatG,
+		Name:          strings.TrimSpace(req.Name),
+		Manufacturer:  strings.TrimSpace(req.Manufacturer),
+		ServingSize:   strings.TrimSpace(req.ServingSize),
+		Calories:      req.EnergyKcal,
+		EnergyKcal:    req.EnergyKcal,
+		ProteinG:      req.ProteinG,
+		CarbohydrateG: req.CarbohydrateG,
+		FatG:          req.FatG,
+		SugarG:        req.SugarG,
+		SodiumMg:      req.SodiumMg,
+		FiberG:        req.FiberG,
+		SaturatedFatG: req.SaturatedFatG,
 
 		EnergyPercentageDV:       req.EnergyPercentageDV,
 		ProteinPercentageDV:      req.ProteinPercentageDV,
@@ -105,7 +105,7 @@ func (s *foodService) Create(ctx context.Context, req CreateFoodRequest) (*FoodM
 		DietaryFiber:      req.DietaryFiber,
 		Energy:            req.Energy,
 
-		NutritionBasis: determineNutritionBasis(req.NutritionBasis, req.Manufacturer),
+		NutritionBasis: determineNutritionBasis(req.NutritionBasis, req.ServingSize),
 		Source:         source,
 		Barcode:        strings.TrimSpace(req.Barcode),
 		ImageURL:       strings.TrimSpace(req.ImageURL),
@@ -164,7 +164,7 @@ func (s *foodService) Update(ctx context.Context, id string, req UpdateFoodReque
 	existing.Energy = req.Energy
 
 	if req.NutritionBasis != "" {
-		existing.NutritionBasis = determineNutritionBasis(req.NutritionBasis, existing.Manufacturer)
+		existing.NutritionBasis = determineNutritionBasis(req.NutritionBasis, existing.ServingSize)
 	}
 	if req.Source != "" {
 		existing.Source = req.Source
@@ -439,26 +439,38 @@ func (s *foodService) parseAndValidateRow(row []string, headerMap map[string]int
 		item.Manufacturer = "Tidak Diketahui"
 	}
 
-	// Tentukan NutritionBasis dan ServingSize berdasarkan manufacturer
-	// Hanya dua pilihan:
-	//   - Produsen diketahui → PER_PACKAGE
-	//   - Produsen tidak diketahui → PER_100G (Per 100 g BDD)
-	item.NutritionBasis = determineNutritionBasis("", item.Manufacturer)
-	if item.NutritionBasis == "PER_100G" {
-		item.ServingSize = "Per 100 g BDD (Berat Dapat Dimakan)"
+	// Read raw serving_size from Excel if available
+	rawServing := getVal(
+		"serving_size", "serving size", "servingsize",
+		"ukuran_saji", "ukuran saji", "ukuransaji",
+		"ukuran_porsi", "ukuran porsi", "ukuranporsi",
+		"takaran_saji", "takaran saji", "takaransaji",
+		"porsi", "serving",
+	)
+	if strings.Contains(strings.ToLower(rawServing), "bdd") {
+		rawServing = strings.TrimSpace(strings.ReplaceAll(rawServing, " (Berat Dapat Dimakan)", ""))
+		rawServing = strings.TrimSpace(strings.ReplaceAll(rawServing, "(Berat Dapat Dimakan)", ""))
+		rawServing = strings.TrimSpace(strings.ReplaceAll(rawServing, "BDD", ""))
+		rawServing = strings.TrimSpace(strings.ReplaceAll(rawServing, "Per ", ""))
+		rawServing = strings.TrimSpace(strings.ReplaceAll(rawServing, "per ", ""))
+		if rawServing == "" || rawServing == "100 g" || rawServing == "100g" {
+			rawServing = "100 g"
+		}
+	}
+
+	explicitBasis := getVal("nutrition_basis", "basis_gizi", "basis")
+	item.NutritionBasis = determineNutritionBasis(explicitBasis, rawServing)
+	if rawServing != "" {
+		item.ServingSize = rawServing
 	} else {
-		// Per kemasan: ambil dari kolom serving_size di Excel jika ada, sebagai informasi tambahan
-		rawServing := getVal(
-			"serving_size", "serving size", "servingsize",
-			"ukuran_saji", "ukuran saji", "ukuransaji",
-			"ukuran_porsi", "ukuran porsi", "ukuranporsi",
-			"takaran_saji", "takaran saji", "takaransaji",
-			"porsi", "serving",
-		)
-		if rawServing != "" {
-			item.ServingSize = rawServing
-		} else {
+		if item.NutritionBasis == "PER_100G" {
+			item.ServingSize = "100 g"
+		} else if item.NutritionBasis == "PER_PACKAGE" {
 			item.ServingSize = "Per Kemasan"
+		} else if item.NutritionBasis == "UNVERIFIED" {
+			item.ServingSize = "0 g"
+		} else {
+			item.ServingSize = "1 porsi"
 		}
 	}
 
@@ -516,14 +528,29 @@ func (s *foodService) ConfirmExcelImport(ctx context.Context, req ExcelImportCon
 			manufacturer = "Tidak Diketahui"
 		}
 
-		nutritionBasis := determineNutritionBasis("", manufacturer)
-		var servingSize string
-		if nutritionBasis == "PER_100G" {
-			servingSize = "Per 100 g BDD (Berat Dapat Dimakan)"
-		} else {
-			servingSize = strings.TrimSpace(item.ServingSize)
-			if servingSize == "" {
+		rawServing := strings.TrimSpace(item.ServingSize)
+		if strings.Contains(strings.ToLower(rawServing), "bdd") {
+			rawServing = strings.TrimSpace(strings.ReplaceAll(rawServing, " (Berat Dapat Dimakan)", ""))
+			rawServing = strings.TrimSpace(strings.ReplaceAll(rawServing, "(Berat Dapat Dimakan)", ""))
+			rawServing = strings.TrimSpace(strings.ReplaceAll(rawServing, "BDD", ""))
+			rawServing = strings.TrimSpace(strings.ReplaceAll(rawServing, "Per ", ""))
+			rawServing = strings.TrimSpace(strings.ReplaceAll(rawServing, "per ", ""))
+			if rawServing == "" || rawServing == "100 g" || rawServing == "100g" {
+				rawServing = "100 g"
+			}
+		}
+
+		nutritionBasis := determineNutritionBasis(item.NutritionBasis, rawServing)
+		servingSize := rawServing
+		if servingSize == "" {
+			if nutritionBasis == "PER_100G" {
+				servingSize = "100 g"
+			} else if nutritionBasis == "PER_PACKAGE" {
 				servingSize = "Per Kemasan"
+			} else if nutritionBasis == "UNVERIFIED" {
+				servingSize = "0 g"
+			} else {
+				servingSize = "1 porsi"
 			}
 		}
 
@@ -616,14 +643,21 @@ func (s *foodService) GetStats(ctx context.Context) (*FoodStatsResponse, error) 
 	return s.repo.GetStats(ctx)
 }
 
-func determineNutritionBasis(explicitBasis, manufacturer string) string {
+func determineNutritionBasis(explicitBasis, servingSize string) string {
 	b := strings.TrimSpace(strings.ToUpper(explicitBasis))
-	if b == "PER_100G" || b == "PER_SERVING" || b == "PER_PACKAGE" {
+	if b == "PER_100G" || b == "PER_SERVING" || b == "PER_PACKAGE" || b == "UNVERIFIED" {
 		return b
 	}
-	m := strings.TrimSpace(manufacturer)
-	if m == "" || strings.EqualFold(m, "tidak diketahui") || strings.EqualFold(m, "tidak ada") || strings.EqualFold(m, "-") {
+
+	s := strings.ToLower(strings.TrimSpace(servingSize))
+	if s == "" || s == "0" || s == "0 g" || s == "0 ml" || s == "0.00 g" || s == "0.0 g" || s == "0 porsi" {
+		return "UNVERIFIED"
+	}
+	if strings.Contains(s, "100 g") || strings.Contains(s, "100g") || strings.Contains(s, "100 gram") {
 		return "PER_100G"
 	}
-	return "PER_PACKAGE"
+	if strings.Contains(s, "kemasan") || strings.Contains(s, "bungkus") || strings.Contains(s, "botol") || strings.Contains(s, "kaleng") {
+		return "PER_PACKAGE"
+	}
+	return "PER_SERVING"
 }

@@ -37,7 +37,7 @@ type FoodMaster struct {
 	Energy            float64 `gorm:"type:numeric(10,2);default:0" json:"energy"`
 
 	// Metadata
-	NutritionBasis string `gorm:"type:varchar(50);index;not null;default:'PER_100G'" json:"nutrition_basis"`
+	NutritionBasis string `gorm:"type:varchar(50);index;not null;default:'UNVERIFIED'" json:"nutrition_basis"`
 	Source         string `gorm:"type:varchar(100);default:'manual'" json:"source"`
 	Barcode        string `gorm:"type:varchar(100);index" json:"barcode"`
 	ImageURL       string `gorm:"type:text" json:"image_url"`

@@ -43,15 +43,36 @@ func (r *nutritionRepository) FindFoodByID(ctx context.Context, id string) (*dom
 	var fm domain.FoodMaster
 	errMaster := r.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", id).First(&fm).Error
 	if errMaster == nil {
+		servingGrams := 100.0
+		calories := fm.EnergyKcal
+		if calories == 0 && fm.Calories > 0 {
+			calories = fm.Calories
+		}
+		carbs := fm.CarbohydrateG
+		if carbs == 0 && fm.TotalCarbohydrate > 0 {
+			carbs = fm.TotalCarbohydrate
+		}
+		protein := fm.ProteinG
+		if protein == 0 && fm.Protein > 0 {
+			protein = fm.Protein
+		}
+		fat := fm.FatG
+		if fat == 0 && fm.TotalFat > 0 {
+			fat = fm.TotalFat
+		}
+
 		return &domain.Food{
 			BaseModel:           fm.BaseModel,
 			Name:                fm.Name,
 			DefaultServingUnit:  fm.ServingSize,
-			DefaultServingGrams: 100,
-			Calories:            fm.EnergyKcal,
-			CarbsG:              fm.CarbohydrateG,
-			ProteinG:            fm.ProteinG,
-			FatG:                fm.FatG,
+			DefaultServingGrams: servingGrams,
+			Calories:            calories,
+			CarbsG:              carbs,
+			ProteinG:            protein,
+			FatG:                fat,
+			SugarG:              fm.SugarG,
+			SodiumMg:            fm.SodiumMg,
+			FiberG:              fm.FiberG,
 		}, nil
 	}
 
@@ -110,7 +131,7 @@ func (r *nutritionRepository) DeleteMealLog(ctx context.Context, patientID strin
 
 func (r *nutritionRepository) FindMealsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.MealLog, error) {
 	var items []domain.MealLog
-	q := r.db.WithContext(ctx).Preload("Food").Where("patient_id = ? AND deleted_at IS NULL", patientID)
+	q := r.db.WithContext(ctx).Preload("Food").Preload("FoodMaster").Where("patient_id = ? AND deleted_at IS NULL", patientID)
 	if dateStr != "" {
 		// Range predicate so the (patient_id, logged_at) index can be used.
 		q = q.Where("logged_at >= ?::date AND logged_at < (?::date + INTERVAL '1 day')", dateStr, dateStr)

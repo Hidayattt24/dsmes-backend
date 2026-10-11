@@ -27,11 +27,15 @@ type FoodResponse struct {
 	ID                  string  `json:"id"`
 	Name                string  `json:"name"`
 	DefaultServingUnit  string  `json:"default_serving_unit"`
+	ServingSize         string  `json:"serving_size"`
 	DefaultServingGrams float64 `json:"default_serving_grams"`
 	Calories            float64 `json:"calories"`
 	CarbsG              float64 `json:"carbs_g"`
 	ProteinG            float64 `json:"protein_g"`
 	FatG                float64 `json:"fat_g"`
+	SugarG              float64 `json:"sugar_g"`
+	SodiumMg            float64 `json:"sodium_mg"`
+	FiberG              float64 `json:"fiber_g"`
 }
 
 type MealLogResponse struct {
@@ -50,6 +54,9 @@ type DailyNutritionSummaryResponse struct {
 	TotalCarbsG        float64 `json:"total_carbs_g"`
 	TotalProteinG      float64 `json:"total_protein_g"`
 	TotalFatG          float64 `json:"total_fat_g"`
+	TotalSugarG        float64 `json:"total_sugar_g"`
+	TotalSodiumMg      float64 `json:"total_sodium_mg"`
+	TotalFiberG        float64 `json:"total_fiber_g"`
 }
 
 func ToFoodResponse(f *domain.Food) FoodResponse {
@@ -62,6 +69,9 @@ func ToFoodResponse(f *domain.Food) FoodResponse {
 		CarbsG:              f.CarbsG,
 		ProteinG:            f.ProteinG,
 		FatG:                f.FatG,
+		SugarG:              f.SugarG,
+		SodiumMg:            f.SodiumMg,
+		FiberG:              f.FiberG,
 	}
 }
 

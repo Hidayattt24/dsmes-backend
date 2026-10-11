@@ -22,6 +22,9 @@ type Food struct {
 	CarbsG              float64 `gorm:"type:numeric(6,2)" json:"carbs_g"`
 	ProteinG            float64 `gorm:"type:numeric(6,2)" json:"protein_g"`
 	FatG                float64 `gorm:"type:numeric(6,2)" json:"fat_g"`
+	SugarG              float64 `gorm:"type:numeric(6,2)" json:"sugar_g"`
+	SodiumMg            float64 `gorm:"type:numeric(6,2)" json:"sodium_mg"`
+	FiberG              float64 `gorm:"type:numeric(6,2)" json:"fiber_g"`
 }
 
 func (Food) TableName() string { return "foods" }
@@ -37,15 +40,15 @@ type MealLog struct {
 	LoggedAt          time.Time `gorm:"not null;default:now()" json:"logged_at"`
 
 	// Nutrition Snapshot (frozen at logging time)
-	FoodName     string  `gorm:"type:varchar(255)" json:"food_name"`
-	ServingSize  string  `gorm:"type:varchar(100)" json:"serving_size"`
-	Calories     float64 `gorm:"type:numeric(8,2)" json:"calories"`
-	CarbsG       float64 `gorm:"type:numeric(8,2)" json:"carbs_g"`
-	ProteinG     float64 `gorm:"type:numeric(8,2)" json:"protein_g"`
-	FatG         float64 `gorm:"type:numeric(8,2)" json:"fat_g"`
-	SugarG       float64 `gorm:"type:numeric(8,2)" json:"sugar_g"`
-	SodiumMg     float64 `gorm:"type:numeric(8,2)" json:"sodium_mg"`
-	FiberG       float64 `gorm:"type:numeric(8,2)" json:"fiber_g"`
+	FoodName    string  `gorm:"type:varchar(255)" json:"food_name"`
+	ServingSize string  `gorm:"type:varchar(100)" json:"serving_size"`
+	Calories    float64 `gorm:"type:numeric(8,2)" json:"calories"`
+	CarbsG      float64 `gorm:"type:numeric(8,2)" json:"carbs_g"`
+	ProteinG    float64 `gorm:"type:numeric(8,2)" json:"protein_g"`
+	FatG        float64 `gorm:"type:numeric(8,2)" json:"fat_g"`
+	SugarG      float64 `gorm:"type:numeric(8,2)" json:"sugar_g"`
+	SodiumMg    float64 `gorm:"type:numeric(8,2)" json:"sodium_mg"`
+	FiberG      float64 `gorm:"type:numeric(8,2)" json:"fiber_g"`
 
 	// Relations
 	Food       *Food       `gorm:"foreignKey:FoodID" json:"food,omitempty"`

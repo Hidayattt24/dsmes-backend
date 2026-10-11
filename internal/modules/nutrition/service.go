@@ -61,6 +61,9 @@ func (s *nutritionService) LogMeal(ctx context.Context, patientID string, req Lo
 		CarbsG:            food.CarbsG,
 		ProteinG:          food.ProteinG,
 		FatG:              food.FatG,
+		SugarG:            food.SugarG,
+		SodiumMg:          food.SodiumMg,
+		FiberG:            food.FiberG,
 		MealType:          req.MealType,
 		PortionMultiplier: req.PortionMultiplier,
 		LoggedAt:          time.Now(),
@@ -101,18 +104,24 @@ func (s *nutritionService) GetDailyNutritionSummary(ctx context.Context, patient
 	var carbs float64
 	var protein float64
 	var fat float64
+	var sugar float64
+	var sodium float64
+	var fiber float64
 
 	for _, m := range meals {
 		// Use the nutrition snapshot frozen at logging time. This works for
 		// logs created from either the `foods` or the food master dataset.
-		cal, c, p, f := m.Calories, m.CarbsG, m.ProteinG, m.FatG
+		cal, c, p, f, sVal, na, fib := m.Calories, m.CarbsG, m.ProteinG, m.FatG, m.SugarG, m.SodiumMg, m.FiberG
 		if m.Food != nil {
-			cal, c, p, f = m.Food.Calories, m.Food.CarbsG, m.Food.ProteinG, m.Food.FatG
+			cal, c, p, f, sVal, na, fib = m.Food.Calories, m.Food.CarbsG, m.Food.ProteinG, m.Food.FatG, m.Food.SugarG, m.Food.SodiumMg, m.Food.FiberG
 		}
 		consumed += cal * m.PortionMultiplier
 		carbs += c * m.PortionMultiplier
 		protein += p * m.PortionMultiplier
 		fat += f * m.PortionMultiplier
+		sugar += sVal * m.PortionMultiplier
+		sodium += na * m.PortionMultiplier
+		fiber += fib * m.PortionMultiplier
 	}
 
 	remaining := float64(target) - consumed
@@ -128,6 +137,9 @@ func (s *nutritionService) GetDailyNutritionSummary(ctx context.Context, patient
 		TotalCarbsG:        carbs,
 		TotalProteinG:      protein,
 		TotalFatG:          fat,
+		TotalSugarG:        sugar,
+		TotalSodiumMg:      sodium,
+		TotalFiberG:        fiber,
 	}, nil
 }
 
@@ -187,6 +199,25 @@ func (s *nutritionService) GetPatientMealLogs(ctx context.Context, patientID str
 		var fResp FoodResponse
 		if m.Food != nil {
 			fResp = ToFoodResponse(m.Food)
+		} else {
+			fResp = FoodResponse{
+				ID:                  m.FoodID,
+				Name:                m.FoodName,
+				DefaultServingUnit:  m.ServingSize,
+				DefaultServingGrams: 100,
+				Calories:            m.Calories,
+				CarbsG:              m.CarbsG,
+				ProteinG:            m.ProteinG,
+				FatG:                m.FatG,
+				SugarG:              m.SugarG,
+				SodiumMg:            m.SodiumMg,
+				FiberG:              m.FiberG,
+			}
+		}
+		if m.FoodMaster != nil && m.FoodMaster.ServingSize != "" {
+			fResp.ServingSize = m.FoodMaster.ServingSize
+		} else {
+			fResp.ServingSize = m.ServingSize
 		}
 		resp[i] = MealLogResponse{
 			ID:                m.ID,
