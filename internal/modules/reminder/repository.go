@@ -183,6 +183,11 @@ func (r *reminderRepository) FindLogsByPatientAndDate(ctx context.Context, patie
 }
 
 func (r *reminderRepository) UpsertDeviceToken(ctx context.Context, token *domain.DeviceToken) error {
+	// Clean any previous tokens for this patient on the same platform to prevent sending duplicate notifications
+	_ = r.db.WithContext(ctx).
+		Where("patient_id = ? AND platform = ? AND token != ?", token.PatientID, token.Platform, token.Token).
+		Delete(&domain.DeviceToken{}).Error
+
 	result := r.db.WithContext(ctx).Save(token)
 	if result.Error != nil {
 		return errs.NewInternal("failed to save device token", result.Error)

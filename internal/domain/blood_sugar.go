@@ -203,37 +203,37 @@ func ClassifyBloodGlucose(val int, mType MeasurementTime, dob *time.Time) BloodS
 	case TimeFasting:
 		refMin = 80
 		refMax = 130
-		refRange = "80 – 130 mg/dL (Puasa)"
+		refRange = "80 – 130 mg/dL"
 		return classifyGDP(val, refMin, refMax, refRange)
 
 	case TimeBeforeMeal:
 		refMin = 80
 		refMax = 130
-		refRange = "80 – 130 mg/dL (Sebelum Makan)"
+		refRange = "80 – 130 mg/dL"
 		return classifyBeforeMeal(val, refMin, refMax, refRange)
 
 	case TimeAfterMeal:
 		refMin = 70
 		refMax = 179
-		refRange = "< 180 mg/dL (2 Jam Sesudah Makan)"
+		refRange = "< 180 mg/dL"
 		return classifyGD2PP(val, refMin, refMax, refRange)
 
 	case TimeBeforeBed:
 		refMin = 100
 		refMax = 140
-		refRange = "100 – 140 mg/dL (Sebelum Tidur)"
+		refRange = "100 – 140 mg/dL"
 		return classifyBeforeBed(val, refMin, refMax, refRange)
 
 	case TimeRandom:
 		refMin = 70
 		refMax = 139
-		refRange = "< 140 mg/dL (Sewaktu)"
+		refRange = "< 140 mg/dL"
 		return classifyGDS(val, refMin, refMax, refRange)
 
 	default:
 		refMin = 70
 		refMax = 139
-		refRange = "< 140 mg/dL (Sewaktu)"
+		refRange = "< 140 mg/dL"
 		return classifyGDS(val, refMin, refMax, refRange)
 	}
 }
@@ -321,12 +321,17 @@ func classifyBeforeMeal(val, refMin, refMax int, refRange string) BloodSugarClas
 
 // before_bed (Sebelum Tidur):
 //
-//	< 100            → Hipoglikemia (Risiko Hipoglikemia Malam)
+//	< 70             → Hipoglikemia (Kritis)
+//	70 – 99          → Waspada Rendah (Waspada Terlalu Rendah)
 //	100 – 140        → Normal / Terkontrol
-//	> 140            → Waspada / Elevated
+//	141 – 180        → Waspada / Elevated
+//	> 180            → Hiperglikemia
 func classifyBeforeBed(val, refMin, refMax int, refRange string) BloodSugarClassification {
-	if val < 100 {
+	if val < 70 {
 		return hypoResult(refMin, refMax, refRange)
+	}
+	if val < 100 {
+		return catResult(CategoryLowWarning, refMin, refMax, refRange)
 	}
 	if val <= 140 {
 		return catResult(CategoryNormal, refMin, refMax, refRange)

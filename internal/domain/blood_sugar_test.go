@@ -80,7 +80,8 @@ func TestClassifyBeforeBed(t *testing.T) {
 		val      int
 		expected GlucoseCategory
 	}{
-		{"BeforeBed 80 (hypoglycemia)", 80, CategoryHypoglycemia},
+		{"BeforeBed 65 (hypoglycemia)", 65, CategoryHypoglycemia},
+		{"BeforeBed 80 (low_warning)", 80, CategoryLowWarning},
 		{"BeforeBed 120 (normal)", 120, CategoryNormal},
 		{"BeforeBed 160 (elevated)", 160, CategoryElevated},
 		{"BeforeBed 220 (hyperglycemia)", 220, CategoryHyperglycemia},

@@ -21,12 +21,16 @@ type BloodSugarResponse struct {
 	MeasuredAt           string                 `json:"measured_at"`
 	Category             domain.GlucoseCategory `json:"category"`
 	CategoryLabel        string                 `json:"category_label"`
+	ClassificationLabel  string                 `json:"classification_label"`
+	Status               string                 `json:"status"`
 	Severity             domain.GlucoseSeverity `json:"severity"`
 	ReferenceMin         int                    `json:"reference_min"`
 	ReferenceMax         int                    `json:"reference_max"`
 	ReferenceRange       string                 `json:"reference_range"`
+	ReferenceRangeText   string                 `json:"reference_range_text"`
 	Recommendation       string                 `json:"recommendation"`
 	Color                string                 `json:"color"`
+	ColorIndicator       string                 `json:"color_indicator"`
 	CreatedAt            string                 `json:"created_at"`
 	UpdatedAt            string                 `json:"updated_at"`
 }
@@ -99,12 +103,16 @@ func ToBloodSugarResponse(l *domain.BloodSugarLog) BloodSugarResponse {
 		MeasuredAt:           l.MeasuredAt.Format(time.RFC3339),
 		Category:             category,
 		CategoryLabel:        classLabel,
+		ClassificationLabel:  classLabel,
+		Status:               string(category),
 		Severity:             severity,
 		ReferenceMin:         refMin,
 		ReferenceMax:         refMax,
 		ReferenceRange:       refRange,
+		ReferenceRangeText:   refRange,
 		Recommendation:       recommendation,
 		Color:                color,
+		ColorIndicator:       color,
 		CreatedAt:            l.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:            l.UpdatedAt.Format(time.RFC3339),
 	}

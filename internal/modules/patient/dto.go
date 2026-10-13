@@ -146,21 +146,24 @@ type PatientResponse struct {
 	LastActiveAt          *string                           `json:"last_active_at,omitempty"`
 
 	// Summary statistics fields
-	LatestBloodSugar       *int               `json:"latest_blood_sugar,omitempty"`
-	LatestBloodSugarTime   *string            `json:"latest_blood_sugar_time,omitempty"`
-	LatestBloodSugarType   *string            `json:"latest_blood_sugar_type,omitempty"`
-	LatestBloodSugarStatus *string            `json:"latest_blood_sugar_status,omitempty"`
-	AverageBloodSugar      *float64           `json:"average_blood_sugar,omitempty"`
-	LatestWeight           *float64           `json:"latest_weight,omitempty"`
-	BMI                    *float64           `json:"bmi,omitempty"`
-	BMICategory            *string            `json:"bmi_category,omitempty"`
-	LatestMealCalories     *float64           `json:"latest_meal_calories,omitempty"`
-	LatestMealType         *string            `json:"latest_meal_type,omitempty"`
-	LatestMealName         *string            `json:"latest_meal_name,omitempty"`
-	LatestActivityTime     *string            `json:"latest_activity_time,omitempty"`
-	LatestActivityName     *string            `json:"latest_activity_name,omitempty"`
-	WaistCircumferenceCm   *float64           `json:"waist_circumference_cm,omitempty"`
-	CalorieStatus          *CalorieStatusInfo `json:"calorie_status_info,omitempty"`
+	LatestBloodSugar                    *int               `json:"latest_blood_sugar,omitempty"`
+	LatestBloodSugarTime                *string            `json:"latest_blood_sugar_time,omitempty"`
+	LatestBloodSugarType                *string            `json:"latest_blood_sugar_type,omitempty"`
+	LatestBloodSugarStatus              *string            `json:"latest_blood_sugar_status,omitempty"`
+	LatestBloodSugarClassificationLabel *string            `json:"latest_blood_sugar_classification_label,omitempty"`
+	LatestBloodSugarColor               *string            `json:"latest_blood_sugar_color,omitempty"`
+	LatestBloodSugarReferenceRange      *string            `json:"latest_blood_sugar_reference_range,omitempty"`
+	AverageBloodSugar                   *float64           `json:"average_blood_sugar,omitempty"`
+	LatestWeight                        *float64           `json:"latest_weight,omitempty"`
+	BMI                                 *float64           `json:"bmi,omitempty"`
+	BMICategory                         *string            `json:"bmi_category,omitempty"`
+	LatestMealCalories                  *float64           `json:"latest_meal_calories,omitempty"`
+	LatestMealType                      *string            `json:"latest_meal_type,omitempty"`
+	LatestMealName                      *string            `json:"latest_meal_name,omitempty"`
+	LatestActivityTime                  *string            `json:"latest_activity_time,omitempty"`
+	LatestActivityName                  *string            `json:"latest_activity_name,omitempty"`
+	WaistCircumferenceCm                *float64           `json:"waist_circumference_cm,omitempty"`
+	CalorieStatus                       *CalorieStatusInfo `json:"calorie_status_info,omitempty"`
 }
 
 type CalorieStatusInfo struct {
@@ -206,19 +209,22 @@ type PatientActivityAnalyticsResponse struct {
 }
 
 type PatientSummaryData struct {
-	LatestBloodSugar       *int       `json:"latest_blood_sugar,omitempty"`
-	LatestBloodSugarTime   *time.Time `json:"latest_blood_sugar_time,omitempty"`
-	LatestBloodSugarType   *string    `json:"latest_blood_sugar_type,omitempty"`
-	LatestBloodSugarStatus *string    `json:"latest_blood_sugar_status,omitempty"`
-	AverageBloodSugar      *float64   `json:"average_blood_sugar,omitempty"`
-	LatestWeight           *float64   `json:"latest_weight,omitempty"`
-	BMI                    *float64   `json:"bmi,omitempty"`
-	LatestMealCalories     *float64   `json:"latest_meal_calories,omitempty"`
-	LatestMealType         *string    `json:"latest_meal_type,omitempty"`
-	LatestMealName         *string    `json:"latest_meal_name,omitempty"`
-	LatestActivityTime     *time.Time `json:"latest_activity_time_raw,omitempty"`
-	LatestActivityName     *string    `json:"latest_activity_name,omitempty"`
-	TodayConsumedCalories  *float64   `json:"today_consumed_calories,omitempty"`
+	LatestBloodSugar                    *int       `json:"latest_blood_sugar,omitempty"`
+	LatestBloodSugarTime                *time.Time `json:"latest_blood_sugar_time,omitempty"`
+	LatestBloodSugarType                *string    `json:"latest_blood_sugar_type,omitempty"`
+	LatestBloodSugarStatus              *string    `json:"latest_blood_sugar_status,omitempty"`
+	LatestBloodSugarClassificationLabel *string    `json:"latest_blood_sugar_classification_label,omitempty"`
+	LatestBloodSugarColor               *string    `json:"latest_blood_sugar_color,omitempty"`
+	LatestBloodSugarReferenceRange      *string    `json:"latest_blood_sugar_reference_range,omitempty"`
+	AverageBloodSugar                   *float64   `json:"average_blood_sugar,omitempty"`
+	LatestWeight                        *float64   `json:"latest_weight,omitempty"`
+	BMI                                 *float64   `json:"bmi,omitempty"`
+	LatestMealCalories                  *float64   `json:"latest_meal_calories,omitempty"`
+	LatestMealType                      *string    `json:"latest_meal_type,omitempty"`
+	LatestMealName                      *string    `json:"latest_meal_name,omitempty"`
+	LatestActivityTime                  *time.Time `json:"latest_activity_time_raw,omitempty"`
+	LatestActivityName                  *string    `json:"latest_activity_name,omitempty"`
+	TodayConsumedCalories               *float64   `json:"today_consumed_calories,omitempty"`
 }
 
 type PatientDetailResponse struct {

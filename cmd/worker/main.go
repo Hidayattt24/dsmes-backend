@@ -143,7 +143,13 @@ func dispatchDueReminders(
 
 		title, body := buildReminderNotification(item)
 
+		seenTokens := make(map[string]bool)
 		for _, token := range tokens {
+			if seenTokens[token.Token] {
+				continue
+			}
+			seenTokens[token.Token] = true
+
 			_, err = sender.Send(ctx, token.Token, title, body, map[string]string{
 				"type":          "reminder",
 				"reminder_id":   item.ID,

@@ -212,12 +212,18 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Cre
 	article.Content = req.Content
 	article.YoutubeLink = req.YoutubeLink
 
+	prevStatus := article.Status
 	if req.Status != "" {
 		article.Status = domain.ArticleStatus(req.Status)
 	}
 
 	if err = s.repo.UpdateArticle(ctx, article); err != nil {
 		return nil, err
+	}
+
+	// Broadcast push notification when transitioning to published status
+	if prevStatus != domain.StatusPublikasi && article.Status == domain.StatusPublikasi {
+		s.broadcastEducationNotif(ctx, article.Title, article.ID)
 	}
 
 	// Replace nested sections/steps

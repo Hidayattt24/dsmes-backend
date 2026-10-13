@@ -450,6 +450,9 @@ func populateSummary(res *PatientResponse, summary *PatientSummaryData) {
 	}
 	res.LatestBloodSugarType = summary.LatestBloodSugarType
 	res.LatestBloodSugarStatus = summary.LatestBloodSugarStatus
+	res.LatestBloodSugarClassificationLabel = summary.LatestBloodSugarClassificationLabel
+	res.LatestBloodSugarColor = summary.LatestBloodSugarColor
+	res.LatestBloodSugarReferenceRange = summary.LatestBloodSugarReferenceRange
 	res.AverageBloodSugar = summary.AverageBloodSugar
 	res.LatestWeight = summary.LatestWeight
 	res.BMI = summary.BMI

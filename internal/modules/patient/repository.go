@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -80,19 +81,21 @@ func (r *patientRepository) FindAll(ctx context.Context, filter PatientFilterQue
 	hasBSJoin := false
 
 	if filter.BloodSugarStatus != "" && filter.BloodSugarStatus != "Semua" {
-		bsStatus := filter.BloodSugarStatus
-		if bsStatus == "Tinggi" {
-			bsStatus = "tinggi"
-		} else if bsStatus == "Sangat Tinggi" || bsStatus == "sangat_tinggi" {
-			bsStatus = "sangat_tinggi"
-		} else if bsStatus == "Rendah" || bsStatus == "rendah" {
-			bsStatus = "rendah"
-		} else if bsStatus == "Normal" || bsStatus == "normal" {
-			bsStatus = "normal"
-		}
 		q = q.Joins("LEFT JOIN (SELECT DISTINCT ON (patient_id) patient_id, status FROM blood_sugar_logs WHERE deleted_at IS NULL ORDER BY patient_id, measured_at DESC) latest_bs ON latest_bs.patient_id = patients.id")
 		hasBSJoin = true
-		q = q.Where("latest_bs.status = ?", bsStatus)
+
+		switch strings.ToLower(filter.BloodSugarStatus) {
+		case "normal", "target":
+			q = q.Where("latest_bs.status IN ('normal', 'target')")
+		case "hiperglikemia", "hyperglycemia", "tinggi", "sangat_tinggi":
+			q = q.Where("latest_bs.status = 'hyperglycemia'")
+		case "hipoglikemia", "hypoglycemia", "rendah":
+			q = q.Where("latest_bs.status = 'hypoglycemia'")
+		case "waspada", "elevated", "prediabetes", "low_warning":
+			q = q.Where("latest_bs.status IN ('elevated', 'prediabetes', 'low_warning')")
+		default:
+			q = q.Where("latest_bs.status = ?", filter.BloodSugarStatus)
+		}
 	}
 
 	if filter.RiskLevel != "" && filter.RiskLevel != "Semua" {
@@ -336,6 +339,12 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 		classified := domain.ClassifyBloodGlucose(val, mType, nil)
 		statusStr := string(classified.Category)
 		summary.LatestBloodSugarStatus = &statusStr
+		labelStr := classified.CategoryLabel
+		summary.LatestBloodSugarClassificationLabel = &labelStr
+		colorStr := classified.Color
+		summary.LatestBloodSugarColor = &colorStr
+		rangeStr := classified.ReferenceRange
+		summary.LatestBloodSugarReferenceRange = &rangeStr
 	} else {
 		// Fallback to patient_measurements table
 		var latestM domain.PatientMeasurement
@@ -357,6 +366,12 @@ func (r *patientRepository) GetPatientSummary(ctx context.Context, patientID str
 			classified := domain.ClassifyBloodGlucose(val, mType, nil)
 			st := string(classified.Category)
 			summary.LatestBloodSugarStatus = &st
+			labelStr := classified.CategoryLabel
+			summary.LatestBloodSugarClassificationLabel = &labelStr
+			colorStr := classified.Color
+			summary.LatestBloodSugarColor = &colorStr
+			rangeStr := classified.ReferenceRange
+			summary.LatestBloodSugarReferenceRange = &rangeStr
 		}
 	}
 
@@ -605,6 +620,12 @@ func (r *patientRepository) GetPatientSummaries(ctx context.Context, patientIDs 
 			classified := domain.ClassifyBloodGlucose(val, mType, nil)
 			statusStr := string(classified.Category)
 			summary.LatestBloodSugarStatus = &statusStr
+			labelStr := classified.CategoryLabel
+			summary.LatestBloodSugarClassificationLabel = &labelStr
+			colorStr := classified.Color
+			summary.LatestBloodSugarColor = &colorStr
+			rangeStr := classified.ReferenceRange
+			summary.LatestBloodSugarReferenceRange = &rangeStr
 		}
 
 		if avg, ok := avgBSMap[pid]; ok && avg > 0 {

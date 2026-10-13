@@ -281,7 +281,10 @@ func (r *educationRepository) BroadcastEducationNotification(ctx context.Context
 
 func (r *educationRepository) FindAllDeviceTokens(ctx context.Context) ([]domain.DeviceToken, error) {
 	var devices []domain.DeviceToken
-	if err := r.db.WithContext(ctx).Find(&devices).Error; err != nil {
+	// Deduplicate by token so multiple registrations of the same device token don't receive duplicate pushes
+	if err := r.db.WithContext(ctx).
+		Distinct("token", "patient_id", "platform", "last_seen").
+		Find(&devices).Error; err != nil {
 		return nil, errs.NewInternal("failed to fetch patient device tokens", err)
 	}
 	return devices, nil

@@ -34,6 +34,13 @@ func NewFCMSender(ctx context.Context, credentialsJSON string) (*FCMSender, erro
 }
 
 func (s *FCMSender) Send(ctx context.Context, token, title, body string, data map[string]string) (string, error) {
+	var tag string
+	if remID, ok := data["reminder_id"]; ok && remID != "" {
+		tag = fmt.Sprintf("reminder_%s", remID)
+	} else if artID, ok := data["article_id"]; ok && artID != "" {
+		tag = fmt.Sprintf("education_%s", artID)
+	}
+
 	return s.client.Send(ctx, &messaging.Message{
 		Token: token,
 		Notification: &messaging.Notification{
@@ -45,6 +52,7 @@ func (s *FCMSender) Send(ctx context.Context, token, title, body string, data ma
 			Priority: "high",
 			Notification: &messaging.AndroidNotification{
 				ChannelID: "dsmes_reminders_channel",
+				Tag:       tag,
 			},
 		},
 	})
