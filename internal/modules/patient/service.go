@@ -509,9 +509,7 @@ func (s *patientService) ListPatients(ctx context.Context, filter PatientFilterQ
 
 	for i := range items {
 		resp[i] = ToPatientResponse(&items[i])
-		score, label, _ := complianceFromAggregates(aggregates[items[i].ID], items[i].DailyCalorieTarget, items[i].CreatedAt, now)
-		resp[i].Compliance = score
-		resp[i].ComplianceLabel = label
+		applyCompliance(&resp[i], aggregates[items[i].ID], items[i].DailyCalorieTarget, items[i].CreatedAt, now)
 		if summary, ok := summaries[items[i].ID]; ok && summary != nil {
 			populateSummary(&resp[i], summary)
 		}
@@ -527,10 +525,13 @@ func (s *patientService) GetPatient(ctx context.Context, id string) (*PatientDet
 	}
 	res := ToPatientDetailResponse(patient)
 
-	score, label, breakdown := s.CalculateDynamicCompliance(ctx, patient.ID, patient.DailyCalorieTarget, patient.CreatedAt)
-	res.Compliance = score
-	res.ComplianceLabel = label
-	res.ComplianceBreakdown = breakdown
+	now := time.Now()
+	dailyAggs, aggErr := s.repo.GetPatientDailyLogsAggregate(ctx, patient.ID, now.AddDate(0, 0, -6), now)
+	if aggErr != nil {
+		s.log.Warn("patient: failed to fetch daily logs aggregate for compliance", zap.Error(aggErr))
+		dailyAggs = make(map[string]*DailyLogsAggregate)
+	}
+	applyCompliance(&res.PatientResponse, dailyAggs, patient.DailyCalorieTarget, patient.CreatedAt, now)
 
 	summary, err := s.repo.GetPatientSummary(ctx, id)
 	if err == nil && summary != nil {
@@ -579,13 +580,43 @@ func (s *patientService) CalculateDynamicCompliance(ctx context.Context, patient
 // aggregates. Extracted so ListPatients can score all patients on a page from a
 // single batched repository call instead of issuing one query per patient.
 func complianceFromAggregates(dailyAggs map[string]*DailyLogsAggregate, dailyTarget int, createdAt time.Time, now time.Time) (int, string, *ComplianceBreakdown) {
+	return complianceForWindow(dailyAggs, dailyTarget, createdAt, now, 7)
+}
+
+// todayComplianceFromAggregates scores only today's records. When nothing has
+// been logged today the label is "Belum Ada Catatan" instead of "Tidak Patuh".
+func todayComplianceFromAggregates(dailyAggs map[string]*DailyLogsAggregate, dailyTarget int, createdAt time.Time, now time.Time) (int, string, *ComplianceBreakdown) {
+	score, label, breakdown := complianceForWindow(dailyAggs, dailyTarget, createdAt, now, 1)
+	if score == 0 {
+		label = "Belum Ada Catatan"
+	}
+	return score, label, breakdown
+}
+
+// applyCompliance fills today's and weekly compliance. The legacy Compliance
+// fields mirror today's values for backwards compatibility.
+func applyCompliance(r *PatientResponse, aggs map[string]*DailyLogsAggregate, dailyTarget int, createdAt, now time.Time) {
+	todayScore, todayLabel, todayBreakdown := todayComplianceFromAggregates(aggs, dailyTarget, createdAt, now)
+	weeklyScore, weeklyLabel, _ := complianceFromAggregates(aggs, dailyTarget, createdAt, now)
+	r.TodayCompliance = todayScore
+	r.TodayComplianceLabel = todayLabel
+	r.TodayComplianceBreakdown = todayBreakdown
+	r.WeeklyCompliance = weeklyScore
+	r.WeeklyComplianceLabel = weeklyLabel
+	r.Compliance = todayScore
+	r.ComplianceLabel = todayLabel
+	r.ComplianceBreakdown = todayBreakdown
+}
+
+func complianceForWindow(dailyAggs map[string]*DailyLogsAggregate, dailyTarget int, createdAt time.Time, now time.Time, maxWindow int) (int, string, *ComplianceBreakdown) {
 	if dailyTarget <= 0 {
 		dailyTarget = domain.DefaultDailyCalorieTarget
 	}
 
 	daysSinceReg := int(now.Sub(createdAt).Hours()/24) + 1
-	evalWindow := 7
+	evalWindow := maxWindow
 	if daysSinceReg < evalWindow {
+
 		evalWindow = daysSinceReg
 	}
 	if evalWindow < 1 {
