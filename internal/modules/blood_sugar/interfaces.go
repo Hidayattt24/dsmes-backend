@@ -10,6 +10,7 @@ import (
 type BloodSugarRepository interface {
 	Create(ctx context.Context, log *domain.BloodSugarLog) error
 	FindByID(ctx context.Context, id string) (*domain.BloodSugarLog, error)
+	FindByClientID(ctx context.Context, patientID, clientID string) (*domain.BloodSugarLog, error)
 	FindAllByPatientID(ctx context.Context, patientID string, page, limit int) ([]domain.BloodSugarLog, int64, error)
 	Update(ctx context.Context, log *domain.BloodSugarLog) error
 	Delete(ctx context.Context, id string) error

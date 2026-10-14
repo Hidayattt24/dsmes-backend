@@ -172,6 +172,7 @@ type BloodSugarLog struct {
 	BaseModel
 
 	PatientID           string          `gorm:"type:uuid;not null;index" json:"patient_id"`
+	ClientID            *string         `gorm:"type:uuid;index" json:"client_id,omitempty"`
 	GlucoseValue        int             `gorm:"not null" json:"glucose_value"`
 	MeasurementTimeType MeasurementTime `gorm:"type:varchar(50);not null" json:"measurement_time_type"`
 	MeasuredAt          time.Time       `gorm:"not null;index" json:"measured_at"`

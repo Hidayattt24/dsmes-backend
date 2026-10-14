@@ -47,6 +47,38 @@ func (s *nutritionService) GetRecentFoods(ctx context.Context, patientID string)
 }
 
 func (s *nutritionService) LogMeal(ctx context.Context, patientID string, req LogMealRequest) (*MealLogResponse, error) {
+	// Idempotency check: if client provided a client_id, check if already recorded
+	if req.ClientID != nil && *req.ClientID != "" {
+		existing, err := s.repo.FindMealLogByClientID(ctx, patientID, *req.ClientID)
+		if err == nil && existing != nil {
+			var foodResp FoodResponse
+			if existing.Food != nil {
+				foodResp = ToFoodResponse(existing.Food)
+			} else {
+				foodResp = FoodResponse{
+					ID:          existing.FoodID,
+					Name:        existing.FoodName,
+					ServingSize: existing.ServingSize,
+					Calories:    existing.Calories,
+					CarbsG:      existing.CarbsG,
+					ProteinG:    existing.ProteinG,
+					FatG:        existing.FatG,
+					SugarG:      existing.SugarG,
+					SodiumMg:    existing.SodiumMg,
+					FiberG:      existing.FiberG,
+				}
+			}
+			return &MealLogResponse{
+				ID:                existing.ID,
+				ClientID:          existing.ClientID,
+				Food:              foodResp,
+				MealType:          existing.MealType,
+				PortionMultiplier: existing.PortionMultiplier,
+				LoggedAt:          existing.LoggedAt.Format(time.RFC3339),
+			}, nil
+		}
+	}
+
 	food, err := s.repo.FindFoodByID(ctx, req.FoodID)
 	if err != nil {
 		return nil, err
@@ -54,6 +86,7 @@ func (s *nutritionService) LogMeal(ctx context.Context, patientID string, req Lo
 
 	log := &domain.MealLog{
 		PatientID:         patientID,
+		ClientID:          req.ClientID,
 		FoodID:            req.FoodID,
 		FoodName:          food.Name,
 		ServingSize:       food.DefaultServingUnit,
@@ -70,6 +103,35 @@ func (s *nutritionService) LogMeal(ctx context.Context, patientID string, req Lo
 	}
 
 	if err = s.repo.CreateMealLog(ctx, log); err != nil {
+		if req.ClientID != nil && *req.ClientID != "" {
+			if existing, findErr := s.repo.FindMealLogByClientID(ctx, patientID, *req.ClientID); findErr == nil && existing != nil {
+				var foodResp FoodResponse
+				if existing.Food != nil {
+					foodResp = ToFoodResponse(existing.Food)
+				} else {
+					foodResp = FoodResponse{
+						ID:          existing.FoodID,
+						Name:        existing.FoodName,
+						ServingSize: existing.ServingSize,
+						Calories:    existing.Calories,
+						CarbsG:      existing.CarbsG,
+						ProteinG:    existing.ProteinG,
+						FatG:        existing.FatG,
+						SugarG:      existing.SugarG,
+						SodiumMg:    existing.SodiumMg,
+						FiberG:      existing.FiberG,
+					}
+				}
+				return &MealLogResponse{
+					ID:                existing.ID,
+					ClientID:          existing.ClientID,
+					Food:              foodResp,
+					MealType:          existing.MealType,
+					PortionMultiplier: existing.PortionMultiplier,
+					LoggedAt:          existing.LoggedAt.Format(time.RFC3339),
+				}, nil
+			}
+		}
 		return nil, err
 	}
 
@@ -78,6 +140,7 @@ func (s *nutritionService) LogMeal(ctx context.Context, patientID string, req Lo
 
 	return &MealLogResponse{
 		ID:                log.ID,
+		ClientID:          log.ClientID,
 		Food:              ToFoodResponse(food),
 		MealType:          log.MealType,
 		PortionMultiplier: log.PortionMultiplier,

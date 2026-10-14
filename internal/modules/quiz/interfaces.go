@@ -20,6 +20,7 @@ type QuizRepository interface {
 	SaveAttempt(ctx context.Context, attempt *domain.QuizAttempt) error
 	FindAttemptsByQuestionnaireID(ctx context.Context, questionnaireID string, facilityName string) ([]domain.QuizAttempt, error)
 	FindAttemptByID(ctx context.Context, questionnaireID string, participantID string, facilityName string) (*domain.QuizAttempt, error)
+	FindAttemptByClientID(ctx context.Context, patientID string, clientID string) (*domain.QuizAttempt, error)
 	FindMyAttempt(ctx context.Context, patientID, questionnaireID string) (*domain.QuizAttempt, error)
 	FindMyAttemptByID(ctx context.Context, patientID, questionnaireID, attemptID string) (*domain.QuizAttempt, error)
 	FindMyHistory(ctx context.Context, patientID, qType string) ([]domain.QuizAttempt, error)

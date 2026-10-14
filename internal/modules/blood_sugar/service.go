@@ -20,6 +20,15 @@ func NewBloodSugarService(repo BloodSugarRepository, log *zap.Logger) BloodSugar
 }
 
 func (s *bloodSugarService) LogBloodSugar(ctx context.Context, patientID string, req LogBloodSugarRequest) (*BloodSugarResponse, error) {
+	// Idempotency check: if client provided a client_id, check if already recorded
+	if req.ClientID != nil && *req.ClientID != "" {
+		existing, err := s.repo.FindByClientID(ctx, patientID, *req.ClientID)
+		if err == nil && existing != nil {
+			res := ToBloodSugarResponse(existing)
+			return &res, nil
+		}
+	}
+
 	measuredAt, err := time.Parse(time.RFC3339, req.MeasuredAt)
 	if err != nil {
 		return nil, errs.NewBadRequest("invalid measured_at format (RFC3339 required)", err)
@@ -31,6 +40,7 @@ func (s *bloodSugarService) LogBloodSugar(ctx context.Context, patientID string,
 
 	log := &domain.BloodSugarLog{
 		PatientID:           patientID,
+		ClientID:            req.ClientID,
 		GlucoseValue:        req.GlucoseValue,
 		MeasurementTimeType: normType,
 		MeasuredAt:          measuredAt,
@@ -44,6 +54,12 @@ func (s *bloodSugarService) LogBloodSugar(ctx context.Context, patientID string,
 	}
 
 	if err = s.repo.Create(ctx, log); err != nil {
+		if req.ClientID != nil && *req.ClientID != "" {
+			if existing, findErr := s.repo.FindByClientID(ctx, patientID, *req.ClientID); findErr == nil && existing != nil {
+				res := ToBloodSugarResponse(existing)
+				return &res, nil
+			}
+		}
 		return nil, err
 	}
 

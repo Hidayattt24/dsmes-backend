@@ -10,11 +10,13 @@ type LogBloodSugarRequest struct {
 	GlucoseValue        int                    `json:"glucose_value"           validate:"required,gt=0"`
 	MeasurementTimeType domain.MeasurementTime `json:"measurement_time_type"   validate:"required,oneof=fasting before_meal after_meal before_bed random sebelum_makan sesudah_makan sewaktu puasa sebelum_tidur"`
 	MeasuredAt          string                 `json:"measured_at"             validate:"required"`
+	ClientID            *string                `json:"client_id,omitempty"`
 }
 
 type BloodSugarResponse struct {
 	ID                   string                 `json:"id"`
 	PatientID            string                 `json:"patient_id"`
+	ClientID             *string                `json:"client_id,omitempty"`
 	GlucoseValue         int                    `json:"glucose_value"`
 	MeasurementTimeType  domain.MeasurementTime `json:"measurement_time_type"`
 	MeasurementTimeLabel string                 `json:"measurement_time_label"`
@@ -97,6 +99,7 @@ func ToBloodSugarResponse(l *domain.BloodSugarLog) BloodSugarResponse {
 	return BloodSugarResponse{
 		ID:                   l.ID,
 		PatientID:            l.PatientID,
+		ClientID:             l.ClientID,
 		GlucoseValue:         l.GlucoseValue,
 		MeasurementTimeType:  normType,
 		MeasurementTimeLabel: typeLabel,

@@ -127,6 +127,20 @@ func (r *bloodSugarRepository) FindByID(ctx context.Context, id string) (*domain
 	return &log, nil
 }
 
+func (r *bloodSugarRepository) FindByClientID(ctx context.Context, patientID, clientID string) (*domain.BloodSugarLog, error) {
+	var log domain.BloodSugarLog
+	err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND client_id = ? AND deleted_at IS NULL", patientID, clientID).
+		First(&log).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("blood sugar log not found")
+		}
+		return nil, errs.NewInternal("failed to fetch blood sugar log by client_id", err)
+	}
+	return &log, nil
+}
+
 func (r *bloodSugarRepository) Update(ctx context.Context, log *domain.BloodSugarLog) error {
 	if err := r.db.WithContext(ctx).Save(log).Error; err != nil {
 		return errs.NewInternal("failed to update blood sugar log", err)

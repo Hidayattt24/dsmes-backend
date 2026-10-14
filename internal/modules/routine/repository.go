@@ -98,6 +98,20 @@ func (r *routineRepository) CreateActivityLog(ctx context.Context, log *domain.P
 	return nil
 }
 
+func (r *routineRepository) FindActivityLogByClientID(ctx context.Context, patientID string, clientID string) (*domain.PatientActivityLog, error) {
+	var log domain.PatientActivityLog
+	err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND client_id = ? AND deleted_at IS NULL", patientID, clientID).
+		First(&log).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("activity log not found")
+		}
+		return nil, errs.NewInternal("failed to fetch activity log by client_id", err)
+	}
+	return &log, nil
+}
+
 func (r *routineRepository) ReplacePatientRoutines(ctx context.Context, patientID string, routines []domain.Routine) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Delete previous routines for this patient

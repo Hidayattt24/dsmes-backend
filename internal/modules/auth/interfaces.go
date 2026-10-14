@@ -28,6 +28,7 @@ type AuthRepository interface {
 	FindSession(ctx context.Context, refreshToken string) (*AuthSession, error)
 	RevokeSession(ctx context.Context, refreshToken string) error
 	RevokeAllSessions(ctx context.Context, ownerType OwnerType, ownerID string) error
+	RotateSession(ctx context.Context, oldRefreshTokenHash string, newSession *AuthSession) error
 }
 
 type AuthService interface {

@@ -34,6 +34,7 @@ type MealLog struct {
 	BaseModel
 
 	PatientID         string    `gorm:"type:uuid;not null" json:"patient_id"`
+	ClientID          *string   `gorm:"type:uuid;index" json:"client_id,omitempty"`
 	FoodID            string    `gorm:"type:uuid;not null" json:"food_id"`
 	MealType          MealType  `gorm:"type:meal_type_enum;not null" json:"meal_type"`
 	PortionMultiplier float64   `gorm:"type:numeric(4,2);not null;default:1.0" json:"portion_multiplier"`

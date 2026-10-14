@@ -96,18 +96,20 @@ type ActivityLogResponse struct {
 }
 
 type LogActivityRequest struct {
-	ActivityName    string `json:"activity_name"    validate:"required,min=1,max=255"`
-	DurationMinutes int    `json:"duration_minutes" validate:"required,gt=0"`
-	Intensity       string `json:"intensity"        validate:"required,oneof=Ringan Sedang Berat"`
-	Notes           string `json:"notes"`
-	LoggedAt        string `json:"logged_at"` // ISO 8601, defaults to now
+	ActivityName    string  `json:"activity_name"    validate:"required,min=1,max=255"`
+	DurationMinutes int     `json:"duration_minutes" validate:"required,gt=0"`
+	Intensity       string  `json:"intensity"        validate:"required,oneof=Ringan Sedang Berat"`
+	Notes           string  `json:"notes"`
+	LoggedAt        string  `json:"logged_at"` // ISO 8601, defaults to now
+	ClientID        *string `json:"client_id,omitempty"`
 }
 
 type LogActivityResponse struct {
-	ID              string `json:"id"`
-	ActivityName    string `json:"activity_name"`
-	DurationMinutes int    `json:"duration_minutes"`
-	Intensity       string `json:"intensity"`
-	Notes           string `json:"notes"`
-	LoggedAt        string `json:"logged_at"`
+	ID              string  `json:"id"`
+	ClientID        *string `json:"client_id,omitempty"`
+	ActivityName    string  `json:"activity_name"`
+	DurationMinutes int     `json:"duration_minutes"`
+	Intensity       string  `json:"intensity"`
+	Notes           string  `json:"notes"`
+	LoggedAt        string  `json:"logged_at"`
 }

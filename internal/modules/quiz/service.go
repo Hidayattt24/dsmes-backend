@@ -372,6 +372,27 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 		}
 	}
 
+	// Idempotency check: if client provided client_id, check if already recorded
+	if req.ClientID != nil && *req.ClientID != "" {
+		existing, err := s.repo.FindAttemptByClientID(ctx, patientID, *req.ClientID)
+		if err == nil && existing != nil {
+			var selfEffCat string
+			if existing.SelfEfficacyCategory != nil {
+				selfEffCat = *existing.SelfEfficacyCategory
+			}
+			return &SubmitResultResponse{
+				AttemptID:            existing.ID,
+				QuestionnaireID:      existing.QuestionnaireID,
+				Type:                 string(q.Type),
+				Message:              "Jawaban Anda telah berhasil disimpan.",
+				Score:                &existing.Score,
+				Passed:               &existing.Passed,
+				TotalQuestions:       totalQuestions,
+				SelfEfficacyCategory: selfEffCat,
+			}, nil
+		}
+	}
+
 	if totalQuestions == 0 {
 		return nil, errs.NewBadRequest("Kuisioner tidak memiliki pertanyaan")
 	}
@@ -422,6 +443,7 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 		selfEfficacyCat := DetermineSelfEfficacyCategory(totalDMSESScore)
 
 		attempt := &domain.QuizAttempt{
+			ClientID:             req.ClientID,
 			QuestionnaireID:      q.ID,
 			PatientID:            patientID,
 			Score:                totalDMSESScore,
@@ -432,6 +454,24 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 		}
 
 		if err := s.repo.SaveAttempt(ctx, attempt); err != nil {
+			if req.ClientID != nil && *req.ClientID != "" {
+				if existing, findErr := s.repo.FindAttemptByClientID(ctx, patientID, *req.ClientID); findErr == nil && existing != nil {
+					var selfEffCat string
+					if existing.SelfEfficacyCategory != nil {
+						selfEffCat = *existing.SelfEfficacyCategory
+					}
+					return &SubmitResultResponse{
+						AttemptID:            existing.ID,
+						QuestionnaireID:      existing.QuestionnaireID,
+						Type:                 "PRE_TEST",
+						Message:              "Jawaban Anda telah berhasil disimpan dan akan digunakan untuk membantu memahami tingkat keyakinan Anda dalam mengelola diabetes.",
+						Score:                &existing.Score,
+						Passed:               &existing.Passed,
+						TotalQuestions:       totalQuestions,
+						SelfEfficacyCategory: selfEffCat,
+					}, nil
+				}
+			}
 			return nil, err
 		}
 
@@ -489,6 +529,7 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 	}
 
 	attempt := &domain.QuizAttempt{
+		ClientID:        req.ClientID,
 		QuestionnaireID: q.ID,
 		PatientID:       patientID,
 		Score:           score,
@@ -498,6 +539,20 @@ func (s *quizService) SubmitQuestionnaire(ctx context.Context, patientID string,
 	}
 
 	if err := s.repo.SaveAttempt(ctx, attempt); err != nil {
+		if req.ClientID != nil && *req.ClientID != "" {
+			if existing, findErr := s.repo.FindAttemptByClientID(ctx, patientID, *req.ClientID); findErr == nil && existing != nil {
+				scoreVal := existing.Score
+				passedVal := existing.Passed
+				return &SubmitResultResponse{
+					AttemptID:       existing.ID,
+					QuestionnaireID: q.ID,
+					Type:            "POST_TEST",
+					Score:           &scoreVal,
+					Passed:          &passedVal,
+					TotalQuestions:  totalQuestions,
+				}, nil
+			}
+		}
 		return nil, err
 	}
 

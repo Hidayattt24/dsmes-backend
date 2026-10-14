@@ -78,6 +78,7 @@ func (QuestionOption) TableName() string { return "question_options" }
 type QuizAttempt struct {
 	BaseModel
 
+	ClientID             *string   `gorm:"type:uuid;index" json:"client_id,omitempty"`
 	QuestionnaireID      string    `gorm:"column:quiz_id;type:uuid;not null" json:"questionnaire_id"`
 	PatientID            string    `gorm:"type:uuid;not null" json:"patient_id"`
 	Score                int       `gorm:"type:int;not null" json:"score"`

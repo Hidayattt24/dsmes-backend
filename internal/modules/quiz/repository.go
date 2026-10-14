@@ -328,13 +328,18 @@ func (r *quizRepository) FindAttemptsByQuestionnaireID(ctx context.Context, ques
 func (r *quizRepository) FindAttemptByID(ctx context.Context, questionnaireID string, participantID string, facilityName string) (*domain.QuizAttempt, error) {
 	var attempt domain.QuizAttempt
 	q := r.db.WithContext(ctx).
+		Preload("Questionnaire").
+		Preload("Questionnaire.Education").
+		Preload("Questionnaire.Categories.Questions.Options").
 		Preload("Patient").
-		Preload("Answers.Question.Options").
-		Joins("JOIN patients p ON p.id = quiz_attempts.patient_id AND p.deleted_at IS NULL").
+		Preload("Answers").
 		Where("quiz_attempts.quiz_id = ? AND quiz_attempts.patient_id = ? AND quiz_attempts.deleted_at IS NULL", questionnaireID, participantID)
+
 	if facilityName != "" {
-		q = q.Where("p.health_facility = ?", facilityName)
+		q = q.Joins("JOIN patients ON patients.id = quiz_attempts.patient_id").
+			Where("patients.treatment_facility = ?", facilityName)
 	}
+
 	err := q.Order("quiz_attempts.completed_at DESC").
 		First(&attempt).Error
 	if err != nil {
@@ -342,6 +347,23 @@ func (r *quizRepository) FindAttemptByID(ctx context.Context, questionnaireID st
 			return nil, errs.NewNotFound("participant attempt not found")
 		}
 		return nil, errs.NewInternal("failed to fetch participant attempt", err)
+	}
+	return &attempt, nil
+}
+
+func (r *quizRepository) FindAttemptByClientID(ctx context.Context, patientID string, clientID string) (*domain.QuizAttempt, error) {
+	var attempt domain.QuizAttempt
+	err := r.db.WithContext(ctx).
+		Preload("Questionnaire").
+		Preload("Questionnaire.Education").
+		Preload("Answers").
+		Where("patient_id = ? AND client_id = ? AND deleted_at IS NULL", patientID, clientID).
+		First(&attempt).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("attempt not found")
+		}
+		return nil, errs.NewInternal("failed to fetch attempt by client_id", err)
 	}
 	return &attempt, nil
 }

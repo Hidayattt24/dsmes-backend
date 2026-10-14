@@ -16,6 +16,7 @@ type LogMealRequest struct {
 	FoodID            string          `json:"food_id"            validate:"required,uuid4"`
 	MealType          domain.MealType `json:"meal_type"          validate:"required,oneof=sarapan makan_siang makan_malam camilan"`
 	PortionMultiplier float64         `json:"portion_multiplier" validate:"required,gt=0"`
+	ClientID          *string         `json:"client_id,omitempty"`
 }
 
 type UpdateMealLogRequest struct {
@@ -40,6 +41,7 @@ type FoodResponse struct {
 
 type MealLogResponse struct {
 	ID                string          `json:"id"`
+	ClientID          *string         `json:"client_id,omitempty"`
 	Food              FoodResponse    `json:"food"`
 	MealType          domain.MealType `json:"meal_type"`
 	PortionMultiplier float64         `json:"portion_multiplier"`

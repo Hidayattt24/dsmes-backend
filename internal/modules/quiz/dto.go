@@ -53,6 +53,7 @@ type SubmitAnswerItem struct {
 type SubmitQuestionnaireRequest struct {
 	DurationSeconds int                `json:"duration_seconds"`
 	Answers         []SubmitAnswerItem `json:"answers" validate:"required,min=1"`
+	ClientID        *string            `json:"client_id,omitempty"`
 }
 
 type ChoiceResponse struct {

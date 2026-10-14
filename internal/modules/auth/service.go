@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/rand/v2"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -18,15 +19,29 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/pkg/phone"
 )
 
+type rotationReplayEntry struct {
+	tokenResponse TokenResponse
+	ownerID       string
+	expiresAt     time.Time
+}
+
 type authService struct {
-	repo  AuthRepository
-	jwt   *jwtpkg.Manager
-	email email.EmailService
-	log   *zap.Logger
+	repo         AuthRepository
+	jwt          *jwtpkg.Manager
+	email        email.EmailService
+	log          *zap.Logger
+	replayMu     sync.RWMutex
+	replayBuffer map[string]rotationReplayEntry
 }
 
 func NewAuthService(repo AuthRepository, jwt *jwtpkg.Manager, email email.EmailService, log *zap.Logger) AuthService {
-	return &authService{repo: repo, jwt: jwt, email: email, log: log}
+	return &authService{
+		repo:         repo,
+		jwt:          jwt,
+		email:        email,
+		log:          log,
+		replayBuffer: make(map[string]rotationReplayEntry),
+	}
 }
 
 // ── StaffLogin ────────────────────────────────────────────────────────────────
@@ -361,18 +376,44 @@ func (s *authService) ResetPasswordByEmail(ctx context.Context, req ResetPasswor
 func (s *authService) RefreshToken(ctx context.Context, req RefreshTokenRequest) (*TokenResponse, error) {
 	refreshHash := HashRefreshToken(req.RefreshToken)
 
-	session, err := s.repo.FindSession(ctx, refreshHash)
-	if err != nil {
-		return nil, errs.NewUnauthorized("refresh token is invalid or expired")
+	// 1. Check ephemeral replay buffer under read lock (fast path).
+	// NOTE: This buffer is strictly in-memory (RAM) with a 15-second TTL.
+	// It resets on server restart and is local to this backend process.
+	// It safely recovers lost HTTP responses or concurrent retries without creating orphan sessions.
+	s.replayMu.RLock()
+	if entry, ok := s.replayBuffer[refreshHash]; ok && time.Now().Before(entry.expiresAt) {
+		s.replayMu.RUnlock()
+		s.log.Info("auth: replaying rotated token from ephemeral buffer", zap.String("owner_id", entry.ownerID))
+		return &entry.tokenResponse, nil
 	}
+	s.replayMu.RUnlock()
 
+	// 2. Parse and validate the JWT signature and claims before database rotation.
 	claims, err := s.jwt.ParseRefreshToken(req.RefreshToken)
 	if err != nil {
 		return nil, errs.NewUnauthorized("refresh token is invalid")
 	}
 
-	_ = s.repo.RevokeSession(ctx, refreshHash)
+	// 3. Acquire write lock to synchronize concurrent rotations for the same token.
+	s.replayMu.Lock()
+	defer s.replayMu.Unlock()
 
+	// Double-check replay buffer after acquiring write lock.
+	if entry, ok := s.replayBuffer[refreshHash]; ok && time.Now().Before(entry.expiresAt) {
+		return &entry.tokenResponse, nil
+	}
+
+	// 4. Find existing active session in database.
+	session, err := s.repo.FindSession(ctx, refreshHash)
+	if err != nil {
+		if errs.IsNotFound(err) {
+			return nil, errs.NewUnauthorized("refresh token is invalid or expired")
+		}
+		// Return true database error (HTTP 500) — DO NOT mask database failures as 401!
+		return nil, err
+	}
+
+	// 5. Generate fresh token pair.
 	tokens, err := s.jwt.GenerateTokenPair(claims.UserID, claims.Email, claims.Role)
 	if err != nil {
 		return nil, errs.NewInternal("failed to generate tokens", err)
@@ -385,11 +426,35 @@ func (s *authService) RefreshToken(ctx context.Context, req RefreshTokenRequest)
 		RefreshToken: HashRefreshToken(tokens.RefreshToken),
 		ExpiresAt:    time.Now().Add(s.jwt.RefreshTTL()),
 	}
-	if err = s.repo.CreateSession(ctx, newSession); err != nil {
-		s.log.Warn("auth: failed to persist rotated session", zap.Error(err))
+
+	// 6. Atomically delete old session and insert new session in single DB transaction.
+	if err = s.repo.RotateSession(ctx, refreshHash, newSession); err != nil {
+		if errs.IsNotFound(err) {
+			return nil, errs.NewUnauthorized("refresh token is invalid or expired")
+		}
+		return nil, err
 	}
 
-	return &TokenResponse{Tokens: *tokens}, nil
+	tokenResp := TokenResponse{Tokens: *tokens}
+
+	// 7. Record into ephemeral replay buffer (15-second TTL).
+	s.replayBuffer[refreshHash] = rotationReplayEntry{
+		tokenResponse: tokenResp,
+		ownerID:       session.OwnerID,
+		expiresAt:     time.Now().Add(15 * time.Second),
+	}
+
+	// Prune stale entries if map grows
+	if len(s.replayBuffer) > 100 {
+		now := time.Now()
+		for k, v := range s.replayBuffer {
+			if now.After(v.expiresAt) {
+				delete(s.replayBuffer, k)
+			}
+		}
+	}
+
+	return &tokenResp, nil
 }
 
 // HashRefreshToken stores a one-way SHA-256 digest of the refresh token in the

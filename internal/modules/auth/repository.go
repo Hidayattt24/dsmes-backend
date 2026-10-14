@@ -198,3 +198,21 @@ func (r *authRepository) RevokeAllSessions(ctx context.Context, ownerType OwnerT
 	}
 	return nil
 }
+
+// RotateSession atomically revokes an old session token and inserts the new session
+// within a single database transaction, ensuring no partial or corrupted state.
+func (r *authRepository) RotateSession(ctx context.Context, oldRefreshTokenHash string, newSession *AuthSession) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("refresh_token = ?", oldRefreshTokenHash).Delete(&AuthSession{})
+		if res.Error != nil {
+			return errs.NewInternal("failed to revoke old session", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return errs.NewNotFound("session not found or expired")
+		}
+		if err := tx.Create(newSession).Error; err != nil {
+			return errs.NewInternal("failed to persist rotated session", err)
+		}
+		return nil
+	})
+}

@@ -166,6 +166,22 @@ func (s *routineService) GetOnboardingStatus(ctx context.Context, patientID stri
 }
 
 func (s *routineService) LogActivity(ctx context.Context, patientID string, req LogActivityRequest) (*LogActivityResponse, error) {
+	// Idempotency check: if client provided a client_id, check if already recorded
+	if req.ClientID != nil && *req.ClientID != "" {
+		existing, err := s.repo.FindActivityLogByClientID(ctx, patientID, *req.ClientID)
+		if err == nil && existing != nil {
+			return &LogActivityResponse{
+				ID:              existing.ID,
+				ClientID:        existing.ClientID,
+				ActivityName:    existing.ActivityName,
+				DurationMinutes: existing.DurationMinutes,
+				Intensity:       existing.Intensity,
+				Notes:           existing.Notes,
+				LoggedAt:        existing.LoggedAt.Format(time.RFC3339),
+			}, nil
+		}
+	}
+
 	loggedAt := time.Now()
 	if req.LoggedAt != "" {
 		if t, err := time.Parse(time.RFC3339, req.LoggedAt); err == nil {
@@ -175,6 +191,7 @@ func (s *routineService) LogActivity(ctx context.Context, patientID string, req 
 
 	log := &domain.PatientActivityLog{
 		PatientID:       patientID,
+		ClientID:        req.ClientID,
 		ActivityName:    req.ActivityName,
 		DurationMinutes: req.DurationMinutes,
 		Intensity:       req.Intensity,
@@ -183,11 +200,25 @@ func (s *routineService) LogActivity(ctx context.Context, patientID string, req 
 	}
 
 	if err := s.repo.CreateActivityLog(ctx, log); err != nil {
+		if req.ClientID != nil && *req.ClientID != "" {
+			if existing, findErr := s.repo.FindActivityLogByClientID(ctx, patientID, *req.ClientID); findErr == nil && existing != nil {
+				return &LogActivityResponse{
+					ID:              existing.ID,
+					ClientID:        existing.ClientID,
+					ActivityName:    existing.ActivityName,
+					DurationMinutes: existing.DurationMinutes,
+					Intensity:       existing.Intensity,
+					Notes:           existing.Notes,
+					LoggedAt:        existing.LoggedAt.Format(time.RFC3339),
+				}, nil
+			}
+		}
 		return nil, err
 	}
 
 	return &LogActivityResponse{
 		ID:              log.ID,
+		ClientID:        log.ClientID,
 		ActivityName:    log.ActivityName,
 		DurationMinutes: log.DurationMinutes,
 		Intensity:       log.Intensity,

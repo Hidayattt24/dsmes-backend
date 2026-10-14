@@ -2,6 +2,7 @@ package nutrition
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.uber.org/zap"
@@ -109,6 +110,21 @@ func (r *nutritionRepository) FindMealLogByID(ctx context.Context, patientID str
 		First(&log).Error
 	if err != nil {
 		return nil, errs.NewNotFound("meal log not found")
+	}
+	return &log, nil
+}
+
+func (r *nutritionRepository) FindMealLogByClientID(ctx context.Context, patientID string, clientID string) (*domain.MealLog, error) {
+	var log domain.MealLog
+	err := r.db.WithContext(ctx).
+		Preload("Food").
+		Where("client_id = ? AND patient_id = ? AND deleted_at IS NULL", clientID, patientID).
+		First(&log).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("meal log not found")
+		}
+		return nil, errs.NewInternal("failed to fetch meal log by client_id", err)
 	}
 	return &log, nil
 }

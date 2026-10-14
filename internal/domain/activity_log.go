@@ -7,6 +7,7 @@ type PatientActivityLog struct {
 	BaseModel
 
 	PatientID       string    `gorm:"type:uuid;not null" json:"patient_id"`
+	ClientID        *string   `gorm:"type:uuid;index" json:"client_id,omitempty"`
 	ActivityName    string    `gorm:"type:varchar(255);not null;default:''" json:"activity_name"`
 	DurationMinutes int       `gorm:"not null;default:0" json:"duration_minutes"`
 	Intensity       string    `gorm:"type:varchar(50);not null;default:'Ringan'" json:"intensity"`

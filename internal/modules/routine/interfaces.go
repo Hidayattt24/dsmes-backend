@@ -14,6 +14,7 @@ type RoutineRepository interface {
 	FindLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.RoutineLogEntry, error)
 	ReplacePatientRoutines(ctx context.Context, patientID string, routines []domain.Routine) error
 	CreateActivityLog(ctx context.Context, log *domain.PatientActivityLog) error
+	FindActivityLogByClientID(ctx context.Context, patientID string, clientID string) (*domain.PatientActivityLog, error)
 	FindFreeActivityLogsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.PatientActivityLog, error)
 }
 

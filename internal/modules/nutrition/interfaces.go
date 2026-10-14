@@ -14,6 +14,7 @@ type NutritionRepository interface {
 
 	CreateMealLog(ctx context.Context, log *domain.MealLog) error
 	FindMealLogByID(ctx context.Context, patientID string, id string) (*domain.MealLog, error)
+	FindMealLogByClientID(ctx context.Context, patientID string, clientID string) (*domain.MealLog, error)
 	UpdateMealLog(ctx context.Context, log *domain.MealLog) error
 	DeleteMealLog(ctx context.Context, patientID string, id string) error
 	FindMealsByPatientAndDate(ctx context.Context, patientID string, dateStr string) ([]domain.MealLog, error)
