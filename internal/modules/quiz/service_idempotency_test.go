@@ -11,19 +11,25 @@ import (
 type mockQuizRepo struct {
 	attempts map[string]*domain.QuizAttempt
 	byClient map[string]*domain.QuizAttempt
+	items    map[string]*domain.Questionnaire
+	post     *domain.Questionnaire
 }
 
 func newMockQuizRepo() *mockQuizRepo {
 	return &mockQuizRepo{
 		attempts: make(map[string]*domain.QuizAttempt),
 		byClient: make(map[string]*domain.QuizAttempt),
+		items:    make(map[string]*domain.Questionnaire),
 	}
 }
 
-func (m *mockQuizRepo) FindAll(ctx context.Context, search, qType, status, sortBy, sortOrder string, page, limit int) ([]domain.Questionnaire, int64, error) {
+func (m *mockQuizRepo) FindAll(ctx context.Context, search, qType, status, scope, sortBy, sortOrder string, page, limit int) ([]domain.Questionnaire, int64, error) {
 	return nil, 0, nil
 }
 func (m *mockQuizRepo) FindByID(ctx context.Context, id string) (*domain.Questionnaire, error) {
+	if item := m.items[id]; item != nil {
+		return item, nil
+	}
 	return &domain.Questionnaire{
 		BaseModel: domain.BaseModel{ID: id},
 		Title:     "Pre-Test DMSES",
@@ -41,14 +47,63 @@ func (m *mockQuizRepo) FindByID(ctx context.Context, id string) (*domain.Questio
 func (m *mockQuizRepo) GetActivePreTest(ctx context.Context) (*domain.Questionnaire, error) {
 	return nil, nil
 }
+func (m *mockQuizRepo) GetPreTestByEducation(ctx context.Context, educationID string) (*domain.Questionnaire, error) {
+	return nil, nil
+}
 func (m *mockQuizRepo) GetAnyPreTest(ctx context.Context) (*domain.Questionnaire, error) {
 	return nil, nil
 }
 func (m *mockQuizRepo) GetPostTestByEducation(ctx context.Context, educationID string) (*domain.Questionnaire, error) {
 	return nil, nil
 }
+func (m *mockQuizRepo) FindEligiblePreTests(ctx context.Context, scope domain.QuestionnaireScope, educationID *string) ([]domain.Questionnaire, error) {
+	return nil, nil
+}
+func (m *mockQuizRepo) FindPostTestBySource(ctx context.Context, sourcePreTestID string) (*domain.Questionnaire, error) {
+	return m.post, nil
+}
+func (m *mockQuizRepo) FindPairedQuestionnaire(ctx context.Context, q *domain.Questionnaire) (*domain.Questionnaire, error) {
+	return nil, nil
+}
+
+func TestCreatePostTestRequiresValidUniquePair(t *testing.T) {
+	repo := newMockQuizRepo()
+	scope := domain.ScopeEducation
+	educationID := "education-1"
+	repo.items["pre-1"] = &domain.Questionnaire{
+		BaseModel: domain.BaseModel{ID: "pre-1"}, Type: domain.TypePreTest,
+		Scope: scope, EducationID: &educationID,
+		Categories: []domain.QuestionCategory{{Questions: []domain.Question{{QuestionText: "Question"}}}},
+	}
+	svc := NewQuizService(repo, nil, nil, zap.NewNop())
+	passingScore := 70
+	difficulty := "medium"
+	scopeValue := string(scope)
+	request := CreateQuestionnaireRequest{
+		Title: "Post Test", Type: "POST_TEST", Scope: &scopeValue, EducationID: &educationID,
+		PassingScore: &passingScore, Difficulty: &difficulty, SourcePreTestID: stringPointer("pre-1"),
+		CopyQuestionsFromPreTest: true,
+	}
+
+	if _, err := svc.CreateQuestionnaire(context.Background(), "staff-1", request); err != nil {
+		t.Fatalf("valid pair rejected: %v", err)
+	}
+
+	repo.post = &domain.Questionnaire{BaseModel: domain.BaseModel{ID: "post-existing"}}
+	if _, err := svc.CreateQuestionnaire(context.Background(), "staff-1", request); err == nil {
+		t.Fatal("expected duplicate pair rejection")
+	}
+
+	request.SourcePreTestID = nil
+	if _, err := svc.CreateQuestionnaire(context.Background(), "staff-1", request); err == nil {
+		t.Fatal("expected missing source rejection")
+	}
+}
+
+func stringPointer(value string) *string                                          { return &value }
 func (m *mockQuizRepo) Create(ctx context.Context, q *domain.Questionnaire) error { return nil }
 func (m *mockQuizRepo) Update(ctx context.Context, q *domain.Questionnaire) error { return nil }
+func (m *mockQuizRepo) UpdateStatus(ctx context.Context, id, status string) error { return nil }
 func (m *mockQuizRepo) Delete(ctx context.Context, id string) error               { return nil }
 func (m *mockQuizRepo) GetStats(ctx context.Context, facilityName string) (*QuizStats, error) {
 	return nil, nil
@@ -76,7 +131,7 @@ func (m *mockQuizRepo) FindMyAttempt(ctx context.Context, patientID, questionnai
 func (m *mockQuizRepo) FindMyAttemptByID(ctx context.Context, patientID, questionnaireID, attemptID string) (*domain.QuizAttempt, error) {
 	return nil, nil
 }
-func (m *mockQuizRepo) FindMyHistory(ctx context.Context, patientID, qType string) ([]domain.QuizAttempt, error) {
+func (m *mockQuizRepo) FindMyHistory(ctx context.Context, patientID, qType, scope string) ([]domain.QuizAttempt, error) {
 	return nil, nil
 }
 func (m *mockQuizRepo) FindActiveForPatient(ctx context.Context, qType string, patientID string, page, perPage int) ([]PatientQuestionnaireItem, int64, error) {
@@ -86,6 +141,9 @@ func (m *mockQuizRepo) CountAttempts(ctx context.Context, questionnaireID string
 	return 0, nil
 }
 func (m *mockQuizRepo) GetAverageScore(ctx context.Context, questionnaireID string, facilityName string) (*int, error) {
+	return nil, nil
+}
+func (m *mockQuizRepo) FindPairComparisons(ctx context.Context, preTestID, postTestID, facilityName string) ([]PairComparisonRecord, error) {
 	return nil, nil
 }
 

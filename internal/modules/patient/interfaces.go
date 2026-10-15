@@ -34,6 +34,10 @@ type PatientRepository interface {
 
 	// Transactional onboarding helpers
 	CreateWithOnboarding(ctx context.Context, p *domain.Patient, defaultRoutines []domain.Routine, defaultReminders []domain.Reminder) error
+
+	// App Usage Tracking
+	RecordAppUsage(ctx context.Context, usage *domain.PatientAppUsage) error
+	GetPatientAppUsage(ctx context.Context, patientID string, startDate, endDate string) (*PatientAppUsageResponse, error)
 }
 
 type PatientService interface {
@@ -59,4 +63,8 @@ type PatientService interface {
 	CreateMeasurement(ctx context.Context, patientID string, req CreateMeasurementRequest, recordedByID, recordedByName, recordedByRole string) (*PatientMeasurementResponse, error)
 	GetPatientMeasurements(ctx context.Context, patientID string) ([]PatientMeasurementResponse, error)
 	UpdateMeasurement(ctx context.Context, patientID, measurementID string, req UpdateMeasurementRequest) (*PatientMeasurementResponse, error)
+
+	// App Usage Tracking
+	RecordAppUsage(ctx context.Context, patientID string, req RecordAppUsageRequest) error
+	GetPatientAppUsage(ctx context.Context, patientID string, startDate, endDate string) (*PatientAppUsageResponse, error)
 }

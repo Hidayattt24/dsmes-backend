@@ -623,7 +623,9 @@ func complianceForWindow(dailyAggs map[string]*DailyLogsAggregate, dailyTarget i
 		evalWindow = 1
 	}
 
-	var sumBS, sumFood, sumAct, sumMed float64
+	// Compliance calculated ONLY from 3 pillars: Food, Physical Activity, Medication.
+	// Blood Sugar is completely excluded from compliance calculation.
+	var sumFood, sumAct, sumMed float64
 
 	for i := 0; i < evalWindow; i++ {
 		d := now.AddDate(0, 0, -i).Format("2006-01-02")
@@ -632,71 +634,60 @@ func complianceForWindow(dailyAggs map[string]*DailyLogsAggregate, dailyTarget i
 			agg = &DailyLogsAggregate{}
 		}
 
-		// 1. Blood Sugar (25 pts max)
-		bsScore := 0.0
-		if agg.BloodSugarCount > 0 {
-			bsScore = 25.0
-		}
-
-		// 2. Food & Calories (25 pts max)
+		// 1. Food & Calories (Max 33.33 pts)
 		foodScore := 0.0
 		if agg.MealCount > 0 {
 			ratio := agg.TotalMealCalories / float64(dailyTarget)
 			if ratio >= 0.85 && ratio <= 1.15 {
-				foodScore = 25.0
+				foodScore = 33.33
 			} else if (ratio >= 0.70 && ratio < 0.85) || (ratio > 1.15 && ratio <= 1.30) {
-				foodScore = 17.5
+				foodScore = 23.33
 			} else if (ratio >= 0.50 && ratio < 0.70) || (ratio > 1.30 && ratio <= 1.50) {
-				foodScore = 10.0
+				foodScore = 13.33
 			} else if ratio > 0 {
-				foodScore = 5.0
+				foodScore = 6.67
 			}
 		}
 
-		// 3. Activity (25 pts max, 30 min target)
+		// 2. Activity (Max 33.33 pts, 30 min target)
 		actScore := 0.0
 		if agg.TotalActivityMinutes > 0 {
 			actRatio := float64(agg.TotalActivityMinutes) / 30.0
 			if actRatio > 1.0 {
 				actRatio = 1.0
 			}
-			actScore = actRatio * 25.0
+			actScore = actRatio * 33.33
 		}
 
-		// 4. Medication (25 pts max)
+		// 3. Medication (Max 33.34 pts)
 		medScore := 0.0
 		if agg.MedicationScheduledCount > 0 {
 			medRatio := float64(agg.MedicationCompletedCount) / float64(agg.MedicationScheduledCount)
 			if medRatio > 1.0 {
 				medRatio = 1.0
 			}
-			medScore = medRatio * 25.0
+			medScore = medRatio * 33.34
 		} else {
-			// No medication reminders configured — redistribute 25 pts equally among active 3 pillars (+8.333 each)
-			if bsScore > 0 {
-				bsScore += 8.333
-			}
+			// No medication reminders configured — redistribute 33.34 pts equally between 2 active pillars (+16.67 each)
 			if foodScore > 0 {
-				foodScore += (foodScore / 25.0) * 8.333
+				foodScore += (foodScore / 33.33) * 16.67
 			}
 			if actScore > 0 {
-				actScore += (actScore / 25.0) * 8.333
+				actScore += (actScore / 33.33) * 16.67
 			}
 		}
 
-		sumBS += bsScore
 		sumFood += foodScore
 		sumAct += actScore
 		sumMed += medScore
 	}
 
 	w := float64(evalWindow)
-	avgBS := math.Round((sumBS/w)*10) / 10
 	avgFood := math.Round((sumFood/w)*10) / 10
 	avgAct := math.Round((sumAct/w)*10) / 10
 	avgMed := math.Round((sumMed/w)*10) / 10
 
-	totalAvg := int(math.Round((sumBS + sumFood + sumAct + sumMed) / w))
+	totalAvg := int(math.Round((sumFood + sumAct + sumMed) / w))
 	if totalAvg > 100 {
 		totalAvg = 100
 	}
@@ -718,7 +709,7 @@ func complianceForWindow(dailyAggs map[string]*DailyLogsAggregate, dailyTarget i
 	}
 
 	breakdown := &ComplianceBreakdown{
-		BloodSugarScore: avgBS,
+		BloodSugarScore: 0,
 		FoodScore:       avgFood,
 		ActivityScore:   avgAct,
 		MedicationScore: avgMed,
@@ -1339,4 +1330,36 @@ func CalculateDSMESCalorieTarget(gender string, weightKg, heightCm float64, age 
 	}
 
 	return int(math.Round(bmr))
+}
+
+func (s *patientService) RecordAppUsage(ctx context.Context, patientID string, req RecordAppUsageRequest) error {
+	startedAt, err := time.Parse(time.RFC3339, req.StartedAt)
+	if err != nil {
+		startedAt = time.Now().Add(-time.Duration(req.DurationSeconds) * time.Second)
+	}
+	endedAt, err := time.Parse(time.RFC3339, req.EndedAt)
+	if err != nil {
+		endedAt = time.Now()
+	}
+
+	usageDate := req.UsageDate
+	if usageDate == "" {
+		usageDate = startedAt.Format("2006-01-02")
+	}
+
+	usage := &domain.PatientAppUsage{
+		PatientID:       patientID,
+		ClientID:        req.ClientID,
+		SessionID:       req.SessionID,
+		UsageDate:       usageDate,
+		DurationSeconds: req.DurationSeconds,
+		StartedAt:       startedAt,
+		EndedAt:         endedAt,
+	}
+
+	return s.repo.RecordAppUsage(ctx, usage)
+}
+
+func (s *patientService) GetPatientAppUsage(ctx context.Context, patientID string, startDate, endDate string) (*PatientAppUsageResponse, error) {
+	return s.repo.GetPatientAppUsage(ctx, patientID, startDate, endDate)
 }

@@ -61,8 +61,41 @@ func TestComplianceFromAggregatesFull(t *testing.T) {
 	if label != "Sangat Patuh" {
 		t.Errorf("expected label 'Sangat Patuh', got %s", label)
 	}
-	if breakdown.BloodSugarScore != 25 {
-		t.Errorf("expected blood sugar score 25, got %v", breakdown.BloodSugarScore)
+	if breakdown.BloodSugarScore != 0 {
+		t.Errorf("expected blood sugar score 0, got %v", breakdown.BloodSugarScore)
+	}
+}
+
+func TestComplianceExcludesBloodSugar(t *testing.T) {
+	now := fixedNow()
+	// Scenario: Same food, activity, and medication, but BloodSugarCount is 0 vs 10
+	aggWithoutBS := make(map[string]*DailyLogsAggregate)
+	aggWithBS := make(map[string]*DailyLogsAggregate)
+	for i := 0; i < 7; i++ {
+		day := now.AddDate(0, 0, -i).Format("2006-01-02")
+		aggWithoutBS[day] = &DailyLogsAggregate{
+			BloodSugarCount:          0,
+			TotalMealCalories:        2000,
+			MealCount:                3,
+			TotalActivityMinutes:     30,
+			MedicationCompletedCount: 2,
+			MedicationScheduledCount: 2,
+		}
+		aggWithBS[day] = &DailyLogsAggregate{
+			BloodSugarCount:          10,
+			TotalMealCalories:        2000,
+			MealCount:                3,
+			TotalActivityMinutes:     30,
+			MedicationCompletedCount: 2,
+			MedicationScheduledCount: 2,
+		}
+	}
+
+	scoreWithoutBS, _, _ := complianceFromAggregates(aggWithoutBS, 2000, now.AddDate(0, 0, -30), now)
+	scoreWithBS, _, _ := complianceFromAggregates(aggWithBS, 2000, now.AddDate(0, 0, -30), now)
+
+	if scoreWithoutBS != scoreWithBS {
+		t.Errorf("expected compliance scores to be identical regardless of blood sugar, got %d vs %d", scoreWithoutBS, scoreWithBS)
 	}
 }
 

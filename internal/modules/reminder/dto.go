@@ -28,13 +28,16 @@ type ReminderResponse struct {
 }
 
 type NotificationResponse struct {
-	ID          string  `json:"id"`
-	ReminderID  *string `json:"reminder_id"`
-	MessageText string  `json:"message_text"`
-	NotifiedAt  string  `json:"notified_at"`
-	IsRead      bool    `json:"is_read"`
-	NotifType   string  `json:"notif_type"`
-	ArticleID   *string `json:"article_id"`
+	ID           string  `json:"id"`
+	ReminderID   *string `json:"reminder_id"`
+	MessageText  string  `json:"message_text"`
+	NotifiedAt   string  `json:"notified_at"`
+	IsRead       bool    `json:"is_read"`
+	NotifType    string  `json:"notif_type"`
+	ArticleID    *string `json:"article_id"`
+	IconName     string  `json:"icon_name,omitempty"`
+	ActivityName string  `json:"activity_name,omitempty"`
+	Category     string  `json:"category,omitempty"`
 }
 
 type DeviceTokenRequest struct {

@@ -33,29 +33,19 @@ func (r *dashboardRepository) GetAdminStats(ctx context.Context) (*AdminDashboar
 		return nil, errs.NewInternal("failed to count patients", err)
 	}
 
-	// Count unique patients active TODAY across all activity streams (same rules as user activity chart)
+	// Count unique patients who logged in TODAY ("Login Hari Ini")
+	// Calculated from patient_logins table, falling back to auth_sessions created today if any
 	errActive := r.db.WithContext(ctx).Raw(`
-		SELECT COALESCE(COUNT(DISTINCT activity.patient_id), 0)
+		SELECT COALESCE(COUNT(DISTINCT patient_id), 0)
 		FROM (
-			SELECT id AS patient_id FROM patients WHERE deleted_at IS NULL AND last_active_at IS NOT NULL AND DATE(last_active_at) = CURRENT_DATE
+			SELECT patient_id FROM patient_logins WHERE DATE(login_at) = CURRENT_DATE
 			UNION
-			SELECT patient_id FROM blood_sugar_logs WHERE deleted_at IS NULL AND DATE(measured_at) = CURRENT_DATE
-			UNION
-			SELECT patient_id FROM patient_measurements WHERE deleted_at IS NULL AND DATE(measured_at) = CURRENT_DATE
-			UNION
-			SELECT patient_id FROM meal_logs WHERE deleted_at IS NULL AND DATE(logged_at) = CURRENT_DATE
-			UNION
-			SELECT patient_id FROM patient_activity_logs WHERE deleted_at IS NULL AND DATE(logged_at) = CURRENT_DATE
-			UNION
-			SELECT patient_id FROM routine_log_entries WHERE deleted_at IS NULL AND DATE(logged_at) = CURRENT_DATE
-			UNION
-			SELECT patient_id FROM quiz_attempts WHERE deleted_at IS NULL AND DATE(completed_at) = CURRENT_DATE
-			UNION
-			SELECT patient_id FROM article_views WHERE deleted_at IS NULL AND DATE(viewed_at) = CURRENT_DATE
-		) activity
+			SELECT owner_id AS patient_id FROM auth_sessions WHERE owner_type = 'patient' AND DATE(created_at) = CURRENT_DATE
+		) logins
+		JOIN patients p ON p.id = logins.patient_id AND p.deleted_at IS NULL
 	`).Scan(&activePatients).Error
 	if errActive != nil {
-		r.log.Warn("failed to count active patients today", zap.Error(errActive))
+		r.log.Warn("failed to count patients logged in today", zap.Error(errActive))
 	}
 
 	if err := r.db.WithContext(ctx).Model(&domain.StaffAccount{}).Where("role = ? AND status = ? AND deleted_at IS NULL", domain.RoleStaff, domain.StatusAktif).Count(&totalStaff).Error; err != nil {

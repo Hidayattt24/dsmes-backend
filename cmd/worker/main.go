@@ -55,14 +55,6 @@ func buildReminderNotification(item domain.Reminder) (string, string) {
 	act := strings.TrimSpace(item.ActivityName)
 	lowerAct := strings.ToLower(act)
 
-	if item.Notes != "" {
-		title := fmt.Sprintf("Waktunya %s ⏰", act)
-		if act == "" {
-			title = "Pengingat Rutinitas DIBA ⏰"
-		}
-		return title, item.Notes
-	}
-
 	switch {
 	case icon == "blood" || strings.Contains(lowerAct, "gula") || strings.Contains(lowerAct, "glukosa"):
 		if act != "" {
@@ -84,11 +76,16 @@ func buildReminderNotification(item domain.Reminder) (string, string) {
 			return fmt.Sprintf("Waktunya %s! 🥗", act), fmt.Sprintf("Saatnya %s. Penuhi nutrisi seimbang sesuai takaran piring sehatmu hari ini 🍏", act)
 		}
 		return "Waktunya Jadwal Makan Sehat 🥗", "Penuhi nutrisi seimbang sesuai takaran piring sehatmu hari ini 🍏"
-	case icon == "water" || strings.Contains(lowerAct, "air") || strings.Contains(lowerAct, "minum"):
+	case icon == "water" || icon == "coffee" || strings.Contains(lowerAct, "air") || strings.Contains(lowerAct, "minum"):
 		if act != "" {
 			return fmt.Sprintf("Waktunya %s! 💧", act), fmt.Sprintf("Segelas air putih segar siap bantu metabolisme dan hidrasi tubuhmu tetap lancar 🌊")
 		}
 		return "Waktunya Minum Air Putih 💧", "Segelas air putih segar siap bantu metabolisme tubuh tetap lancar 🌊"
+	case icon == "alarm" || icon == "clock" || icon == "work" || icon == "home":
+		if act != "" {
+			return fmt.Sprintf("Waktunya %s! ⏰", act), "Yuk lakukan rutinitasmu sesuai jadwal agar tetap konsisten hari ini ✨"
+		}
+		return "Waktunya Menjalankan Rutinitas! ⏰", "Yuk lakukan rutinitasmu sesuai jadwal agar tetap konsisten hari ini ✨"
 	case icon == "sleep" || strings.Contains(lowerAct, "tidur") || strings.Contains(lowerAct, "istirahat"):
 		if act != "" {
 			return fmt.Sprintf("Waktunya %s! 🌙", act), fmt.Sprintf("Tidur berkualitas dan %s sangat penting untuk pemulihan metabolisme tubuhmu 😴", act)
@@ -155,6 +152,7 @@ func dispatchDueReminders(
 				"reminder_id":   item.ID,
 				"icon_name":     item.IconName,
 				"activity_name": item.ActivityName,
+				"category":      string(item.Category),
 			})
 			if err != nil {
 				if notifications.IsUnregistered(err) {

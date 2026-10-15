@@ -122,6 +122,15 @@ func (s *authService) PatientLogin(ctx context.Context, req PatientLoginRequest)
 		s.log.Warn("auth: failed to persist session", zap.Error(err), zap.String("patient_id", patient.ID))
 	}
 
+	// Record patient login event for "Login Hari Ini" metric
+	loginRecord := &domain.PatientLogin{
+		PatientID: patient.ID,
+		LoginAt:   time.Now(),
+	}
+	if err = s.repo.RecordPatientLogin(ctx, loginRecord); err != nil {
+		s.log.Warn("auth: failed to record patient login", zap.Error(err), zap.String("patient_id", patient.ID))
+	}
+
 	return &LoginResponse{
 		User: AuthUserResponse{
 			ID:          patient.ID,

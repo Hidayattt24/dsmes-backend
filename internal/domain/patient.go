@@ -89,3 +89,20 @@ func (p *Patient) GetEmail() string {
 	}
 	return ""
 }
+
+// PatientAppUsage tracks foreground application usage duration per patient per day.
+type PatientAppUsage struct {
+	BaseModel
+	PatientID       string    `gorm:"type:uuid;not null;index" json:"patient_id"`
+	ClientID        *string   `gorm:"type:uuid" json:"client_id,omitempty"`
+	SessionID       string    `gorm:"type:varchar(100);not null" json:"session_id"`
+	UsageDate       string    `gorm:"type:date;not null" json:"usage_date"` // YYYY-MM-DD
+	DurationSeconds int       `gorm:"type:int;not null;default:0" json:"duration_seconds"`
+	StartedAt       time.Time `gorm:"not null" json:"started_at"`
+	EndedAt         time.Time `gorm:"not null" json:"ended_at"`
+
+	// Relations
+	Patient *Patient `gorm:"foreignKey:PatientID" json:"patient,omitempty"`
+}
+
+func (PatientAppUsage) TableName() string { return "patient_app_usages" }

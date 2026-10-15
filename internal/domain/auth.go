@@ -95,3 +95,25 @@ func (a *AuthSession) BeforeCreate(_ *gorm.DB) error {
 	}
 	return nil
 }
+
+// PatientLogin records each successful login event for patients.
+type PatientLogin struct {
+	ID         string    `gorm:"type:uuid;primaryKey" json:"id"`
+	PatientID  string    `gorm:"type:uuid;not null;index" json:"patient_id"`
+	LoginAt    time.Time `gorm:"not null;default:now()" json:"login_at"`
+	DeviceInfo string    `gorm:"type:varchar(255)" json:"device_info"`
+	IPAddress  string    `gorm:"type:varchar(50)" json:"ip_address"`
+	CreatedAt  time.Time `gorm:"autoCreateTime;not null" json:"created_at"`
+}
+
+func (PatientLogin) TableName() string { return "patient_logins" }
+
+func (p *PatientLogin) BeforeCreate(_ *gorm.DB) error {
+	if p.ID == "" {
+		p.ID = uuid.NewString()
+	}
+	if p.LoginAt.IsZero() {
+		p.LoginAt = time.Now()
+	}
+	return nil
+}

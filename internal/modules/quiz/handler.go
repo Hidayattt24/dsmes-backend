@@ -38,6 +38,7 @@ func (h *QuizHandler) List(c fiber.Ctx) error {
 	search := c.Query("search")
 	qType := c.Query("type")
 	status := c.Query("status")
+	scope := c.Query("scope")
 	sortBy := c.Query("sort_by")
 	sortOrder := c.Query("sort_order")
 
@@ -46,9 +47,9 @@ func (h *QuizHandler) List(c fiber.Ctx) error {
 	var total int64
 	var err error
 	if claims != nil && claims.Role == "staff" {
-		items, total, err = h.svc.ListQuestionnairesForStaff(c.Context(), claims.UserID, search, qType, status, sortBy, sortOrder, page, limit)
+		items, total, err = h.svc.ListQuestionnairesForStaff(c.Context(), claims.UserID, search, qType, status, scope, sortBy, sortOrder, page, limit)
 	} else {
-		items, total, err = h.svc.ListQuestionnaires(c.Context(), search, qType, status, sortBy, sortOrder, page, limit)
+		items, total, err = h.svc.ListQuestionnaires(c.Context(), search, qType, status, scope, sortBy, sortOrder, page, limit)
 	}
 	if err != nil {
 		return err
@@ -93,6 +94,15 @@ func (h *QuizHandler) GetActivePreTest(c fiber.Ctx) error {
 	claims := middleware.ClaimsFromContext(c)
 	isAdminOrStaff := claims != nil && (claims.Role == "admin" || claims.Role == "staff")
 
+	educationID := c.Query("education_id")
+	if educationID != "" {
+		item, err := h.svc.GetPreTestByEducation(c.Context(), educationID, isAdminOrStaff)
+		if err != nil {
+			return err
+		}
+		return response.Success(c, "education Pre-Test retrieved", item)
+	}
+
 	item, err := h.svc.GetActivePreTest(c.Context(), isAdminOrStaff)
 	if err != nil {
 		return err
@@ -116,6 +126,57 @@ func (h *QuizHandler) GetPostTestByEducation(c fiber.Ctx) error {
 	}
 
 	return response.Success(c, "Post-Test retrieved", item)
+}
+
+func (h *QuizHandler) GetEligiblePreTests(c fiber.Ctx) error {
+	var educationID *string
+	if value := c.Query("education_id"); value != "" {
+		educationID = &value
+	}
+	items, err := h.svc.GetEligiblePreTests(c.Context(), c.Query("scope"), educationID)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "eligible Pre-Tests retrieved", items)
+}
+
+func (h *QuizHandler) GetPair(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	staffID := ""
+	if claims != nil && claims.Role == "staff" {
+		staffID = claims.UserID
+	}
+	item, err := h.svc.GetQuestionnairePair(c.Context(), c.Params("id"), staffID)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "questionnaire pair retrieved", item)
+}
+
+func (h *QuizHandler) GetComparison(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	staffID := ""
+	if claims != nil && claims.Role == "staff" {
+		staffID = claims.UserID
+	}
+	items, err := h.svc.GetPairComparison(c.Context(), c.Params("id"), staffID)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "questionnaire comparison retrieved", items)
+}
+
+func (h *QuizHandler) GetParticipantComparison(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	staffID := ""
+	if claims != nil && claims.Role == "staff" {
+		staffID = claims.UserID
+	}
+	item, err := h.svc.GetParticipantPairComparison(c.Context(), c.Params("id"), c.Params("participant_id"), staffID)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "participant comparison retrieved", item)
 }
 
 func (h *QuizHandler) Create(c fiber.Ctx) error {
@@ -163,6 +224,42 @@ func (h *QuizHandler) Update(c fiber.Ctx) error {
 	}
 
 	return response.Success(c, "questionnaire updated successfully", res)
+}
+
+func (h *QuizHandler) UpdateStatus(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return errs.NewBadRequest("questionnaire ID is required")
+	}
+	var req UpdateQuestionnaireStatusRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+	if err := h.svc.UpdateQuestionnaireStatus(c.Context(), id, req.Status); err != nil {
+		return err
+	}
+	return response.Success(c, "questionnaire status updated successfully", nil)
+}
+
+func (h *QuizHandler) Pair(c fiber.Ctx) error {
+	postTestID := c.Params("id")
+	if postTestID == "" {
+		return errs.NewBadRequest("questionnaire ID is required")
+	}
+	var req PairQuestionnaireRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+	if err := h.svc.PairQuestionnaire(c.Context(), postTestID, req.SourcePreTestID); err != nil {
+		return err
+	}
+	return response.Success(c, "questionnaire pair saved successfully", nil)
 }
 
 func (h *QuizHandler) Delete(c fiber.Ctx) error {
@@ -354,8 +451,9 @@ func (h *QuizHandler) GetMyHistory(c fiber.Ctx) error {
 	}
 
 	qType := c.Query("type")
+	scope := c.Query("scope")
 
-	res, err := h.svc.GetMyHistory(c.Context(), claims.UserID, qType)
+	res, err := h.svc.GetMyHistory(c.Context(), claims.UserID, qType, scope)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package quiz
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -20,7 +21,7 @@ func NewQuizRepository(db *gorm.DB, log *zap.Logger) QuizRepository {
 	return &quizRepository{db: db, log: log}
 }
 
-func (r *quizRepository) FindAll(ctx context.Context, search, qType, status, sortBy, sortOrder string, page, limit int) ([]domain.Questionnaire, int64, error) {
+func (r *quizRepository) FindAll(ctx context.Context, search, qType, status, scope, sortBy, sortOrder string, page, limit int) ([]domain.Questionnaire, int64, error) {
 	var items []domain.Questionnaire
 	var total int64
 
@@ -37,6 +38,10 @@ func (r *quizRepository) FindAll(ctx context.Context, search, qType, status, sor
 
 	if status != "" && status != "Semua" {
 		q = q.Where("LOWER(questionnaires.status) = ?", normalizeStatus(status))
+	}
+
+	if scope != "" && scope != "Semua" {
+		q = q.Where("questionnaires.scope = ?", scope)
 	}
 
 	if err := q.Count(&total).Error; err != nil {
@@ -80,7 +85,9 @@ func (r *quizRepository) FindAll(ctx context.Context, search, qType, status, sor
 func (r *quizRepository) FindByID(ctx context.Context, id string) (*domain.Questionnaire, error) {
 	var item domain.Questionnaire
 	err := r.db.WithContext(ctx).
-		Preload("Education").
+		Preload("Education", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id", "title")
+		}).
 		Preload("Categories", func(db *gorm.DB) *gorm.DB {
 			return db.Order("display_order ASC")
 		}).
@@ -113,7 +120,7 @@ func (r *quizRepository) GetActivePreTest(ctx context.Context) (*domain.Question
 		Preload("Categories.Questions.Options", func(db *gorm.DB) *gorm.DB {
 			return db.Order("display_order ASC")
 		}).
-		Where("type = ? AND LOWER(status) IN ('aktif', 'terbit') AND deleted_at IS NULL", domain.TypePreTest).
+		Where("type = ? AND scope = ? AND education_id IS NULL AND LOWER(status) IN ('aktif', 'terbit') AND deleted_at IS NULL", domain.TypePreTest, domain.ScopeApplication).
 		Order("created_at DESC").
 		First(&item).Error
 	if err != nil {
@@ -121,6 +128,31 @@ func (r *quizRepository) GetActivePreTest(ctx context.Context) (*domain.Question
 			return nil, errs.NewNotFound("active Pre-Test not found")
 		}
 		return nil, errs.NewInternal("failed to fetch active Pre-Test", err)
+	}
+	return &item, nil
+}
+
+func (r *quizRepository) GetPreTestByEducation(ctx context.Context, educationID string) (*domain.Questionnaire, error) {
+	var item domain.Questionnaire
+	err := r.db.WithContext(ctx).
+		Preload("Education").
+		Preload("Categories", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Preload("Categories.Questions.Options", func(db *gorm.DB) *gorm.DB {
+			return db.Order("display_order ASC")
+		}).
+		Where("type = ? AND scope = ? AND education_id = ? AND LOWER(status) IN ('aktif', 'terbit') AND deleted_at IS NULL", domain.TypePreTest, domain.ScopeEducation, educationID).
+		Order("created_at DESC").
+		First(&item).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.NewNotFound("Pre-Test for this education material not found")
+		}
+		return nil, errs.NewInternal("failed to fetch Pre-Test", err)
 	}
 	return &item, nil
 }
@@ -162,7 +194,7 @@ func (r *quizRepository) GetPostTestByEducation(ctx context.Context, educationID
 		Preload("Categories.Questions.Options", func(db *gorm.DB) *gorm.DB {
 			return db.Order("display_order ASC")
 		}).
-		Where("type = ? AND education_id = ? AND LOWER(status) IN ('aktif', 'terbit') AND deleted_at IS NULL", domain.TypePostTest, educationID).
+		Where("type = ? AND scope = ? AND education_id = ? AND LOWER(status) IN ('aktif', 'terbit') AND deleted_at IS NULL", domain.TypePostTest, domain.ScopeEducation, educationID).
 		Order("created_at DESC").
 		First(&item).Error
 	if err != nil {
@@ -172,6 +204,61 @@ func (r *quizRepository) GetPostTestByEducation(ctx context.Context, educationID
 		return nil, errs.NewInternal("failed to fetch Post-Test", err)
 	}
 	return &item, nil
+}
+
+func (r *quizRepository) FindEligiblePreTests(ctx context.Context, scope domain.QuestionnaireScope, educationID *string) ([]domain.Questionnaire, error) {
+	var items []domain.Questionnaire
+	q := r.db.WithContext(ctx).
+		Preload("Education", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id", "title")
+		}).
+		Preload("Categories.Questions").
+		Where("questionnaires.type = ? AND questionnaires.scope = ? AND questionnaires.deleted_at IS NULL", domain.TypePreTest, scope).
+		Where("NOT EXISTS (SELECT 1 FROM questionnaires post WHERE post.source_pre_test_id = questionnaires.id AND post.deleted_at IS NULL)")
+	if scope == domain.ScopeEducation {
+		q = q.Where("questionnaires.education_id = ?", *educationID)
+	} else {
+		q = q.Where("questionnaires.education_id IS NULL")
+	}
+	if err := q.Order("questionnaires.created_at DESC").Find(&items).Error; err != nil {
+		return nil, errs.NewInternal("failed to fetch eligible Pre-Tests", err)
+	}
+	return items, nil
+}
+
+func (r *quizRepository) FindPostTestBySource(ctx context.Context, sourcePreTestID string) (*domain.Questionnaire, error) {
+	var item domain.Questionnaire
+	err := r.db.WithContext(ctx).
+		Preload("Education").
+		Preload("Categories", func(db *gorm.DB) *gorm.DB { return db.Order("display_order ASC") }).
+		Preload("Categories.Questions", func(db *gorm.DB) *gorm.DB { return db.Order("display_order ASC") }).
+		Preload("Categories.Questions.Options", func(db *gorm.DB) *gorm.DB { return db.Order("display_order ASC") }).
+		Where("source_pre_test_id = ? AND deleted_at IS NULL", sourcePreTestID).
+		First(&item).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch linked Post-Test", err)
+	}
+	return &item, nil
+}
+
+func (r *quizRepository) FindPairedQuestionnaire(ctx context.Context, q *domain.Questionnaire) (*domain.Questionnaire, error) {
+	var paired domain.Questionnaire
+	query := r.db.WithContext(ctx).Where("deleted_at IS NULL")
+	if q.Type == domain.TypePostTest && q.SourcePreTestID != nil {
+		query = query.Where("id = ?", *q.SourcePreTestID)
+	} else {
+		query = query.Where("source_pre_test_id = ?", q.ID)
+	}
+	if err := query.First(&paired).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, errs.NewInternal("failed to fetch paired questionnaire", err)
+	}
+	return &paired, nil
 }
 
 func (r *quizRepository) Create(ctx context.Context, q *domain.Questionnaire) error {
@@ -214,6 +301,20 @@ func (r *quizRepository) Update(ctx context.Context, q *domain.Questionnaire) er
 
 		return nil
 	})
+}
+
+func (r *quizRepository) UpdateStatus(ctx context.Context, id, status string) error {
+	result := r.db.WithContext(ctx).
+		Model(&domain.Questionnaire{}).
+		Where("id = ? AND deleted_at IS NULL", id).
+		Updates(map[string]interface{}{"status": status, "updated_at": time.Now()})
+	if result.Error != nil {
+		return errs.NewInternal("failed to update questionnaire status", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return errs.NewNotFound("questionnaire not found")
+	}
+	return nil
 }
 
 func (r *quizRepository) Delete(ctx context.Context, id string) error {
@@ -387,12 +488,6 @@ func (r *quizRepository) FindActiveForPatient(ctx context.Context, qType string,
 	offset := (page - 1) * perPage
 	q := r.db.WithContext(ctx).
 		Preload("Education").
-		Preload("Categories", func(db *gorm.DB) *gorm.DB {
-			return db.Order("display_order ASC")
-		}).
-		Preload("Categories.Questions", func(db *gorm.DB) *gorm.DB {
-			return db.Order("display_order ASC")
-		}).
 		Where("LOWER(questionnaires.status) IN ('aktif', 'terbit') AND questionnaires.deleted_at IS NULL")
 
 	if qType != "" {
@@ -411,6 +506,24 @@ func (r *quizRepository) FindActiveForPatient(ctx context.Context, qType string,
 	quizIDs := make([]string, len(questionnaires))
 	for i, qn := range questionnaires {
 		quizIDs[i] = qn.ID
+	}
+	type questionCount struct {
+		QuestionnaireID string `gorm:"column:questionnaire_id"`
+		Count           int    `gorm:"column:count"`
+	}
+	var counts []questionCount
+	if err := r.db.WithContext(ctx).
+		Table("questions q").
+		Select("c.questionnaire_id, COUNT(q.id) AS count").
+		Joins("JOIN question_categories c ON c.id = q.category_id AND c.deleted_at IS NULL").
+		Where("q.category_id IS NOT NULL AND q.deleted_at IS NULL AND c.questionnaire_id IN ?", quizIDs).
+		Group("c.questionnaire_id").
+		Scan(&counts).Error; err != nil {
+		return nil, 0, errs.NewInternal("failed to count questionnaire questions", err)
+	}
+	questionCounts := make(map[string]int, len(counts))
+	for _, count := range counts {
+		questionCounts[count.QuestionnaireID] = count.Count
 	}
 
 	var attempts []domain.QuizAttempt
@@ -435,10 +548,7 @@ func (r *quizRepository) FindActiveForPatient(ctx context.Context, qType string,
 			eduTitle = qn.Education.Title
 		}
 
-		totalQuest := 0
-		for _, cat := range qn.Categories {
-			totalQuest += len(cat.Questions)
-		}
+		totalQuest := questionCounts[qn.ID]
 
 		var isCompleted bool
 		var score *int
@@ -498,6 +608,43 @@ func (r *quizRepository) GetAverageScore(ctx context.Context, questionnaireID st
 	return &avg, nil
 }
 
+func (r *quizRepository) FindPairComparisons(ctx context.Context, preTestID, postTestID, facilityName string) ([]PairComparisonRecord, error) {
+	var rows []PairComparisonRecord
+	query := r.db.WithContext(ctx).Raw(`
+WITH first_pre AS (
+    SELECT DISTINCT ON (patient_id) patient_id, id, score, passed, score_dsmes, score_dsmqr, dsmqr_category, completed_at
+    FROM quiz_attempts
+    WHERE quiz_id = ? AND deleted_at IS NULL
+    ORDER BY patient_id, completed_at ASC, created_at ASC
+), latest_post AS (
+    SELECT DISTINCT ON (patient_id) patient_id, id, score, passed, score_dsmes, score_dsmqr, dsmqr_category, completed_at
+    FROM quiz_attempts
+    WHERE quiz_id = ? AND deleted_at IS NULL
+    ORDER BY patient_id, completed_at DESC, created_at DESC
+), paired_patients AS (
+    SELECT patient_id FROM first_pre
+    UNION
+    SELECT patient_id FROM latest_post
+)
+SELECT p.id AS patient_id, p.full_name AS patient_name, p.health_facility AS puskesmas,
+       pre.id AS pre_attempt_id, pre.score AS pre_score, pre.passed AS pre_passed,
+       pre.score_dsmes AS pre_score_dsm_es, pre.score_dsmqr AS pre_score_dsm_qr, pre.dsmqr_category AS pre_dsm_qr_category,
+       pre.completed_at AS pre_completed_at,
+       post.id AS post_attempt_id, post.score AS post_score, post.passed AS post_passed,
+       post.score_dsmes AS post_score_dsm_es, post.score_dsmqr AS post_score_dsm_qr, post.dsmqr_category AS post_dsm_qr_category,
+       post.completed_at AS post_completed_at
+FROM paired_patients pp
+JOIN patients p ON p.id = pp.patient_id AND p.deleted_at IS NULL
+LEFT JOIN first_pre pre ON pre.patient_id = pp.patient_id
+LEFT JOIN latest_post post ON post.patient_id = pp.patient_id
+WHERE (? = '' OR p.health_facility = ?)
+ORDER BY p.full_name`, preTestID, postTestID, facilityName, facilityName)
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, errs.NewInternal("failed to fetch questionnaire comparison", err)
+	}
+	return rows, nil
+}
+
 func (r *quizRepository) FindMyAttempt(ctx context.Context, patientID, questionnaireID string) (*domain.QuizAttempt, error) {
 	var attempt domain.QuizAttempt
 	err := r.db.WithContext(ctx).
@@ -532,7 +679,7 @@ func (r *quizRepository) FindMyAttemptByID(ctx context.Context, patientID, quest
 	return &attempt, nil
 }
 
-func (r *quizRepository) FindMyHistory(ctx context.Context, patientID, qType string) ([]domain.QuizAttempt, error) {
+func (r *quizRepository) FindMyHistory(ctx context.Context, patientID, qType, scope string) ([]domain.QuizAttempt, error) {
 	var attempts []domain.QuizAttempt
 	q := r.db.WithContext(ctx).
 		Preload("Questionnaire").
@@ -542,6 +689,9 @@ func (r *quizRepository) FindMyHistory(ctx context.Context, patientID, qType str
 
 	if qType != "" {
 		q = q.Where("questionnaires.type = ?", qType)
+	}
+	if scope != "" {
+		q = q.Where("questionnaires.scope = ?", scope)
 	}
 
 	if err := q.Order("quiz_attempts.completed_at DESC").Limit(200).Find(&attempts).Error; err != nil {

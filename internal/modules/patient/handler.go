@@ -569,3 +569,40 @@ func (h *PatientHandler) GetStatsStaff(c fiber.Ctx) error {
 	}
 	return response.Success(c, "patient statistics retrieved", res)
 }
+
+// RecordAppUsage handles POST /api/v1/patient/app-usage
+func (h *PatientHandler) RecordAppUsage(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req RecordAppUsageRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	if err := h.svc.RecordAppUsage(c.Context(), claims.UserID, req); err != nil {
+		return err
+	}
+
+	return response.Success(c, "app usage recorded successfully", nil)
+}
+
+// GetPatientAppUsage handles GET /api/v1/admin/patients/:id/app-usage and /api/v1/staff/patients/:id/app-usage
+func (h *PatientHandler) GetPatientAppUsage(c fiber.Ctx) error {
+	id := c.Params("id")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	res, err := h.svc.GetPatientAppUsage(c.Context(), id, startDate, endDate)
+	if err != nil {
+		return err
+	}
+
+	return response.Success(c, "patient app usage retrieved", res)
+}

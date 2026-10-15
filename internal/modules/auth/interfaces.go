@@ -25,6 +25,7 @@ type AuthRepository interface {
 
 	// ── Session / Refresh ──────────────────────────────────────────────────────
 	CreateSession(ctx context.Context, session *AuthSession) error
+	RecordPatientLogin(ctx context.Context, login *domain.PatientLogin) error
 	FindSession(ctx context.Context, refreshToken string) (*AuthSession, error)
 	RevokeSession(ctx context.Context, refreshToken string) error
 	RevokeAllSessions(ctx context.Context, ownerType OwnerType, ownerID string) error

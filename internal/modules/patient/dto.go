@@ -483,3 +483,26 @@ type PatientMeasurementResponse struct {
 	MeasuredAt             string   `json:"measured_at"`
 	CreatedAt              string   `json:"created_at"`
 }
+
+type RecordAppUsageRequest struct {
+	ClientID        *string `json:"client_id"`
+	SessionID       string  `json:"session_id" validate:"required"`
+	UsageDate       string  `json:"usage_date" validate:"required"` // YYYY-MM-DD
+	DurationSeconds int     `json:"duration_seconds" validate:"required,min=0"`
+	StartedAt       string  `json:"started_at" validate:"required"`
+	EndedAt         string  `json:"ended_at" validate:"required"`
+}
+
+type DailyAppUsageItem struct {
+	Date           string `json:"date"` // YYYY-MM-DD
+	TotalSeconds   int    `json:"total_seconds"`
+	TotalFormatted string `json:"total_formatted"` // e.g. "1 jam 25 menit" or "45 menit"
+	SessionCount   int    `json:"session_count"`
+}
+
+type PatientAppUsageResponse struct {
+	PatientID      string              `json:"patient_id"`
+	TotalSeconds   int                 `json:"total_seconds"`
+	TotalFormatted string              `json:"total_formatted"`
+	DailyUsages    []DailyAppUsageItem `json:"daily_usages"`
+}

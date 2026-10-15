@@ -3,6 +3,7 @@ package patient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
@@ -271,30 +273,20 @@ func (r *patientRepository) GetStats(ctx context.Context, facilityName string) (
 		return nil, errs.NewInternal("failed to count total patients for stats", err)
 	}
 
-	// Count unique patients active TODAY across all activity streams (same rules as user activity chart)
+	// Count unique patients who logged in TODAY ("Login Hari Ini")
 	var activeTodayCount int64
 	sqlActive := `
-		SELECT COALESCE(COUNT(DISTINCT activity.patient_id), 0)
+		SELECT COALESCE(COUNT(DISTINCT logins.patient_id), 0)
 		FROM (
-			SELECT id AS patient_id FROM patients WHERE deleted_at IS NULL AND (health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND last_active_at IS NOT NULL AND DATE(last_active_at) = CURRENT_DATE
+			SELECT patient_id FROM patient_logins WHERE DATE(login_at) = CURRENT_DATE
 			UNION
-			SELECT b.patient_id FROM blood_sugar_logs b JOIN patients p ON p.id = b.patient_id WHERE b.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(b.measured_at) = CURRENT_DATE
-			UNION
-			SELECT pm.patient_id FROM patient_measurements pm JOIN patients p ON p.id = pm.patient_id WHERE pm.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(pm.measured_at) = CURRENT_DATE
-			UNION
-			SELECT ml.patient_id FROM meal_logs ml JOIN patients p ON p.id = ml.patient_id WHERE ml.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(ml.logged_at) = CURRENT_DATE
-			UNION
-			SELECT pal.patient_id FROM patient_activity_logs pal JOIN patients p ON p.id = pal.patient_id WHERE pal.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(pal.logged_at) = CURRENT_DATE
-			UNION
-			SELECT rle.patient_id FROM routine_log_entries rle JOIN patients p ON p.id = rle.patient_id WHERE rle.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(rle.logged_at) = CURRENT_DATE
-			UNION
-			SELECT qa.patient_id FROM quiz_attempts qa JOIN patients p ON p.id = qa.patient_id WHERE qa.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(qa.completed_at) = CURRENT_DATE
-			UNION
-			SELECT av.patient_id FROM article_views av JOIN patients p ON p.id = av.patient_id WHERE av.deleted_at IS NULL AND p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL) AND DATE(av.viewed_at) = CURRENT_DATE
-		) activity
+			SELECT owner_id AS patient_id FROM auth_sessions WHERE owner_type = 'patient' AND DATE(created_at) = CURRENT_DATE
+		) logins
+		JOIN patients p ON p.id = logins.patient_id 
+		WHERE p.deleted_at IS NULL AND (p.health_facility = NULLIF(?, '') OR NULLIF(?, '') IS NULL)
 	`
-	if err := r.db.WithContext(ctx).Raw(sqlActive, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName, facilityName).Scan(&activeTodayCount).Error; err != nil {
-		r.log.Warn("failed to count active patients today for stats", zap.Error(err))
+	if err := r.db.WithContext(ctx).Raw(sqlActive, facilityName, facilityName).Scan(&activeTodayCount).Error; err != nil {
+		r.log.Warn("failed to count patients logged in today for stats", zap.Error(err))
 	} else {
 		active = activeTodayCount
 	}
@@ -1038,4 +1030,82 @@ func (r *patientRepository) CreateBloodSugarLog(ctx context.Context, bsLog *doma
 		return errs.NewInternal("failed to create blood sugar log entry", err)
 	}
 	return nil
+}
+
+func (r *patientRepository) RecordAppUsage(ctx context.Context, usage *domain.PatientAppUsage) error {
+	// Idempotent: ignore if same client_id or session_id already exists
+	res := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			DoNothing: true,
+		}).
+		Create(usage)
+	if res.Error != nil {
+		return errs.NewInternal("failed to record app usage", res.Error)
+	}
+	return nil
+}
+
+func (r *patientRepository) GetPatientAppUsage(ctx context.Context, patientID string, startDate, endDate string) (*PatientAppUsageResponse, error) {
+	type UsageAggRow struct {
+		DateStr      string `gorm:"column:date_str"`
+		TotalSeconds int    `gorm:"column:total_seconds"`
+		SessionCount int    `gorm:"column:session_count"`
+	}
+
+	var rows []UsageAggRow
+	q := r.db.WithContext(ctx).
+		Table("patient_app_usages").
+		Select("TO_CHAR(usage_date, 'YYYY-MM-DD') as date_str, COALESCE(SUM(duration_seconds), 0) as total_seconds, COUNT(*) as session_count").
+		Where("patient_id = ?", patientID)
+
+	if startDate != "" {
+		q = q.Where("usage_date >= ?", startDate)
+	}
+	if endDate != "" {
+		q = q.Where("usage_date <= ?", endDate)
+	}
+
+	err := q.Group("TO_CHAR(usage_date, 'YYYY-MM-DD')").
+		Order("date_str DESC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch patient app usage", err)
+	}
+
+	daily := make([]DailyAppUsageItem, len(rows))
+	overallSeconds := 0
+	for i, row := range rows {
+		overallSeconds += row.TotalSeconds
+		daily[i] = DailyAppUsageItem{
+			Date:           row.DateStr,
+			TotalSeconds:   row.TotalSeconds,
+			TotalFormatted: formatDuration(row.TotalSeconds),
+			SessionCount:   row.SessionCount,
+		}
+	}
+
+	return &PatientAppUsageResponse{
+		PatientID:      patientID,
+		TotalSeconds:   overallSeconds,
+		TotalFormatted: formatDuration(overallSeconds),
+		DailyUsages:    daily,
+	}, nil
+}
+
+func formatDuration(seconds int) string {
+	if seconds <= 0 {
+		return "0 menit"
+	}
+	hours := seconds / 3600
+	mins := (seconds % 3600) / 60
+	if hours > 0 {
+		if mins > 0 {
+			return fmt.Sprintf("%d jam %d menit", hours, mins)
+		}
+		return fmt.Sprintf("%d jam", hours)
+	}
+	if mins == 0 && seconds > 0 {
+		return "1 menit"
+	}
+	return fmt.Sprintf("%d menit", mins)
 }

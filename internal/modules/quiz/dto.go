@@ -9,10 +9,11 @@ import (
 )
 
 type ChoiceRequest struct {
-	ID           string `json:"id,omitempty"`
-	OptionText   string `json:"option_text"`
-	IsCorrect    bool   `json:"is_correct"`
-	DisplayOrder int    `json:"display_order"`
+	ID           string   `json:"id,omitempty"`
+	OptionText   string   `json:"option_text"`
+	ScoreValue   *float64 `json:"score_value,omitempty"`
+	IsCorrect    bool     `json:"is_correct"`
+	DisplayOrder int      `json:"display_order"`
 }
 
 type QuestionRequest struct {
@@ -25,23 +26,37 @@ type QuestionRequest struct {
 }
 
 type QuestionCategoryRequest struct {
-	ID           string            `json:"id,omitempty"`
-	Title        string            `json:"title"`
-	Description  string            `json:"description,omitempty"`
-	DisplayOrder int               `json:"display_order"`
-	Questions    []QuestionRequest `json:"questions" validate:"required,min=1"`
+	ID                 string            `json:"id,omitempty"`
+	Title              string            `json:"title"`
+	Description        string            `json:"description,omitempty"`
+	DisplayOrder       int               `json:"display_order"`
+	InstrumentCategory string            `json:"instrument_category,omitempty"` // PRE_TEST | DSMQR | DSMES
+	Questions          []QuestionRequest `json:"questions" validate:"required,min=1"`
 }
 
 type CreateQuestionnaireRequest struct {
 	Title        string                    `json:"title" validate:"required,min=3,max=200"`
 	Type         string                    `json:"type" validate:"required"` // PRE_TEST | POST_TEST
+	Scope        *string                   `json:"scope,omitempty"`          // APPLICATION | EDUCATION
 	Description  string                    `json:"description"`
 	EducationID  *string                   `json:"education_id"`
 	PassingScore *int                      `json:"passing_score"`
 	Difficulty   *string                   `json:"difficulty"`
 	Status       string                    `json:"status"` // aktif | draft | nonaktif
 	Categories   []QuestionCategoryRequest `json:"categories,omitempty"`
-	Questions    []QuestionRequest         `json:"questions,omitempty"` // For PRE_TEST (sequential questions without categories)
+	Questions    []QuestionRequest         `json:"questions,omitempty"` // For sequential questions without categories
+
+	// Post-Test is created separately and explicitly linked to a Pre-Test.
+	SourcePreTestID          *string `json:"source_pre_test_id,omitempty"`
+	CopyQuestionsFromPreTest bool    `json:"copy_questions_from_pre_test,omitempty"`
+}
+
+type UpdateQuestionnaireStatusRequest struct {
+	Status string `json:"status" validate:"required"`
+}
+
+type PairQuestionnaireRequest struct {
+	SourcePreTestID string `json:"source_pre_test_id" validate:"required"`
 }
 
 type SubmitAnswerItem struct {
@@ -57,10 +72,11 @@ type SubmitQuestionnaireRequest struct {
 }
 
 type ChoiceResponse struct {
-	ID           string `json:"id"`
-	OptionText   string `json:"option_text"`
-	IsCorrect    bool   `json:"is_correct,omitempty"`
-	DisplayOrder int    `json:"display_order"`
+	ID           string   `json:"id"`
+	OptionText   string   `json:"option_text"`
+	ScoreValue   *float64 `json:"score_value,omitempty"`
+	IsCorrect    bool     `json:"is_correct,omitempty"`
+	DisplayOrder int      `json:"display_order"`
 }
 
 type QuestionResponse struct {
@@ -73,17 +89,19 @@ type QuestionResponse struct {
 }
 
 type QuestionCategoryResponse struct {
-	ID           string             `json:"id"`
-	Title        string             `json:"title"`
-	Description  string             `json:"description,omitempty"`
-	DisplayOrder int                `json:"display_order"`
-	Questions    []QuestionResponse `json:"questions"`
+	ID                 string             `json:"id"`
+	Title              string             `json:"title"`
+	Description        string             `json:"description,omitempty"`
+	DisplayOrder       int                `json:"display_order"`
+	InstrumentCategory string             `json:"instrument_category,omitempty"`
+	Questions          []QuestionResponse `json:"questions"`
 }
 
 type QuestionnaireResponse struct {
 	ID               string    `json:"id"`
 	Title            string    `json:"title"`
-	Type             string    `json:"type"` // "PRE_TEST" | "POST_TEST"
+	Type             string    `json:"type"`  // "PRE_TEST" | "POST_TEST"
+	Scope            string    `json:"scope"` // "APPLICATION" | "EDUCATION"
 	Description      string    `json:"description,omitempty"`
 	EducationID      *string   `json:"education_id,omitempty"`
 	EducationTitle   string    `json:"education_title,omitempty"`
@@ -97,11 +115,64 @@ type QuestionnaireResponse struct {
 	CreatedBy        string    `json:"created_by"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
+
+	// Pre/Post-Test Linkage
+	SourcePreTestID          *string `json:"source_pre_test_id,omitempty"`
+	IsLinkedToPreTest        bool    `json:"is_linked_to_pre_test"`
+	PairedQuestionnaireID    *string `json:"paired_questionnaire_id,omitempty"`
+	PairedQuestionnaireTitle *string `json:"paired_questionnaire_title,omitempty"`
 }
 
 type QuestionnaireDetailResponse struct {
 	QuestionnaireResponse
 	Categories []QuestionCategoryResponse `json:"categories"`
+}
+
+type QuestionnairePairResponse struct {
+	PreTest  *QuestionnaireDetailResponse `json:"pre_test"`
+	PostTest *QuestionnaireDetailResponse `json:"post_test,omitempty"`
+}
+
+type PairAttemptResponse struct {
+	AttemptID     string    `json:"attempt_id"`
+	Score         int       `json:"score"`
+	Passed        bool      `json:"passed"`
+	ScoreDSMES    *int      `json:"score_dsmes,omitempty"`
+	ScoreDSMQR    *float64  `json:"score_dsmqr,omitempty"`
+	DSMQRCategory *string   `json:"dsmqr_category,omitempty"`
+	CompletedAt   time.Time `json:"completed_at"`
+}
+
+type PairComparisonResponse struct {
+	PatientID   string               `json:"patient_id"`
+	PatientName string               `json:"patient_name"`
+	Puskesmas   string               `json:"puskesmas"`
+	PreAttempt  *PairAttemptResponse `json:"pre_attempt,omitempty"`
+	PostAttempt *PairAttemptResponse `json:"post_attempt,omitempty"`
+	ScoreChange *int                 `json:"score_change,omitempty"`
+	DSMESChange *int                 `json:"dsmes_change,omitempty"`
+	DSMQRChange *float64             `json:"dsmqr_change,omitempty"`
+	Status      string               `json:"status"`
+}
+
+type PairComparisonRecord struct {
+	PatientID         string
+	PatientName       string
+	Puskesmas         string
+	PreAttemptID      *string
+	PreScore          *int
+	PrePassed         *bool
+	PreCompletedAt    *time.Time
+	PreScoreDSMES     *int
+	PreScoreDSMQR     *float64
+	PreDSMQRCategory  *string
+	PostAttemptID     *string
+	PostScore         *int
+	PostPassed        *bool
+	PostCompletedAt   *time.Time
+	PostScoreDSMES    *int
+	PostScoreDSMQR    *float64
+	PostDSMQRCategory *string
 }
 
 type QuizStats struct {
@@ -123,22 +194,30 @@ type ParticipantResponse struct {
 	Passed               bool      `json:"passed"`
 	Duration             string    `json:"duration"`
 	SelfEfficacyCategory string    `json:"self_efficacy_category,omitempty"`
+
+	// Category-Specific Scores
+	ScoreDSMES    *int     `json:"score_dsmes,omitempty"`
+	ScoreDSMQR    *float64 `json:"score_dsmqr,omitempty"`
+	DSMQRCategory *string  `json:"dsmqr_category,omitempty"`
+	ScorePreTest  *int     `json:"score_pre_test,omitempty"`
 }
 
 type QuestionAnalysisResponse struct {
-	ID             string `json:"id"`
-	QuestionNumber int    `json:"question_number"`
-	QuestionText   string `json:"question_text"`
-	PatientAnswer  string `json:"patient_answer"`
-	CorrectAnswer  string `json:"correct_answer"`
-	IsCorrect      bool   `json:"is_correct"`
-	Explanation    string `json:"explanation"`
+	ID                 string `json:"id"`
+	QuestionNumber     int    `json:"question_number"`
+	QuestionText       string `json:"question_text"`
+	InstrumentCategory string `json:"instrument_category,omitempty"` // PRE_TEST | DSMQR | DSMES
+	PatientAnswer      string `json:"patient_answer"`
+	CorrectAnswer      string `json:"correct_answer"`
+	IsCorrect          bool   `json:"is_correct"`
+	Explanation        string `json:"explanation"`
 }
 
 type ParticipantDetailResponse struct {
 	Participant      ParticipantResponse        `json:"participant"`
 	QuizTitle        string                     `json:"quiz_title"`
 	Type             string                     `json:"type"`
+	Scope            string                     `json:"scope"`
 	QuestionAnalysis []QuestionAnalysisResponse `json:"question_analysis"`
 }
 
@@ -180,16 +259,37 @@ func DetermineSelfEfficacyCategory(score int) string {
 	}
 }
 
+// DetermineDSMQRCategory calculates the category for DSMQR based on score and question count.
+// Can be customized with precise cutoffs once formula is provided.
+func DetermineDSMQRCategory(score float64, count int) string {
+	if count <= 0 {
+		return "-"
+	}
+	avg := score / float64(count)
+	switch {
+	case avg < 2.0:
+		return "Kurang Baik"
+	case avg <= 3.5:
+		return "Cukup Baik"
+	default:
+		return "Sangat Baik"
+	}
+}
+
 type SubmitResultResponse struct {
-	AttemptID            string `json:"attempt_id"`
-	QuestionnaireID      string `json:"questionnaire_id"`
-	Type                 string `json:"type,omitempty"`
-	Message              string `json:"message,omitempty"`
-	Score                *int   `json:"score,omitempty"`
-	Passed               *bool  `json:"passed,omitempty"`
-	TotalQuestions       int    `json:"total_questions,omitempty"`
-	CorrectCount         *int   `json:"correct_count,omitempty"`
-	SelfEfficacyCategory string `json:"self_efficacy_category,omitempty"`
+	AttemptID            string   `json:"attempt_id"`
+	QuestionnaireID      string   `json:"questionnaire_id"`
+	Type                 string   `json:"type,omitempty"`
+	Message              string   `json:"message,omitempty"`
+	Score                *int     `json:"score,omitempty"`
+	Passed               *bool    `json:"passed,omitempty"`
+	TotalQuestions       int      `json:"total_questions,omitempty"`
+	CorrectCount         *int     `json:"correct_count,omitempty"`
+	SelfEfficacyCategory string   `json:"self_efficacy_category,omitempty"`
+	ScoreDSMES           *int     `json:"score_dsmes,omitempty"`
+	ScoreDSMQR           *float64 `json:"score_dsmqr,omitempty"`
+	DSMQRCategory        *string  `json:"dsmqr_category,omitempty"`
+	ScorePreTest         *int     `json:"score_pre_test,omitempty"`
 }
 
 // MyAttemptResponse is the patient-facing view of their own attempt for a specific questionnaire.
@@ -211,6 +311,7 @@ type MyHistoryItemResponse struct {
 	QuestionnaireID    string    `json:"questionnaire_id"`
 	QuestionnaireTitle string    `json:"questionnaire_title"`
 	Type               string    `json:"type"`
+	Scope              string    `json:"scope"`
 	Score              int       `json:"score"`
 	Passed             bool      `json:"passed"`
 	TotalQuestions     int       `json:"total_questions"`
@@ -273,23 +374,35 @@ func ToQuestionnaireResponse(q *domain.Questionnaire, categoryCount, questionCou
 		createdBy = *q.CreatedBy
 	}
 
+	scopeStr := string(q.Scope)
+	if scopeStr == "" {
+		if q.EducationID != nil {
+			scopeStr = string(domain.ScopeEducation)
+		} else {
+			scopeStr = string(domain.ScopeApplication)
+		}
+	}
+
 	return QuestionnaireResponse{
-		ID:               q.ID,
-		Title:            q.Title,
-		Type:             string(q.Type),
-		Description:      q.Description,
-		EducationID:      q.EducationID,
-		EducationTitle:   eduTitle,
-		PassingScore:     q.PassingScore,
-		Difficulty:       q.Difficulty,
-		Status:           displayStatus(q.Status),
-		CategoryCount:    categoryCount,
-		QuestionCount:    questionCount,
-		ParticipantCount: participantCount,
-		AverageScore:     avgScore,
-		CreatedBy:        createdBy,
-		CreatedAt:        q.CreatedAt,
-		UpdatedAt:        q.UpdatedAt,
+		ID:                q.ID,
+		Title:             q.Title,
+		Type:              string(q.Type),
+		Scope:             scopeStr,
+		Description:       q.Description,
+		EducationID:       q.EducationID,
+		EducationTitle:    eduTitle,
+		PassingScore:      q.PassingScore,
+		Difficulty:        q.Difficulty,
+		Status:            displayStatus(q.Status),
+		CategoryCount:     categoryCount,
+		QuestionCount:     questionCount,
+		ParticipantCount:  participantCount,
+		AverageScore:      avgScore,
+		CreatedBy:         createdBy,
+		CreatedAt:         q.CreatedAt,
+		UpdatedAt:         q.UpdatedAt,
+		SourcePreTestID:   q.SourcePreTestID,
+		IsLinkedToPreTest: q.IsLinkedToPreTest,
 	}
 }
 
@@ -304,18 +417,19 @@ func ToQuestionnaireDetailResponse(q *domain.Questionnaire, participantCount int
 
 		for j, quest := range cat.Questions {
 			var cResps []ChoiceResponse
-			if q.Type == domain.TypePreTest {
-				cResps = DefaultLikertChoices
-			} else {
+			if len(quest.Options) > 0 {
 				cResps = make([]ChoiceResponse, len(quest.Options))
 				for k, opt := range quest.Options {
 					cResps[k] = ChoiceResponse{
 						ID:           opt.ID,
 						OptionText:   opt.OptionText,
+						ScoreValue:   opt.ScoreValue,
 						IsCorrect:    isAdminOrStaff && opt.IsCorrect,
 						DisplayOrder: opt.DisplayOrder,
 					}
 				}
+			} else if q.Type == domain.TypePreTest {
+				cResps = DefaultLikertChoices
 			}
 
 			imageURL := ""
@@ -334,11 +448,12 @@ func ToQuestionnaireDetailResponse(q *domain.Questionnaire, participantCount int
 		}
 
 		catResps[i] = QuestionCategoryResponse{
-			ID:           cat.ID,
-			Title:        cat.Title,
-			Description:  cat.Description,
-			DisplayOrder: cat.DisplayOrder,
-			Questions:    qResps,
+			ID:                 cat.ID,
+			Title:              cat.Title,
+			Description:        cat.Description,
+			DisplayOrder:       cat.DisplayOrder,
+			InstrumentCategory: cat.InstrumentCategory,
+			Questions:          qResps,
 		}
 	}
 

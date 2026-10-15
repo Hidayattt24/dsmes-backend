@@ -191,13 +191,16 @@ func (s *reminderService) GetNotifications(ctx context.Context, patientID string
 	resp := make([]NotificationResponse, len(items))
 	for i := range items {
 		resp[i] = NotificationResponse{
-			ID:          items[i].ID,
-			ReminderID:  items[i].ReminderID,
-			MessageText: items[i].MessageText,
-			NotifiedAt:  items[i].NotifiedAt.Format(time.RFC3339),
-			IsRead:      items[i].IsRead,
-			NotifType:   items[i].NotifType,
-			ArticleID:   items[i].ArticleID,
+			ID:           items[i].ID,
+			ReminderID:   items[i].ReminderID,
+			MessageText:  items[i].MessageText,
+			NotifiedAt:   items[i].NotifiedAt.Format(time.RFC3339),
+			IsRead:       items[i].IsRead,
+			NotifType:    items[i].NotifType,
+			ArticleID:    items[i].ArticleID,
+			IconName:     items[i].IconName,
+			ActivityName: items[i].ActivityName,
+			Category:     items[i].Category,
 		}
 	}
 	return resp, nil

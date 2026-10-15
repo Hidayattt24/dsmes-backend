@@ -7,13 +7,18 @@ import (
 )
 
 type QuizRepository interface {
-	FindAll(ctx context.Context, search, qType, status, sortBy, sortOrder string, page, limit int) ([]domain.Questionnaire, int64, error)
+	FindAll(ctx context.Context, search, qType, status, scope, sortBy, sortOrder string, page, limit int) ([]domain.Questionnaire, int64, error)
 	FindByID(ctx context.Context, id string) (*domain.Questionnaire, error)
 	GetActivePreTest(ctx context.Context) (*domain.Questionnaire, error)
+	GetPreTestByEducation(ctx context.Context, educationID string) (*domain.Questionnaire, error)
 	GetAnyPreTest(ctx context.Context) (*domain.Questionnaire, error)
 	GetPostTestByEducation(ctx context.Context, educationID string) (*domain.Questionnaire, error)
+	FindEligiblePreTests(ctx context.Context, scope domain.QuestionnaireScope, educationID *string) ([]domain.Questionnaire, error)
+	FindPostTestBySource(ctx context.Context, sourcePreTestID string) (*domain.Questionnaire, error)
+	FindPairedQuestionnaire(ctx context.Context, q *domain.Questionnaire) (*domain.Questionnaire, error)
 	Create(ctx context.Context, q *domain.Questionnaire) error
 	Update(ctx context.Context, q *domain.Questionnaire) error
+	UpdateStatus(ctx context.Context, id, status string) error
 	Delete(ctx context.Context, id string) error
 	GetStats(ctx context.Context, facilityName string) (*QuizStats, error)
 
@@ -23,21 +28,29 @@ type QuizRepository interface {
 	FindAttemptByClientID(ctx context.Context, patientID string, clientID string) (*domain.QuizAttempt, error)
 	FindMyAttempt(ctx context.Context, patientID, questionnaireID string) (*domain.QuizAttempt, error)
 	FindMyAttemptByID(ctx context.Context, patientID, questionnaireID, attemptID string) (*domain.QuizAttempt, error)
-	FindMyHistory(ctx context.Context, patientID, qType string) ([]domain.QuizAttempt, error)
+	FindMyHistory(ctx context.Context, patientID, qType, scope string) ([]domain.QuizAttempt, error)
 	FindActiveForPatient(ctx context.Context, qType string, patientID string, page, perPage int) ([]PatientQuestionnaireItem, int64, error)
 	CountAttempts(ctx context.Context, questionnaireID string, facilityName string) (int, error)
 	GetAverageScore(ctx context.Context, questionnaireID string, facilityName string) (*int, error)
+	FindPairComparisons(ctx context.Context, preTestID, postTestID, facilityName string) ([]PairComparisonRecord, error)
 }
 
 type QuizService interface {
-	ListQuestionnaires(ctx context.Context, search, qType, status, sortBy, sortOrder string, page, limit int) ([]QuestionnaireResponse, int64, error)
-	ListQuestionnairesForStaff(ctx context.Context, staffID string, search, qType, status, sortBy, sortOrder string, page, limit int) ([]QuestionnaireResponse, int64, error)
+	ListQuestionnaires(ctx context.Context, search, qType, status, scope, sortBy, sortOrder string, page, limit int) ([]QuestionnaireResponse, int64, error)
+	ListQuestionnairesForStaff(ctx context.Context, staffID string, search, qType, status, scope, sortBy, sortOrder string, page, limit int) ([]QuestionnaireResponse, int64, error)
 	GetQuestionnaire(ctx context.Context, id string, isAdminOrStaff bool) (*QuestionnaireDetailResponse, error)
 	GetQuestionnaireForStaff(ctx context.Context, staffID string, id string) (*QuestionnaireDetailResponse, error)
 	GetActivePreTest(ctx context.Context, isAdminOrStaff bool) (*QuestionnaireDetailResponse, error)
+	GetPreTestByEducation(ctx context.Context, educationID string, isAdminOrStaff bool) (*QuestionnaireDetailResponse, error)
 	GetPostTestByEducation(ctx context.Context, educationID string, isAdminOrStaff bool) (*QuestionnaireDetailResponse, error)
+	GetEligiblePreTests(ctx context.Context, scope string, educationID *string) ([]QuestionnaireResponse, error)
+	GetQuestionnairePair(ctx context.Context, id string, staffID string) (*QuestionnairePairResponse, error)
+	GetPairComparison(ctx context.Context, id string, staffID string) ([]PairComparisonResponse, error)
+	GetParticipantPairComparison(ctx context.Context, id, participantID, staffID string) (*PairComparisonResponse, error)
 	CreateQuestionnaire(ctx context.Context, staffID string, req CreateQuestionnaireRequest) (*QuestionnaireDetailResponse, error)
 	UpdateQuestionnaire(ctx context.Context, id string, req CreateQuestionnaireRequest) (*QuestionnaireDetailResponse, error)
+	UpdateQuestionnaireStatus(ctx context.Context, id, status string) error
+	PairQuestionnaire(ctx context.Context, postTestID, sourcePreTestID string) error
 	DeleteQuestionnaire(ctx context.Context, id string) error
 	GetStats(ctx context.Context) (*QuizStats, error)
 	GetStatsForStaff(ctx context.Context, staffID string) (*QuizStats, error)
@@ -50,6 +63,6 @@ type QuizService interface {
 	GetMyAttempt(ctx context.Context, patientID, questionnaireID string) (*MyAttemptResponse, error)
 	GetMyAttemptDetail(ctx context.Context, patientID, questionnaireID string) (*ParticipantDetailResponse, error)
 	GetMyAttemptDetailByID(ctx context.Context, patientID, questionnaireID, attemptID string) (*ParticipantDetailResponse, error)
-	GetMyHistory(ctx context.Context, patientID, qType string) ([]MyHistoryItemResponse, error)
+	GetMyHistory(ctx context.Context, patientID, qType, scope string) ([]MyHistoryItemResponse, error)
 	ListPatientQuestionnaires(ctx context.Context, qType string, patientID string, page, perPage int) ([]PatientQuestionnaireItem, int64, error)
 }

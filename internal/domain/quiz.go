@@ -5,24 +5,33 @@ import (
 )
 
 type QuestionnaireType string
+type QuestionnaireScope string
 
 const (
 	TypePreTest  QuestionnaireType = "PRE_TEST"
 	TypePostTest QuestionnaireType = "POST_TEST"
+
+	ScopeApplication QuestionnaireScope = "APPLICATION" // Kuesioner Aplikasi (DSMQR & DSMES, no educationId, no passing score)
+	ScopeEducation   QuestionnaireScope = "EDUCATION"   // Kuesioner Modul Edukasi (has educationId, has passing score)
 )
 
 // Questionnaire represents a Pre-Test or Post-Test evaluation questionnaire.
 type Questionnaire struct {
 	BaseModel
 
-	Title        string            `gorm:"type:varchar(200);not null" json:"title"`
-	Type         QuestionnaireType `gorm:"type:questionnaire_type_enum;not null;default:'POST_TEST'" json:"type"`
-	Description  string            `gorm:"type:text" json:"description,omitempty"`
-	EducationID  *string           `gorm:"type:uuid" json:"education_id,omitempty"`
-	PassingScore *int              `gorm:"type:int" json:"passing_score,omitempty"`
-	Difficulty   *string           `gorm:"type:varchar(50)" json:"difficulty,omitempty"`
-	Status       string            `gorm:"type:varchar(50);not null;default:'draft'" json:"status"`
-	CreatedBy    *string           `gorm:"type:uuid" json:"created_by,omitempty"`
+	Title        string             `gorm:"type:varchar(200);not null" json:"title"`
+	Type         QuestionnaireType  `gorm:"type:questionnaire_type_enum;not null;default:'POST_TEST'" json:"type"`
+	Scope        QuestionnaireScope `gorm:"type:varchar(50);not null;default:'EDUCATION';column:scope" json:"scope"`
+	Description  string             `gorm:"type:text" json:"description,omitempty"`
+	EducationID  *string            `gorm:"type:uuid" json:"education_id,omitempty"`
+	PassingScore *int               `gorm:"type:int" json:"passing_score,omitempty"`
+	Difficulty   *string            `gorm:"type:varchar(50)" json:"difficulty,omitempty"`
+	Status       string             `gorm:"type:varchar(20);not null;default:'aktif'" json:"status"`
+	CreatedBy    *string            `gorm:"type:uuid" json:"created_by,omitempty"`
+
+	// Pre-Test & Post-Test Linkage
+	SourcePreTestID   *string `gorm:"type:uuid;column:source_pre_test_id" json:"source_pre_test_id,omitempty"`
+	IsLinkedToPreTest bool    `gorm:"type:boolean;not null;default:false;column:is_linked_to_pre_test" json:"is_linked_to_pre_test"`
 
 	// Relations
 	Education  *Article           `gorm:"foreignKey:EducationID" json:"education,omitempty"`
@@ -35,10 +44,11 @@ func (Questionnaire) TableName() string { return "questionnaires" }
 type QuestionCategory struct {
 	BaseModel
 
-	QuestionnaireID string `gorm:"type:uuid;not null" json:"questionnaire_id"`
-	Title           string `gorm:"type:varchar(200);not null" json:"title"`
-	Description     string `gorm:"type:text" json:"description,omitempty"`
-	DisplayOrder    int    `gorm:"type:int;not null;default:0" json:"display_order"`
+	QuestionnaireID    string `gorm:"type:uuid;not null" json:"questionnaire_id"`
+	Title              string `gorm:"type:varchar(200);not null" json:"title"`
+	Description        string `gorm:"type:text" json:"description,omitempty"`
+	DisplayOrder       int    `gorm:"type:int;not null;default:0" json:"display_order"`
+	InstrumentCategory string `gorm:"type:varchar(50);default:'PRE_TEST';column:instrument_category" json:"instrument_category,omitempty"`
 
 	// Relations
 	Questions []Question `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"questions,omitempty"`
@@ -66,10 +76,11 @@ func (Question) TableName() string { return "questions" }
 type QuestionOption struct {
 	BaseModel
 
-	QuestionID   string `gorm:"type:uuid;not null" json:"question_id"`
-	OptionText   string `gorm:"type:text;not null" json:"option_text"`
-	IsCorrect    bool   `gorm:"type:boolean;not null;default:false" json:"is_correct"`
-	DisplayOrder int    `gorm:"type:int;not null;default:0" json:"display_order"`
+	QuestionID   string   `gorm:"type:uuid;not null" json:"question_id"`
+	OptionText   string   `gorm:"type:text;not null" json:"option_text"`
+	ScoreValue   *float64 `gorm:"type:numeric(8,2)" json:"score_value,omitempty"`
+	IsCorrect    bool     `gorm:"type:boolean;not null;default:false" json:"is_correct"`
+	DisplayOrder int      `gorm:"type:int;not null;default:0" json:"display_order"`
 }
 
 func (QuestionOption) TableName() string { return "question_options" }
@@ -83,6 +94,10 @@ type QuizAttempt struct {
 	PatientID            string    `gorm:"type:uuid;not null" json:"patient_id"`
 	Score                int       `gorm:"type:int;not null" json:"score"`
 	SelfEfficacyCategory *string   `gorm:"type:varchar(50);column:self_efficacy_category" json:"self_efficacy_category,omitempty"`
+	ScoreDSMES           *int      `gorm:"type:int;column:score_dsmes" json:"score_dsmes,omitempty"`
+	ScoreDSMQR           *float64  `gorm:"type:numeric(6,2);column:score_dsmqr" json:"score_dsmqr,omitempty"`
+	DSMQRCategory        *string   `gorm:"type:varchar(100);column:dsmqr_category" json:"dsmqr_category,omitempty"`
+	ScorePreTest         *int      `gorm:"type:int;column:score_pre_test" json:"score_pre_test,omitempty"`
 	Passed               bool      `gorm:"type:boolean;not null" json:"passed"`
 	DurationSeconds      int       `gorm:"type:int;not null" json:"duration_seconds"`
 	CompletedAt          time.Time `gorm:"type:timestamptz;not null;default:now()" json:"completed_at"`

@@ -165,6 +165,13 @@ func (r *authRepository) CreateSession(ctx context.Context, session *AuthSession
 	return nil
 }
 
+func (r *authRepository) RecordPatientLogin(ctx context.Context, login *domain.PatientLogin) error {
+	if err := r.db.WithContext(ctx).Create(login).Error; err != nil {
+		return errs.NewInternal("failed to record patient login", err)
+	}
+	return nil
+}
+
 func (r *authRepository) FindSession(ctx context.Context, refreshToken string) (*AuthSession, error) {
 	var s AuthSession
 	err := r.db.WithContext(ctx).

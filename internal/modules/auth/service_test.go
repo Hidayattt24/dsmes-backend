@@ -67,6 +67,9 @@ func (m *mockAuthRepo) CreateSession(ctx context.Context, session *AuthSession) 
 	m.sessions[session.RefreshToken] = session
 	return nil
 }
+func (m *mockAuthRepo) RecordPatientLogin(ctx context.Context, login *domain.PatientLogin) error {
+	return nil
+}
 func (m *mockAuthRepo) FindSession(ctx context.Context, refreshToken string) (*AuthSession, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

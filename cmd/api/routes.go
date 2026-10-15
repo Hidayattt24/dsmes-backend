@@ -229,6 +229,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Get("/patients/:id/activities/education", eduProgressHandler.GetPatientEducationActivities)
 		admin.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
 		admin.Get("/patients/:id/activity-analytics", patientHandler.GetPatientActivityAnalytics)
+		admin.Get("/patients/:id/app-usage", patientHandler.GetPatientAppUsage)
 
 		// Education content CRUD
 		admin.Get("/education/stats", eduHandler.GetStats)
@@ -251,9 +252,15 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Get("/quiz", quizHandler.List)
 		admin.Get("/quiz/pre-test", quizHandler.GetActivePreTest)
 		admin.Get("/quiz/post-test", quizHandler.GetPostTestByEducation)
+		admin.Get("/quiz/eligible-pre-tests", quizHandler.GetEligiblePreTests)
+		admin.Get("/quiz/:id/pair", quizHandler.GetPair)
+		admin.Get("/quiz/:id/comparison", quizHandler.GetComparison)
+		admin.Get("/quiz/:id/comparison/:participant_id", quizHandler.GetParticipantComparison)
 		admin.Get("/quiz/:id", quizHandler.GetByID)
 		admin.Post("/quiz", quizHandler.Create)
 		admin.Put("/quiz/:id", quizHandler.Update)
+		admin.Patch("/quiz/:id/status", quizHandler.UpdateStatus)
+		admin.Patch("/quiz/:id/pair", quizHandler.Pair)
 		admin.Delete("/quiz/:id", quizHandler.Delete)
 		admin.Get("/quiz/:id/participants", quizHandler.ListParticipants)
 		admin.Get("/quiz/:id/participant/:participant_id", quizHandler.GetParticipantDetail)
@@ -284,6 +291,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		staff.Get("/patients/:id/activities/education", eduProgressHandler.GetPatientEducationActivities)
 		staff.Get("/patients/:id/medications", reminderHandler.GetPatientMedicationLogs)
 		staff.Get("/patients/:id/activity-analytics", patientHandler.GetPatientActivityAnalytics)
+		staff.Get("/patients/:id/app-usage", patientHandler.GetPatientAppUsage)
 
 		// Dashboard statistics
 		staff.Get("/dashboard/blood-sugar", bsHandler.GetDashboard)
@@ -302,6 +310,10 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Quiz Monitoring
 		staff.Get("/quiz/stats", quizHandler.GetStats)
 		staff.Get("/quiz", quizHandler.List)
+		staff.Get("/quiz/eligible-pre-tests", quizHandler.GetEligiblePreTests)
+		staff.Get("/quiz/:id/pair", quizHandler.GetPair)
+		staff.Get("/quiz/:id/comparison", quizHandler.GetComparison)
+		staff.Get("/quiz/:id/comparison/:participant_id", quizHandler.GetParticipantComparison)
 		staff.Get("/quiz/:id", quizHandler.GetByID)
 		staff.Get("/quiz/:id/participants", quizHandler.ListParticipants)
 		staff.Get("/quiz/:id/participant/:participant_id", quizHandler.GetParticipantDetail)
@@ -322,6 +334,9 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		// Health Measurements
 		patientGroup.Get("/measurements", patientHandler.GetPatientMeasurements)
 		patientGroup.Post("/measurements", patientHandler.CreateMeasurement)
+
+		// App Usage Tracking
+		patientGroup.Post("/app-usage", patientHandler.RecordAppUsage)
 
 		// Routines habit logging
 		patientGroup.Get("/routines", routineHandler.List)
