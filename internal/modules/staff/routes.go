@@ -17,7 +17,7 @@ func RegisterRoutes(router fiber.Router, c *container.Container) {
 	repo := NewStaffRepository(c.DB, c.Logger)
 	authRepo := auth.NewAuthRepository(c.DB, c.Logger)
 	facilityRepo := facility.NewFacilityRepository(c.DB, c.Logger)
-	svc := NewStaffService(repo, authRepo, facilityRepo, c.Logger)
+	svc := NewStaffService(repo, authRepo, facilityRepo, c.Email, c.Logger)
 	h := NewStaffHandler(svc, c.Logger)
 
 	// Since the caller already applies JWT and RequireRole("admin"),

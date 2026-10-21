@@ -7,6 +7,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
+	"github.com/dsmes/dsmes-backend/internal/infrastructure/email"
 	"github.com/dsmes/dsmes-backend/internal/modules/auth"
 	"github.com/dsmes/dsmes-backend/internal/modules/facility"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
@@ -16,11 +17,12 @@ type staffService struct {
 	repo         StaffRepository
 	authRepo     auth.AuthRepository
 	facilityRepo facility.FacilityRepository
+	email        email.EmailService
 	log          *zap.Logger
 }
 
-func NewStaffService(repo StaffRepository, authRepo auth.AuthRepository, facilityRepo facility.FacilityRepository, log *zap.Logger) StaffService {
-	return &staffService{repo: repo, authRepo: authRepo, facilityRepo: facilityRepo, log: log}
+func NewStaffService(repo StaffRepository, authRepo auth.AuthRepository, facilityRepo facility.FacilityRepository, email email.EmailService, log *zap.Logger) StaffService {
+	return &staffService{repo: repo, authRepo: authRepo, facilityRepo: facilityRepo, email: email, log: log}
 }
 
 func (s *staffService) ListStaff(ctx context.Context, search, status string, role *domain.StaffRole, page, limit int) ([]StaffResponse, int64, error) {
@@ -93,6 +95,28 @@ func (s *staffService) CreateStaff(ctx context.Context, req CreateStaffRequest) 
 
 	if err = s.repo.Create(ctx, staff); err != nil {
 		return nil, err
+	}
+
+	// Send welcome email via Resend in the background if email is provided
+	if s.email != nil && staff.Email != "" {
+		targetEmail := staff.Email
+		staffName := staff.FullName
+		username := staff.Username
+		roleStr := "Staf Puskesmas"
+		if staff.Role == domain.RoleAdmin {
+			roleStr = "Administrator"
+		}
+		const loginURL = "https://dsmesacehproject.com/"
+
+		go func() {
+			bgCtx := context.Background()
+			if err := s.email.SendStaffWelcomeEmail(bgCtx, targetEmail, staffName, username, roleStr, loginURL); err != nil {
+				s.log.Warn("staff: welcome email delivery failed or restricted by Resend",
+					zap.String("email", targetEmail),
+					zap.Error(err),
+				)
+			}
+		}()
 	}
 
 	// Reload so the HealthFacility relation is populated for the response.

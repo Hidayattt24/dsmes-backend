@@ -85,6 +85,30 @@ func (s *resendEmailService) SendWelcomeEmail(ctx context.Context, to string, na
 	return s.send(ctx, to, "Selamat Datang di DSMES Aceh", html, templateName)
 }
 
+// SendStaffWelcomeEmail implements EmailService.
+func (s *resendEmailService) SendStaffWelcomeEmail(ctx context.Context, to string, name string, username string, role string, loginURL string) error {
+	const templateName = "staff-welcome.html"
+	s.log.Info("email: rendering staff-welcome template", zap.String("recipient", to))
+
+	if loginURL == "" {
+		loginURL = "https://dsmesacehproject.com/"
+	}
+
+	html, err := s.templates.Render(templateName, map[string]any{
+		"Name":     name,
+		"Username": username,
+		"Role":     role,
+		"Email":    to,
+		"LoginURL": loginURL,
+	})
+	if err != nil {
+		s.log.Error("email: failed to render template", zap.String("template", templateName), zap.Error(err))
+		return errs.NewInternal("failed to generate staff welcome email template", err)
+	}
+
+	return s.send(ctx, to, "Selamat Datang di DIBA — Akun Anda Telah Aktif", html, templateName)
+}
+
 // SendGenericEmail implements EmailService.
 func (s *resendEmailService) SendGenericEmail(ctx context.Context, to string, subject string, htmlContent string) error {
 	return s.send(ctx, to, subject, htmlContent, "generic")

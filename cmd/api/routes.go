@@ -80,7 +80,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 
 	// 3. Staff
 	staffRepo := staff.NewStaffRepository(c.DB, c.Logger)
-	staffSvc := staff.NewStaffService(staffRepo, authRepo, facilityRepo, c.Logger)
+	staffSvc := staff.NewStaffService(staffRepo, authRepo, facilityRepo, c.Email, c.Logger)
 	staffHandler := staff.NewStaffHandler(staffSvc, c.Logger)
 
 	// 4. Patient

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Selamat Datang di DIBA</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      background-color: #F4F6F8;
+      font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #1A202C;
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F4F6F8; font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+  <!-- Preheader preview text for inbox -->
+  <div style="display: none; font-size: 1px; color: #F4F6F8; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
+    Selamat datang di DIBA! Akun administrator/staf Anda telah aktif. Silakan lakukan login ke portal.
+  </div>
+
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #F4F6F8; table-layout: fixed;">
+    <tr>
+      <td align="center" style="padding: 40px 16px;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #FFFFFF; border-radius: 16px; border: 1px solid #E2E8F0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.04);">
+          <!-- Top Brand Banner -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #3B67FC 0%, #2048E0 100%); background-color: #3B67FC; padding: 36px 32px; text-align: center;">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td align="center">
+                    <div style="display: inline-block; background-color: rgba(255,255,255,0.18); border-radius: 50px; padding: 6px 16px; margin-bottom: 12px;">
+                      <span style="color: #FFFFFF; font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase;">Portal Staf & Administrator</span>
+                    </div>
+                    <h1 style="margin: 0; color: #FFFFFF; font-size: 26px; font-weight: 700; letter-spacing: -0.5px;">DIBA CARE</h1>
+                    <p style="margin: 6px 0 0 0; color: #EEF2FF; font-size: 13px; font-weight: 400; letter-spacing: 0.2px;">Digital Diabetes Self-Management Education and Support</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td style="padding: 36px 32px;">
+              <h2 style="margin: 0 0 16px 0; color: #1A202C; font-size: 20px; font-weight: 600; line-height: 1.4;">
+                Selamat Datang, {{.Name}}!
+              </h2>
+              <p style="margin: 0 0 20px 0; color: #4A5568; font-size: 15px; line-height: 1.6;">
+                Akun Anda telah berhasil didaftarkan oleh Administrator ke dalam platform <strong>DIBA</strong>. Anda kini memiliki akses untuk mengelola layanan edukasi, monitoring pasien, dan pelaporan kesehatan.
+              </p>
+
+              <!-- Account Details Card -->
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin: 24px 0; overflow: hidden;">
+                <tr>
+                  <td style="padding: 16px 20px; background-color: #EEF2FF; border-bottom: 1px solid #E2E8F0;">
+                    <strong style="color: #3B67FC; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Informasi Akun Anda</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 18px 20px;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding: 6px 0; color: #718096; font-size: 14px; width: 38%;">Nama Lengkap</td>
+                        <td style="padding: 6px 0; color: #1A202C; font-size: 14px; font-weight: 600;">{{.Name}}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; color: #718096; font-size: 14px;">Username</td>
+                        <td style="padding: 6px 0; color: #1A202C; font-size: 14px; font-weight: 600; font-family: monospace;">{{.Username}}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; color: #718096; font-size: 14px;">Email Terdaftar</td>
+                        <td style="padding: 6px 0; color: #1A202C; font-size: 14px; font-weight: 500;">{{.Email}}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; color: #718096; font-size: 14px;">Peran / Akses</td>
+                        <td style="padding: 6px 0; color: #3B67FC; font-size: 14px; font-weight: 600;">{{.Role}}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Call to Action -->
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin: 28px 0 20px 0;">
+                <tr>
+                  <td align="center">
+                    <p style="margin: 0 0 16px 0; color: #4A5568; font-size: 14px; text-align: center;">
+                      Silakan lakukan login ke portal DIBA untuk mulai menggunakan akun Anda:
+                    </p>
+                    <a href="{{.LoginURL}}" target="_blank" style="display: inline-block; background-color: #3B67FC; color: #FFFFFF; font-size: 15px; font-weight: 600; text-decoration: none; padding: 14px 36px; border-radius: 8px; box-shadow: 0 4px 10px rgba(59, 103, 252, 0.3); text-align: center;">
+                      Login ke DIBA
+                    </a>
+                    <p style="margin: 12px 0 0 0; color: #718096; font-size: 12px;">
+                      Atau kunjungi langsung: <a href="{{.LoginURL}}" style="color: #3B67FC; text-decoration: underline;">{{.LoginURL}}</a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Warning / Security Notice -->
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #FFFBEB; border-left: 4px solid #F59E0B; border-radius: 0 8px 8px 0; margin-top: 28px;">
+                <tr>
+                  <td style="padding: 14px 18px;">
+                    <strong style="color: #B45309; font-size: 13px; display: block; margin-bottom: 4px;">Pemberitahuan Keamanan:</strong>
+                    <span style="color: #92400E; font-size: 13px; line-height: 1.5;">
+                      Gunakan kata sandi yang telah diberikan oleh Administrator saat pembuatan akun. Demi keamanan, kami menyarankan untuk segera memperbarui kata sandi Anda di menu pengaturan profil setelah login pertama.
+                    </span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #F8FAFC; padding: 24px 32px; text-align: center; border-top: 1px solid #E2E8F0;">
+              <p style="margin: 0 0 6px 0; color: #718096; font-size: 13px; font-weight: 500;">
+                DIBA (Digital Diabetes Self-Management Education and Support)
+              </p>
+              <p style="margin: 0; color: #A0AEC0; font-size: 12px; line-height: 1.5;">
+                Dinas Kesehatan Provinsi Aceh, Indonesia.<br>
+                Email otomatis, mohon tidak membalas email ini secara langsung.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

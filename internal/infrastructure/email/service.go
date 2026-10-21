@@ -13,6 +13,9 @@ type EmailService interface {
 	// SendWelcomeEmail sends a welcoming email after successful registration.
 	SendWelcomeEmail(ctx context.Context, to string, name string) error
 
+	// SendStaffWelcomeEmail sends an onboarding welcome email to staff/admin registered by admin.
+	SendStaffWelcomeEmail(ctx context.Context, to string, name string, username string, role string, loginURL string) error
+
 	// SendGenericEmail sends a generic custom HTML email.
 	SendGenericEmail(ctx context.Context, to string, subject string, htmlContent string) error
 }
