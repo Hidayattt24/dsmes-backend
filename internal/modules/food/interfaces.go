@@ -15,6 +15,13 @@ type FoodRepository interface {
 	BulkInsertInBatches(ctx context.Context, foods []domain.FoodMaster, batchSize int) (int, error)
 	GetStats(ctx context.Context) (*FoodStatsResponse, error)
 	GetAllForExport(ctx context.Context, query FoodFilterQuery) ([]domain.FoodMaster, error)
+
+	// Food Requests
+	CreateFoodRequest(ctx context.Context, req *domain.FoodRequest) error
+	GetFoodRequests(ctx context.Context, query FoodRequestFilterQuery) ([]domain.FoodRequest, int64, error)
+	FindFoodRequestByID(ctx context.Context, id string) (*domain.FoodRequest, error)
+	UpdateFoodRequest(ctx context.Context, req *domain.FoodRequest) error
+	GetFoodRequestStats(ctx context.Context) (*FoodRequestStatsResponse, error)
 }
 
 type FoodService interface {
@@ -28,4 +35,11 @@ type FoodService interface {
 	ConfirmExcelImport(ctx context.Context, req ExcelImportConfirmRequest) (*ExcelImportConfirmResponse, error)
 	ExportFoods(ctx context.Context, query FoodFilterQuery, format string) ([]byte, string, string, error)
 	GetStats(ctx context.Context) (*FoodStatsResponse, error)
+
+	// Food Requests
+	CreateFoodRequest(ctx context.Context, patientID string, req CreateFoodProposalRequest) (*FoodRequestResponse, error)
+	GetFoodRequests(ctx context.Context, query FoodRequestFilterQuery) ([]FoodRequestResponse, int64, error)
+	ApproveFoodRequest(ctx context.Context, reviewerID string, id string, req ApproveFoodProposalRequest) (*FoodMasterResponse, error)
+	RejectFoodRequest(ctx context.Context, reviewerID string, id string, req RejectFoodProposalRequest) error
+	GetFoodRequestStats(ctx context.Context) (*FoodRequestStatsResponse, error)
 }

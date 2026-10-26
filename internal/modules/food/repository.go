@@ -38,10 +38,10 @@ func (r *foodRepository) GetFoods(ctx context.Context, query FoodFilterQuery) ([
 		return nil, 0, fmt.Errorf("foodRepo.GetFoods count error: %w", err)
 	}
 
-	// Sorting
-	sortBy := "created_at"
-	sortOrder := "DESC"
+	trimmedQ := strings.TrimSpace(query.Q)
 	if query.SortBy != "" {
+		sortBy := "created_at"
+		sortOrder := "DESC"
 		allowedSorts := map[string]bool{
 			"name":         true,
 			"energy_kcal":  true,
@@ -52,11 +52,31 @@ func (r *foodRepository) GetFoods(ctx context.Context, query FoodFilterQuery) ([
 		if allowedSorts[strings.ToLower(query.SortBy)] {
 			sortBy = strings.ToLower(query.SortBy)
 		}
+		if strings.EqualFold(query.SortOrder, "asc") {
+			sortOrder = "ASC"
+		}
+		db = db.Order(fmt.Sprintf("%s %s", sortBy, sortOrder))
+	} else if trimmedQ != "" {
+		exact := strings.ToLower(trimmedQ)
+		prefix := strings.ToLower(trimmedQ) + "%"
+		wordPrefix := "% " + strings.ToLower(trimmedQ) + "%"
+		db = db.Order(gorm.Expr(`
+			CASE 
+				WHEN LOWER(name) = ? THEN 1
+				WHEN LOWER(name) LIKE ? THEN 2
+				WHEN LOWER(name) LIKE ? THEN 3
+				ELSE 4
+			END ASC,
+			LENGTH(name) ASC,
+			name ASC
+		`, exact, prefix, wordPrefix))
+	} else {
+		sortOrder := "DESC"
+		if strings.EqualFold(query.SortOrder, "asc") {
+			sortOrder = "ASC"
+		}
+		db = db.Order(fmt.Sprintf("created_at %s", sortOrder))
 	}
-	if strings.EqualFold(query.SortOrder, "asc") {
-		sortOrder = "ASC"
-	}
-	db = db.Order(fmt.Sprintf("%s %s", sortBy, sortOrder))
 
 	// Pagination
 	page := query.Page
@@ -77,9 +97,18 @@ func (r *foodRepository) GetFoods(ctx context.Context, query FoodFilterQuery) ([
 }
 
 func (r *foodRepository) applyFilters(db *gorm.DB, query FoodFilterQuery) *gorm.DB {
-	if query.Q != "" {
-		q := "%" + strings.TrimSpace(query.Q) + "%"
-		db = db.Where("name ILIKE ? OR manufacturer ILIKE ? OR barcode ILIKE ?", q, q, q)
+	trimmedQ := strings.TrimSpace(query.Q)
+	if trimmedQ != "" {
+		words := strings.Fields(trimmedQ)
+		if len(words) <= 1 {
+			q := "%" + trimmedQ + "%"
+			db = db.Where("name ILIKE ? OR manufacturer ILIKE ? OR barcode ILIKE ?", q, q, q)
+		} else {
+			for _, w := range words {
+				pattern := "%" + w + "%"
+				db = db.Where("(name ILIKE ? OR manufacturer ILIKE ? OR barcode ILIKE ?)", pattern, pattern, pattern)
+			}
+		}
 	}
 
 	if query.Manufacturer != "" {
@@ -196,4 +225,86 @@ func (r *foodRepository) GetAllForExport(ctx context.Context, query FoodFilterQu
 		return nil, err
 	}
 	return foods, nil
+}
+
+func (r *foodRepository) CreateFoodRequest(ctx context.Context, req *domain.FoodRequest) error {
+	return r.db.WithContext(ctx).Create(req).Error
+}
+
+func (r *foodRepository) GetFoodRequests(ctx context.Context, query FoodRequestFilterQuery) ([]domain.FoodRequest, int64, error) {
+	var requests []domain.FoodRequest
+	var total int64
+
+	db := r.db.WithContext(ctx).Model(&domain.FoodRequest{})
+
+	if query.Status != "" {
+		db = db.Where("status = ?", query.Status)
+	}
+
+	trimmedQ := strings.TrimSpace(query.Q)
+	if trimmedQ != "" {
+		pattern := "%" + trimmedQ + "%"
+		db = db.Where("name ILIKE ? OR notes ILIKE ?", pattern, pattern)
+	}
+
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("foodRepo.GetFoodRequests count error: %w", err)
+	}
+
+	sortOrder := "DESC"
+	if strings.EqualFold(query.SortOrder, "asc") {
+		sortOrder = "ASC"
+	}
+	db = db.Order("created_at " + sortOrder)
+
+	page := query.Page
+	if page <= 0 {
+		page = 1
+	}
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	if err := db.Preload("Patient").Preload("Reviewer").Offset(offset).Limit(limit).Find(&requests).Error; err != nil {
+		return nil, 0, fmt.Errorf("foodRepo.GetFoodRequests find error: %w", err)
+	}
+
+	return requests, total, nil
+}
+
+func (r *foodRepository) FindFoodRequestByID(ctx context.Context, id string) (*domain.FoodRequest, error) {
+	var req domain.FoodRequest
+	if err := r.db.WithContext(ctx).Preload("Patient").Preload("Reviewer").First(&req, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &req, nil
+}
+
+func (r *foodRepository) UpdateFoodRequest(ctx context.Context, req *domain.FoodRequest) error {
+	return r.db.WithContext(ctx).Save(req).Error
+}
+
+func (r *foodRepository) GetFoodRequestStats(ctx context.Context) (*FoodRequestStatsResponse, error) {
+	var stats FoodRequestStatsResponse
+	db := r.db.WithContext(ctx).Model(&domain.FoodRequest{})
+
+	if err := db.Count(&stats.Total).Error; err != nil {
+		return nil, err
+	}
+	if err := r.db.WithContext(ctx).Model(&domain.FoodRequest{}).Where("status = ?", "pending").Count(&stats.Pending).Error; err != nil {
+		return nil, err
+	}
+	if err := r.db.WithContext(ctx).Model(&domain.FoodRequest{}).Where("status = ?", "approved").Count(&stats.Approved).Error; err != nil {
+		return nil, err
+	}
+	if err := r.db.WithContext(ctx).Model(&domain.FoodRequest{}).Where("status = ?", "rejected").Count(&stats.Rejected).Error; err != nil {
+		return nil, err
+	}
+
+	return &stats, nil
 }

@@ -1,6 +1,10 @@
 package nutrition
 
-import "github.com/dsmes/dsmes-backend/internal/domain"
+import (
+	"strings"
+
+	"github.com/dsmes/dsmes-backend/internal/domain"
+)
 
 type CreateFoodRequest struct {
 	Name                string  `json:"name"                  validate:"required,min=2,max=150"`
@@ -37,6 +41,7 @@ type FoodResponse struct {
 	SugarG              float64 `json:"sugar_g"`
 	SodiumMg            float64 `json:"sodium_mg"`
 	FiberG              float64 `json:"fiber_g"`
+	NutritionBasis      string  `json:"nutrition_basis"`
 }
 
 type MealLogResponse struct {
@@ -62,11 +67,20 @@ type DailyNutritionSummaryResponse struct {
 }
 
 func ToFoodResponse(f *domain.Food) FoodResponse {
+	servingSize := f.ServingSize
+	if servingSize == "" {
+		servingSize = f.DefaultServingUnit
+	}
+	basis := f.NutritionBasis
+	if basis == "" {
+		basis = inferNutritionBasis(servingSize)
+	}
 	return FoodResponse{
 		ID:                  f.ID,
 		Name:                f.Name,
 		DefaultServingUnit:  f.DefaultServingUnit,
 		DefaultServingGrams: f.DefaultServingGrams,
+		ServingSize:         servingSize,
 		Calories:            f.Calories,
 		CarbsG:              f.CarbsG,
 		ProteinG:            f.ProteinG,
@@ -74,7 +88,22 @@ func ToFoodResponse(f *domain.Food) FoodResponse {
 		SugarG:              f.SugarG,
 		SodiumMg:            f.SodiumMg,
 		FiberG:              f.FiberG,
+		NutritionBasis:      basis,
 	}
+}
+
+func inferNutritionBasis(servingSize string) string {
+	s := strings.ToLower(strings.TrimSpace(servingSize))
+	if s == "" || s == "0" || s == "0 g" || s == "0.00 g" || s == "0 ml" {
+		return "UNVERIFIED"
+	}
+	if strings.Contains(s, "100 g") || strings.Contains(s, "100g") || strings.Contains(s, "100 gram") {
+		return "PER_100G"
+	}
+	if strings.Contains(s, "kemasan") || strings.Contains(s, "bungkus") || strings.Contains(s, "botol") {
+		return "PER_PACKAGE"
+	}
+	return "PER_SERVING"
 }
 
 type CalorieCalculationRequest struct {

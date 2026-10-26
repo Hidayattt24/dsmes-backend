@@ -18,6 +18,8 @@ type Food struct {
 	Name                string  `gorm:"type:varchar(150);index;not null" json:"name"`
 	DefaultServingUnit  string  `gorm:"type:varchar(50)" json:"default_serving_unit"`
 	DefaultServingGrams float64 `gorm:"type:numeric(6,2)" json:"default_serving_grams"`
+	ServingSize         string  `gorm:"column:serving_size" json:"serving_size"`
+	NutritionBasis      string  `gorm:"column:nutrition_basis" json:"nutrition_basis"`
 	Calories            float64 `gorm:"type:numeric(6,2);not null" json:"calories"`
 	CarbsG              float64 `gorm:"type:numeric(6,2)" json:"carbs_g"`
 	ProteinG            float64 `gorm:"type:numeric(6,2)" json:"protein_g"`

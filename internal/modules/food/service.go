@@ -12,6 +12,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -641,6 +642,128 @@ func (s *foodService) ExportFoods(ctx context.Context, query FoodFilterQuery, fo
 
 func (s *foodService) GetStats(ctx context.Context) (*FoodStatsResponse, error) {
 	return s.repo.GetStats(ctx)
+}
+
+func (s *foodService) CreateFoodRequest(ctx context.Context, patientID string, req CreateFoodProposalRequest) (*FoodRequestResponse, error) {
+	if strings.TrimSpace(req.Name) == "" {
+		return nil, errors.New("nama makanan harus diisi")
+	}
+	if strings.TrimSpace(req.ServingSize) == "" {
+		return nil, errors.New("takaran saji harus diisi")
+	}
+
+	proposal := domain.FoodRequest{
+		BaseModel: domain.BaseModel{
+			ID: uuid.NewString(),
+		},
+		PatientID:         patientID,
+		Name:              strings.TrimSpace(req.Name),
+		ServingSize:       strings.TrimSpace(req.ServingSize),
+		EstimatedCalories: req.EstimatedCalories,
+		MealType:          strings.TrimSpace(req.MealType),
+		Notes:             strings.TrimSpace(req.Notes),
+		ImageURL:          strings.TrimSpace(req.ImageURL),
+		Status:            "pending",
+	}
+
+	if err := s.repo.CreateFoodRequest(ctx, &proposal); err != nil {
+		return nil, err
+	}
+
+	saved, err := s.repo.FindFoodRequestByID(ctx, proposal.ID)
+	if err != nil || saved == nil {
+		res := ToFoodRequestResponse(&proposal)
+		return &res, nil
+	}
+
+	res := ToFoodRequestResponse(saved)
+	return &res, nil
+}
+
+func (s *foodService) GetFoodRequests(ctx context.Context, query FoodRequestFilterQuery) ([]FoodRequestResponse, int64, error) {
+	items, total, err := s.repo.GetFoodRequests(ctx, query)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	res := make([]FoodRequestResponse, len(items))
+	for i, item := range items {
+		res[i] = ToFoodRequestResponse(&item)
+	}
+	return res, total, nil
+}
+
+func (s *foodService) ApproveFoodRequest(ctx context.Context, reviewerID string, id string, req ApproveFoodProposalRequest) (*FoodMasterResponse, error) {
+	proposal, err := s.repo.FindFoodRequestByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if proposal == nil {
+		return nil, errors.New("pengajuan makanan tidak ditemukan")
+	}
+	if proposal.Status == "approved" {
+		return nil, errors.New("pengajuan makanan sudah disetujui sebelumnya")
+	}
+
+	newFood := domain.FoodMaster{
+		BaseModel: domain.BaseModel{
+			ID: uuid.NewString(),
+		},
+		Name:           strings.TrimSpace(req.Name),
+		Manufacturer:   strings.TrimSpace(req.Manufacturer),
+		ServingSize:    strings.TrimSpace(req.ServingSize),
+		Calories:       req.EnergyKcal,
+		EnergyKcal:     req.EnergyKcal,
+		ProteinG:       req.ProteinG,
+		CarbohydrateG:  req.CarbohydrateG,
+		FatG:           req.FatG,
+		SugarG:         req.SugarG,
+		SodiumMg:       req.SodiumMg,
+		FiberG:         req.FiberG,
+		NutritionBasis: determineNutritionBasis(req.NutritionBasis, req.ServingSize),
+		Source:         "user_request",
+		Status:         "active",
+	}
+
+	if err := s.repo.Create(ctx, &newFood); err != nil {
+		return nil, fmt.Errorf("failed to create food master: %w", err)
+	}
+
+	now := time.Now()
+	proposal.Status = "approved"
+	proposal.AdminNotes = strings.TrimSpace(req.AdminNotes)
+	proposal.ReviewedBy = &reviewerID
+	proposal.ReviewedAt = &now
+	proposal.ApprovedFoodID = &newFood.ID
+
+	if err := s.repo.UpdateFoodRequest(ctx, proposal); err != nil {
+		return nil, fmt.Errorf("failed to update food request: %w", err)
+	}
+
+	res := ToFoodMasterResponse(&newFood)
+	return &res, nil
+}
+
+func (s *foodService) RejectFoodRequest(ctx context.Context, reviewerID string, id string, req RejectFoodProposalRequest) error {
+	proposal, err := s.repo.FindFoodRequestByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if proposal == nil {
+		return errors.New("pengajuan makanan tidak ditemukan")
+	}
+
+	now := time.Now()
+	proposal.Status = "rejected"
+	proposal.AdminNotes = strings.TrimSpace(req.Reason)
+	proposal.ReviewedBy = &reviewerID
+	proposal.ReviewedAt = &now
+
+	return s.repo.UpdateFoodRequest(ctx, proposal)
+}
+
+func (s *foodService) GetFoodRequestStats(ctx context.Context) (*FoodRequestStatsResponse, error) {
+	return s.repo.GetFoodRequestStats(ctx)
 }
 
 func determineNutritionBasis(explicitBasis, servingSize string) string {

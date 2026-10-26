@@ -30,6 +30,7 @@ type NutritionService interface {
 	LogMeal(ctx context.Context, patientID string, req LogMealRequest) (*MealLogResponse, error)
 	GetDailyNutritionSummary(ctx context.Context, patientID string, dateStr string) (*DailyNutritionSummaryResponse, error)
 	GetPatientMealLogs(ctx context.Context, patientID string, dateStr string) ([]MealLogResponse, error)
+	GetMealLog(ctx context.Context, patientID string, id string) (*MealLogResponse, error)
 	UpdateMealLog(ctx context.Context, patientID string, id string, req UpdateMealLogRequest) (*MealLogResponse, error)
 	DeleteMealLog(ctx context.Context, patientID string, id string) error
 	CreateFood(ctx context.Context, req CreateFoodRequest) (*FoodResponse, error)

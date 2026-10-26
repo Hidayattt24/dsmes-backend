@@ -360,6 +360,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Get("/foods/recent", nutritionHandler.GetRecent)
 		patientGroup.Post("/meals", nutritionHandler.LogMeal)
 		patientGroup.Get("/meals/summary", nutritionHandler.GetSummary)
+		patientGroup.Get("/meals/:id", nutritionHandler.GetMeal)
 		patientGroup.Put("/meals/:id", nutritionHandler.UpdateMeal)
 		patientGroup.Delete("/meals/:id", nutritionHandler.DeleteMeal)
 
@@ -425,7 +426,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	sharedGroup := v1.Group("", jwtAuth)
 
 	// Register Food Master Module Routes
-	food.RegisterRoutes(admin, sharedGroup, foodHandler)
+	food.RegisterRoutes(admin, sharedGroup, patientGroup, foodHandler)
 
 	aiGroup := v1.Group("/ai",
 		jwtAuth,

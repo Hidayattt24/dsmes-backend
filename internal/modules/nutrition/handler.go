@@ -212,6 +212,20 @@ func (h *NutritionHandler) UpdateMeal(c fiber.Ctx) error {
 	return response.Success(c, "meal log updated", res)
 }
 
+// GetMeal handles GET /api/v1/patient/meals/:id.
+func (h *NutritionHandler) GetMeal(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	meal, err := h.svc.GetMealLog(c.Context(), claims.UserID, c.Params("id"))
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "meal log retrieved", meal)
+}
+
 // DeleteMeal handles DELETE /api/v1/patient/meals/:id
 // @Summary      Delete meal log
 // @Tags         nutrition

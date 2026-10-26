@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 
+	"github.com/dsmes/dsmes-backend/internal/middleware"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 	"github.com/dsmes/dsmes-backend/internal/pkg/response"
 	"github.com/dsmes/dsmes-backend/internal/pkg/validator"
@@ -219,4 +220,117 @@ func (h *FoodHandler) GetStats(c fiber.Ctx) error {
 		return err
 	}
 	return response.Success(c, "food statistics retrieved", stats)
+}
+
+// CreateFoodRequest handles POST /api/v1/patient/food-requests
+func (h *FoodHandler) CreateFoodRequest(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	var req CreateFoodProposalRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.CreateFoodRequest(c.Context(), claims.UserID, req)
+	if err != nil {
+		return err
+	}
+	return response.Created(c, "pengajuan makanan berhasil dikirim", res)
+}
+
+// GetFoodRequests handles GET /api/v1/admin/food-requests
+func (h *FoodHandler) GetFoodRequests(c fiber.Ctx) error {
+	var query FoodRequestFilterQuery
+	if err := c.Bind().Query(&query); err != nil {
+		return errs.NewBadRequest("invalid query parameters")
+	}
+
+	items, total, err := h.svc.GetFoodRequests(c.Context(), query)
+	if err != nil {
+		return err
+	}
+
+	page := query.Page
+	if page <= 0 {
+		page = 1
+	}
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+	if totalPages <= 0 {
+		totalPages = 1
+	}
+
+	return response.SuccessWithMeta(c, "food requests retrieved", items, &response.Meta{
+		Page:       page,
+		PerPage:    limit,
+		Total:      total,
+		TotalPages: totalPages,
+	})
+}
+
+// GetFoodRequestStats handles GET /api/v1/admin/food-requests/stats
+func (h *FoodHandler) GetFoodRequestStats(c fiber.Ctx) error {
+	stats, err := h.svc.GetFoodRequestStats(c.Context())
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "food request statistics retrieved", stats)
+}
+
+// ApproveFoodRequest handles POST /api/v1/admin/food-requests/:id/approve
+func (h *FoodHandler) ApproveFoodRequest(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	id := c.Params("id")
+	var req ApproveFoodProposalRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	res, err := h.svc.ApproveFoodRequest(c.Context(), claims.UserID, id, req)
+	if err != nil {
+		return err
+	}
+	return response.Success(c, "pengajuan makanan berhasil disetujui", res)
+}
+
+// RejectFoodRequest handles POST /api/v1/admin/food-requests/:id/reject
+func (h *FoodHandler) RejectFoodRequest(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return errs.NewUnauthorized("unauthorized")
+	}
+
+	id := c.Params("id")
+	var req RejectFoodProposalRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	if err := h.svc.RejectFoodRequest(c.Context(), claims.UserID, id, req); err != nil {
+		return err
+	}
+	return response.Success(c, "pengajuan makanan berhasil ditolak", nil)
 }

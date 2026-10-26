@@ -3,6 +3,7 @@ package nutrition
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -23,11 +24,39 @@ func NewNutritionRepository(db *gorm.DB, log *zap.Logger) NutritionRepository {
 
 func (r *nutritionRepository) SearchFoods(ctx context.Context, query string) ([]domain.Food, error) {
 	var items []domain.Food
-	pattern := "%" + query + "%"
-	err := r.db.WithContext(ctx).
-		Where("name ILIKE ? AND deleted_at IS NULL", pattern).
-		Limit(30).
-		Find(&items).Error
+	trimmed := strings.TrimSpace(query)
+	db := r.db.WithContext(ctx).Model(&domain.Food{}).Where("deleted_at IS NULL")
+
+	if trimmed != "" {
+		words := strings.Fields(trimmed)
+		if len(words) <= 1 {
+			pattern := "%" + trimmed + "%"
+			db = db.Where("name ILIKE ?", pattern)
+		} else {
+			for _, w := range words {
+				pattern := "%" + w + "%"
+				db = db.Where("name ILIKE ?", pattern)
+			}
+		}
+
+		exact := strings.ToLower(trimmed)
+		prefix := strings.ToLower(trimmed) + "%"
+		wordPrefix := "% " + strings.ToLower(trimmed) + "%"
+		db = db.Order(gorm.Expr(`
+			CASE 
+				WHEN LOWER(name) = ? THEN 1
+				WHEN LOWER(name) LIKE ? THEN 2
+				WHEN LOWER(name) LIKE ? THEN 3
+				ELSE 4
+			END ASC,
+			LENGTH(name) ASC,
+			name ASC
+		`, exact, prefix, wordPrefix))
+	} else {
+		db = db.Order("name ASC")
+	}
+
+	err := db.Limit(30).Find(&items).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to search foods", err)
 	}

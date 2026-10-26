@@ -193,3 +193,99 @@ type FoodStatsResponse struct {
 	TotalManufacturers int64 `json:"total_manufacturers"`
 	ActiveFoods        int64 `json:"active_foods"`
 }
+
+type CreateFoodProposalRequest struct {
+	Name              string  `json:"name" validate:"required,min=2,max=255"`
+	ServingSize       string  `json:"serving_size" validate:"required"`
+	EstimatedCalories float64 `json:"estimated_calories" validate:"gte=0"`
+	MealType          string  `json:"meal_type"`
+	Notes             string  `json:"notes"`
+	ImageURL          string  `json:"image_url"`
+}
+
+type ApproveFoodProposalRequest struct {
+	Name           string  `json:"name" validate:"required,min=2,max=255"`
+	Manufacturer   string  `json:"manufacturer"`
+	ServingSize    string  `json:"serving_size" validate:"required"`
+	EnergyKcal     float64 `json:"energy_kcal" validate:"gte=0"`
+	ProteinG       float64 `json:"protein_g" validate:"gte=0"`
+	CarbohydrateG  float64 `json:"carbohydrate_g" validate:"gte=0"`
+	FatG           float64 `json:"fat_g" validate:"gte=0"`
+	SugarG         float64 `json:"sugar_g" validate:"gte=0"`
+	SodiumMg       float64 `json:"sodium_mg" validate:"gte=0"`
+	FiberG         float64 `json:"fiber_g" validate:"gte=0"`
+	NutritionBasis string  `json:"nutrition_basis" validate:"omitempty,oneof=PER_100G PER_SERVING PER_PACKAGE UNVERIFIED"`
+	AdminNotes     string  `json:"admin_notes"`
+}
+
+type RejectFoodProposalRequest struct {
+	Reason string `json:"reason" validate:"required,min=2"`
+}
+
+type FoodRequestFilterQuery struct {
+	Q         string `query:"q"`
+	Status    string `query:"status"`
+	Page      int    `query:"page"`
+	Limit     int    `query:"limit"`
+	SortOrder string `query:"sort_order"`
+}
+
+type FoodRequestResponse struct {
+	ID                string  `json:"id"`
+	PatientID         string  `json:"patient_id"`
+	PatientName       string  `json:"patient_name"`
+	PatientPhone      string  `json:"patient_phone"`
+	Name              string  `json:"name"`
+	ServingSize       string  `json:"serving_size"`
+	EstimatedCalories float64 `json:"estimated_calories"`
+	MealType          string  `json:"meal_type"`
+	Notes             string  `json:"notes"`
+	ImageURL          string  `json:"image_url"`
+	Status            string  `json:"status"`
+	AdminNotes        string  `json:"admin_notes"`
+	ReviewedBy        *string `json:"reviewed_by,omitempty"`
+	ReviewerName      string  `json:"reviewer_name,omitempty"`
+	ReviewedAt        string  `json:"reviewed_at,omitempty"`
+	ApprovedFoodID    *string `json:"approved_food_id,omitempty"`
+	CreatedAt         string  `json:"created_at"`
+	UpdatedAt         string  `json:"updated_at"`
+}
+
+type FoodRequestStatsResponse struct {
+	Total    int64 `json:"total"`
+	Pending  int64 `json:"pending"`
+	Approved int64 `json:"approved"`
+	Rejected int64 `json:"rejected"`
+}
+
+func ToFoodRequestResponse(r *domain.FoodRequest) FoodRequestResponse {
+	resp := FoodRequestResponse{
+		ID:                r.ID,
+		PatientID:         r.PatientID,
+		Name:              r.Name,
+		ServingSize:       r.ServingSize,
+		EstimatedCalories: r.EstimatedCalories,
+		MealType:          r.MealType,
+		Notes:             r.Notes,
+		ImageURL:          r.ImageURL,
+		Status:            r.Status,
+		AdminNotes:        r.AdminNotes,
+		ReviewedBy:        r.ReviewedBy,
+		ApprovedFoodID:    r.ApprovedFoodID,
+		CreatedAt:         r.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:         r.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	if r.Patient != nil {
+		resp.PatientName = r.Patient.FullName
+		resp.PatientPhone = r.Patient.PhoneNumber
+	}
+	if r.Reviewer != nil {
+		resp.ReviewerName = r.Reviewer.FullName
+	}
+	if r.ReviewedAt != nil {
+		resp.ReviewedAt = r.ReviewedAt.Format("2006-01-02 15:04:05")
+	}
+
+	return resp
+}

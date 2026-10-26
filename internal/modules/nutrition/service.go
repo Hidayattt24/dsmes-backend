@@ -56,16 +56,17 @@ func (s *nutritionService) LogMeal(ctx context.Context, patientID string, req Lo
 				foodResp = ToFoodResponse(existing.Food)
 			} else {
 				foodResp = FoodResponse{
-					ID:          existing.FoodID,
-					Name:        existing.FoodName,
-					ServingSize: existing.ServingSize,
-					Calories:    existing.Calories,
-					CarbsG:      existing.CarbsG,
-					ProteinG:    existing.ProteinG,
-					FatG:        existing.FatG,
-					SugarG:      existing.SugarG,
-					SodiumMg:    existing.SodiumMg,
-					FiberG:      existing.FiberG,
+					ID:             existing.FoodID,
+					Name:           existing.FoodName,
+					ServingSize:    existing.ServingSize,
+					Calories:       existing.Calories,
+					CarbsG:         existing.CarbsG,
+					ProteinG:       existing.ProteinG,
+					FatG:           existing.FatG,
+					SugarG:         existing.SugarG,
+					SodiumMg:       existing.SodiumMg,
+					FiberG:         existing.FiberG,
+					NutritionBasis: inferNutritionBasis(existing.ServingSize),
 				}
 			}
 			return &MealLogResponse{
@@ -89,7 +90,7 @@ func (s *nutritionService) LogMeal(ctx context.Context, patientID string, req Lo
 		ClientID:          req.ClientID,
 		FoodID:            req.FoodID,
 		FoodName:          food.Name,
-		ServingSize:       food.DefaultServingUnit,
+		ServingSize:       foodServingSize(food),
 		Calories:          food.Calories,
 		CarbsG:            food.CarbsG,
 		ProteinG:          food.ProteinG,
@@ -110,16 +111,17 @@ func (s *nutritionService) LogMeal(ctx context.Context, patientID string, req Lo
 					foodResp = ToFoodResponse(existing.Food)
 				} else {
 					foodResp = FoodResponse{
-						ID:          existing.FoodID,
-						Name:        existing.FoodName,
-						ServingSize: existing.ServingSize,
-						Calories:    existing.Calories,
-						CarbsG:      existing.CarbsG,
-						ProteinG:    existing.ProteinG,
-						FatG:        existing.FatG,
-						SugarG:      existing.SugarG,
-						SodiumMg:    existing.SodiumMg,
-						FiberG:      existing.FiberG,
+						ID:             existing.FoodID,
+						Name:           existing.FoodName,
+						ServingSize:    existing.ServingSize,
+						Calories:       existing.Calories,
+						CarbsG:         existing.CarbsG,
+						ProteinG:       existing.ProteinG,
+						FatG:           existing.FatG,
+						SugarG:         existing.SugarG,
+						SodiumMg:       existing.SodiumMg,
+						FiberG:         existing.FiberG,
+						NutritionBasis: inferNutritionBasis(existing.ServingSize),
 					}
 				}
 				return &MealLogResponse{
@@ -146,6 +148,13 @@ func (s *nutritionService) LogMeal(ctx context.Context, patientID string, req Lo
 		PortionMultiplier: log.PortionMultiplier,
 		LoggedAt:          log.LoggedAt.Format(time.RFC3339),
 	}, nil
+}
+
+func foodServingSize(food *domain.Food) string {
+	if food.ServingSize != "" {
+		return food.ServingSize
+	}
+	return food.DefaultServingUnit
 }
 
 func (s *nutritionService) GetDailyNutritionSummary(ctx context.Context, patientID string, dateStr string) (*DailyNutritionSummaryResponse, error) {
@@ -275,6 +284,7 @@ func (s *nutritionService) GetPatientMealLogs(ctx context.Context, patientID str
 				SugarG:              m.SugarG,
 				SodiumMg:            m.SodiumMg,
 				FiberG:              m.FiberG,
+				NutritionBasis:      inferNutritionBasis(m.ServingSize),
 			}
 		}
 		if m.FoodMaster != nil && m.FoodMaster.ServingSize != "" {
@@ -291,6 +301,46 @@ func (s *nutritionService) GetPatientMealLogs(ctx context.Context, patientID str
 		}
 	}
 	return resp, nil
+}
+
+func (s *nutritionService) GetMealLog(ctx context.Context, patientID string, id string) (*MealLogResponse, error) {
+	m, err := s.repo.FindMealLogByID(ctx, patientID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	fResp := FoodResponse{
+		ID:                  m.FoodID,
+		Name:                m.FoodName,
+		ServingSize:         m.ServingSize,
+		DefaultServingUnit:  m.ServingSize,
+		DefaultServingGrams: 100,
+		Calories:            m.Calories,
+		CarbsG:              m.CarbsG,
+		ProteinG:            m.ProteinG,
+		FatG:                m.FatG,
+		SugarG:              m.SugarG,
+		SodiumMg:            m.SodiumMg,
+		FiberG:              m.FiberG,
+		NutritionBasis:      inferNutritionBasis(m.ServingSize),
+	}
+	if m.Food != nil {
+		fResp = ToFoodResponse(m.Food)
+		if fResp.ServingSize == "" {
+			fResp.ServingSize = m.ServingSize
+		}
+		if fResp.NutritionBasis == "" {
+			fResp.NutritionBasis = inferNutritionBasis(fResp.ServingSize)
+		}
+	}
+
+	return &MealLogResponse{
+		ID:                m.ID,
+		Food:              fResp,
+		MealType:          m.MealType,
+		PortionMultiplier: m.PortionMultiplier,
+		LoggedAt:          m.LoggedAt.Format(time.RFC3339),
+	}, nil
 }
 
 func (s *nutritionService) UpdateMealLog(ctx context.Context, patientID string, id string, req UpdateMealLogRequest) (*MealLogResponse, error) {
@@ -313,6 +363,14 @@ func (s *nutritionService) UpdateMealLog(ctx context.Context, patientID string, 
 	var fResp FoodResponse
 	if log.Food != nil {
 		fResp = ToFoodResponse(log.Food)
+	} else {
+		fResp = FoodResponse{
+			ID: log.FoodID, Name: log.FoodName, ServingSize: log.ServingSize,
+			DefaultServingUnit: log.ServingSize, Calories: log.Calories,
+			CarbsG: log.CarbsG, ProteinG: log.ProteinG, FatG: log.FatG,
+			SugarG: log.SugarG, SodiumMg: log.SodiumMg, FiberG: log.FiberG,
+			NutritionBasis: inferNutritionBasis(log.ServingSize),
+		}
 	}
 
 	return &MealLogResponse{
