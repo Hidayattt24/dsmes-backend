@@ -724,6 +724,11 @@ func (s *patientService) UpdateProfile(ctx context.Context, patientID string, re
 		return nil, err
 	}
 
+	// Profile updates also carry current body metrics because request DTO keeps
+	// these fields required. Only create history when body metrics really change.
+	oldHeightCm := patient.HeightCm
+	oldWeightKg := patient.WeightKg
+
 	patient.FullName = req.FullName
 	patient.Nickname = req.Nickname
 	patient.WhatsappNumber = req.WhatsappNumber
@@ -798,30 +803,39 @@ func (s *patientService) UpdateProfile(ctx context.Context, patientID string, re
 	patient.WeightLossPercentage = calcRes.Recommendations.WeightLoss.Percentage
 	patient.ExtremePercentage = calcRes.Recommendations.ExtremeLoss.Percentage
 
-	// Insert updated measurement record for tracking history
-	hM := patient.HeightCm / 100.0
-	bmiVal := math.Round((patient.WeightKg/(hM*hM))*10) / 10
-	tdeeVal := calcRes.TDEE
-
-	_ = s.repo.CreateMeasurement(ctx, &domain.PatientMeasurement{
-		PatientID:          patient.ID,
-		WeightKg:           &patient.WeightKg,
-		HeightCm:           &patient.HeightCm,
-		BMI:                &bmiVal,
-		DailyCalorieTarget: &tdeeVal,
-		Notes:              "Pembaruan Profil Kesehatan (Rekalkulasi Otomatis)",
-		RecordedByID:       &patient.ID,
-		RecordedByName:     patient.FullName,
-		RecordedByRole:     "user",
-		MeasuredAt:         time.Now(),
-	})
-
 	if err = s.repo.Update(ctx, patient); err != nil {
 		return nil, err
 	}
 
+	if profileMetricsChanged(oldHeightCm, oldWeightKg, patient.HeightCm, patient.WeightKg) {
+		hM := patient.HeightCm / 100.0
+		bmiVal := math.Round((patient.WeightKg/(hM*hM))*10) / 10
+		tdeeVal := calcRes.TDEE
+
+		if err := s.repo.CreateMeasurement(ctx, &domain.PatientMeasurement{
+			PatientID:          patient.ID,
+			WeightKg:           &patient.WeightKg,
+			HeightCm:           &patient.HeightCm,
+			BMI:                &bmiVal,
+			DailyCalorieTarget: &tdeeVal,
+			Notes:              "Pembaruan Profil Kesehatan (Rekalkulasi Otomatis)",
+			RecordedByID:       &patient.ID,
+			RecordedByName:     patient.FullName,
+			RecordedByRole:     "user",
+			MeasuredAt:         time.Now(),
+		}); err != nil {
+			return nil, fmt.Errorf("failed to record changed body metrics: %w", err)
+		}
+	}
+
 	res := ToPatientResponse(patient)
 	return &res, nil
+}
+
+func profileMetricsChanged(oldHeightCm, oldWeightKg, newHeightCm, newWeightKg float64) bool {
+	const epsilon = 0.0001
+	return math.Abs(oldHeightCm-newHeightCm) > epsilon ||
+		math.Abs(oldWeightKg-newWeightKg) > epsilon
 }
 
 func (s *patientService) ChangePassword(ctx context.Context, patientID string, req ChangePasswordRequest) error {

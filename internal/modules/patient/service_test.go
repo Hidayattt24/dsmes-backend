@@ -1,9 +1,32 @@
 package patient
 
 import (
+	"math"
 	"testing"
 	"time"
 )
+
+func TestProfileMetricsChanged(t *testing.T) {
+	tests := []struct {
+		name                 string
+		oldHeight, oldWeight float64
+		newHeight, newWeight float64
+		want                 bool
+	}{
+		{"profile-only update", 170, 65, 170, 65, false},
+		{"weight changed", 170, 65, 170, 66, true},
+		{"height changed", 170, 65, 171, 65, true},
+		{"float noise", 170, 65, 170 + math.SmallestNonzeroFloat64, 65, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := profileMetricsChanged(tt.oldHeight, tt.oldWeight, tt.newHeight, tt.newWeight); got != tt.want {
+				t.Fatalf("profileMetricsChanged() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
 
 func fixedNow() time.Time {
 	return time.Date(2026, 8, 6, 10, 0, 0, 0, time.UTC)
