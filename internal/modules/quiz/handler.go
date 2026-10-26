@@ -96,7 +96,11 @@ func (h *QuizHandler) GetActivePreTest(c fiber.Ctx) error {
 
 	educationID := c.Query("education_id")
 	if educationID != "" {
-		item, err := h.svc.GetPreTestByEducation(c.Context(), educationID, isAdminOrStaff)
+		patientID := ""
+		if claims != nil && claims.Role == "user" {
+			patientID = claims.UserID
+		}
+		item, err := h.svc.GetPreTestByEducationForPatient(c.Context(), educationID, patientID, isAdminOrStaff)
 		if err != nil {
 			return err
 		}

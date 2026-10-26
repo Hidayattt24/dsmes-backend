@@ -138,6 +138,14 @@ func (s *quizService) GetActivePreTest(ctx context.Context, isAdminOrStaff bool)
 }
 
 func (s *quizService) GetPreTestByEducation(ctx context.Context, educationID string, isAdminOrStaff bool) (*QuestionnaireDetailResponse, error) {
+	return s.getPreTestByEducation(ctx, educationID, "", isAdminOrStaff)
+}
+
+func (s *quizService) GetPreTestByEducationForPatient(ctx context.Context, educationID, patientID string, isAdminOrStaff bool) (*QuestionnaireDetailResponse, error) {
+	return s.getPreTestByEducation(ctx, educationID, patientID, isAdminOrStaff)
+}
+
+func (s *quizService) getPreTestByEducation(ctx context.Context, educationID, patientID string, isAdminOrStaff bool) (*QuestionnaireDetailResponse, error) {
 	if strings.TrimSpace(educationID) == "" {
 		return nil, errs.NewBadRequest("education_id parameter is required")
 	}
@@ -148,6 +156,22 @@ func (s *quizService) GetPreTestByEducation(ctx context.Context, educationID str
 	pCount, _ := s.repo.CountAttempts(ctx, q.ID, "")
 	avgScore, _ := s.repo.GetAverageScore(ctx, q.ID, "")
 	resp := ToQuestionnaireDetailResponse(q, pCount, avgScore, isAdminOrStaff)
+	if patientID != "" {
+		attempt, attemptErr := s.repo.FindLatestEducationPreTestAttempt(ctx, patientID, educationID)
+		if attemptErr != nil {
+			return nil, attemptErr
+		}
+		if attempt != nil {
+			resp.HasAttempted = true
+			resp.LatestAttempt = &MyAttemptResponse{
+				AttemptID:       attempt.ID,
+				QuestionnaireID: attempt.QuestionnaireID,
+				Score:           attempt.Score,
+				Passed:          attempt.Passed,
+				CompletedAt:     attempt.CompletedAt,
+			}
+		}
+	}
 	return &resp, nil
 }
 

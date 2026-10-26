@@ -157,6 +157,22 @@ func (r *quizRepository) GetPreTestByEducation(ctx context.Context, educationID 
 	return &item, nil
 }
 
+func (r *quizRepository) FindLatestEducationPreTestAttempt(ctx context.Context, patientID, educationID string) (*domain.QuizAttempt, error) {
+	var attempt domain.QuizAttempt
+	err := r.db.WithContext(ctx).
+		Joins("JOIN questionnaires q ON q.id = quiz_attempts.quiz_id").
+		Where("quiz_attempts.patient_id = ? AND quiz_attempts.deleted_at IS NULL AND q.deleted_at IS NULL AND q.type = ? AND q.scope = ? AND q.education_id = ?", patientID, domain.TypePreTest, domain.ScopeEducation, educationID).
+		Order("quiz_attempts.completed_at DESC, quiz_attempts.created_at DESC").
+		First(&attempt).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errs.NewInternal("failed to fetch education Pre-Test attempt", err)
+	}
+	return &attempt, nil
+}
+
 func (r *quizRepository) GetAnyPreTest(ctx context.Context) (*domain.Questionnaire, error) {
 	var item domain.Questionnaire
 	err := r.db.WithContext(ctx).

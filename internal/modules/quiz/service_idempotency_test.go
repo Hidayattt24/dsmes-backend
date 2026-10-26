@@ -50,6 +50,9 @@ func (m *mockQuizRepo) GetActivePreTest(ctx context.Context) (*domain.Questionna
 func (m *mockQuizRepo) GetPreTestByEducation(ctx context.Context, educationID string) (*domain.Questionnaire, error) {
 	return nil, nil
 }
+func (m *mockQuizRepo) FindLatestEducationPreTestAttempt(ctx context.Context, patientID, educationID string) (*domain.QuizAttempt, error) {
+	return nil, nil
+}
 func (m *mockQuizRepo) GetAnyPreTest(ctx context.Context) (*domain.Questionnaire, error) {
 	return nil, nil
 }

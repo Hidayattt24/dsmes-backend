@@ -125,7 +125,9 @@ type QuestionnaireResponse struct {
 
 type QuestionnaireDetailResponse struct {
 	QuestionnaireResponse
-	Categories []QuestionCategoryResponse `json:"categories"`
+	Categories    []QuestionCategoryResponse `json:"categories"`
+	HasAttempted  bool                       `json:"has_attempted"`
+	LatestAttempt *MyAttemptResponse         `json:"latest_attempt,omitempty"`
 }
 
 type QuestionnairePairResponse struct {
