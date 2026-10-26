@@ -52,7 +52,7 @@ type EducationService interface {
 	ListArticles(ctx context.Context, patientID *string, categoryID string, status *domain.ArticleStatus, page, limit int) ([]ArticleListResponse, int64, error)
 	GetArticle(ctx context.Context, id string, patientID *string) (*ArticleDetailResponse, error)
 	CreateArticle(ctx context.Context, staffID string, req CreateArticleRequest) (*ArticleDetailResponse, error)
-	UpdateArticle(ctx context.Context, id string, req CreateArticleRequest) (*ArticleDetailResponse, error)
+	UpdateArticle(ctx context.Context, id string, req UpdateArticleRequest) (*ArticleDetailResponse, error)
 	PublishArticle(ctx context.Context, id string) error
 	DeleteArticle(ctx context.Context, id string) error
 	GetStats(ctx context.Context) (*EducationStats, error)

@@ -30,6 +30,20 @@ type CreateArticleRequest struct {
 	Sections             []SectionRequest `json:"sections"`
 }
 
+type UpdateArticleRequest struct {
+	Title                string            `json:"title"                  validate:"required,max=200"`
+	CategoryID           string            `json:"category_id"            validate:"omitempty,uuid4"`
+	CategoryName         string            `json:"category_name"          validate:"required"`
+	EstimatedReadMinutes int               `json:"estimated_read_minutes" validate:"required,min=1"`
+	AuthorName           string            `json:"author_name"`
+	BannerImageURL       string            `json:"banner_image_url"`
+	Summary              string            `json:"summary"                validate:"required"`
+	Content              string            `json:"content"`
+	YoutubeLink          string            `json:"youtube_link"`
+	Status               string            `json:"status"                 validate:"omitempty,oneof=draft publikasi"`
+	Sections             *[]SectionRequest `json:"sections"`
+}
+
 type StepResponse struct {
 	ID        string `json:"id"`
 	StepOrder int    `json:"step_order"`

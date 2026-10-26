@@ -179,7 +179,7 @@ func (s *educationService) CreateArticle(ctx context.Context, staffID string, re
 	return &res, nil
 }
 
-func (s *educationService) UpdateArticle(ctx context.Context, id string, req CreateArticleRequest) (*ArticleDetailResponse, error) {
+func (s *educationService) UpdateArticle(ctx context.Context, id string, req UpdateArticleRequest) (*ArticleDetailResponse, error) {
 	article, err := s.repo.FindArticleByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -226,28 +226,30 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Cre
 		s.broadcastEducationNotif(ctx, article.Title, article.ID)
 	}
 
-	// Replace nested sections/steps
-	sections := make([]domain.ArticleSection, len(req.Sections))
-	for i, sec := range req.Sections {
-		steps := make([]domain.ArticleSectionStep, len(sec.Steps))
-		for j, st := range sec.Steps {
-			steps[j] = domain.ArticleSectionStep{
-				StepOrder: st.StepOrder,
-				StepText:  st.StepText,
+	// Omitted sections preserve legacy structured content. Explicit [] clears it.
+	if req.Sections != nil {
+		sections := make([]domain.ArticleSection, len(*req.Sections))
+		for i, sec := range *req.Sections {
+			steps := make([]domain.ArticleSectionStep, len(sec.Steps))
+			for j, st := range sec.Steps {
+				steps[j] = domain.ArticleSectionStep{
+					StepOrder: st.StepOrder,
+					StepText:  st.StepText,
+				}
+			}
+			sections[i] = domain.ArticleSection{
+				SectionOrder: sec.SectionOrder,
+				SectionTitle: sec.SectionTitle,
+				SectionType:  sec.SectionType,
+				ContentText:  sec.ContentText,
+				ImageURL:     sec.ImageURL,
+				Steps:        steps,
 			}
 		}
-		sections[i] = domain.ArticleSection{
-			SectionOrder: sec.SectionOrder,
-			SectionTitle: sec.SectionTitle,
-			SectionType:  sec.SectionType,
-			ContentText:  sec.ContentText,
-			ImageURL:     sec.ImageURL,
-			Steps:        steps,
-		}
-	}
 
-	if err = s.repo.ReplaceSections(ctx, id, sections); err != nil {
-		return nil, err
+		if err = s.repo.ReplaceSections(ctx, id, sections); err != nil {
+			return nil, err
+		}
 	}
 
 	// Refetch full

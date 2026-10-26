@@ -284,12 +284,12 @@ func (h *EducationHandler) Create(c fiber.Ctx) error {
 // @Accept       json
 // @Produce      json
 // @Param        id    path  string                true  "Article ID"
-// @Param        body  body  CreateArticleRequest  true  "Update article payload"
+// @Param        body  body  UpdateArticleRequest  true  "Update article payload"
 // @Success      200  {object}  map[string]any
 // @Router       /admin/education/articles/{id} [put]
 func (h *EducationHandler) Update(c fiber.Ctx) error {
 	id := c.Params("id")
-	var req CreateArticleRequest
+	var req UpdateArticleRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return errs.NewBadRequest("invalid request body")
 	}
