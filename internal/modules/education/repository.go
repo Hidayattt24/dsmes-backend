@@ -3,6 +3,7 @@ package education
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -124,27 +125,69 @@ func (r *educationRepository) FindArticleByID(ctx context.Context, id string) (*
 	return &a, nil
 }
 
-func (r *educationRepository) CreateArticle(ctx context.Context, a *domain.Article) error {
-	if err := r.db.WithContext(ctx).Create(a).Error; err != nil {
-		return errs.NewInternal("failed to create article", err)
+func (r *educationRepository) CreateArticle(ctx context.Context, a *domain.Article) (int64, error) {
+	var inserted int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(a).Error; err != nil {
+			return err
+		}
+		if a.Status == domain.StatusPublikasi {
+			var err error
+			inserted, err = insertEducationNotifications(tx, a.Title, a.ID)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, errs.NewInternal("failed to create article and notifications", err)
 	}
-	return nil
+	return inserted, nil
 }
 
-func (r *educationRepository) UpdateArticle(ctx context.Context, a *domain.Article) error {
-	result := r.db.WithContext(ctx).Save(a)
-	if result.Error != nil {
-		return errs.NewInternal("failed to update article", result.Error)
+func (r *educationRepository) UpdateArticle(ctx context.Context, a *domain.Article) (int64, error) {
+	var inserted int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current domain.Article
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "status").First(&current, "id = ?", a.ID).Error; err != nil {
+			return err
+		}
+		if err := tx.Save(a).Error; err != nil {
+			return err
+		}
+		if current.Status != domain.StatusPublikasi && a.Status == domain.StatusPublikasi {
+			var err error
+			inserted, err = insertEducationNotifications(tx, a.Title, a.ID)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, errs.NewInternal("failed to update article and notifications", err)
 	}
-	return nil
+	return inserted, nil
 }
 
-func (r *educationRepository) PublishArticle(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Model(&domain.Article{}).Where("id = ?", id).Update("status", domain.StatusPublikasi)
-	if result.Error != nil {
-		return errs.NewInternal("failed to publish article", result.Error)
+func (r *educationRepository) PublishArticle(ctx context.Context, id string) (int64, error) {
+	var inserted int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var article domain.Article
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&article, "id = ?", id).Error; err != nil {
+			return err
+		}
+		if article.Status == domain.StatusPublikasi {
+			return nil
+		}
+		if err := tx.Model(&article).Update("status", domain.StatusPublikasi).Error; err != nil {
+			return err
+		}
+		var err error
+		inserted, err = insertEducationNotifications(tx, article.Title, article.ID)
+		return err
+	})
+	if err != nil {
+		return 0, errs.NewInternal("failed to publish article and notifications", err)
 	}
-	return nil
+	return inserted, nil
 }
 
 func (r *educationRepository) RecordView(ctx context.Context, view *domain.ArticleView) error {
@@ -249,45 +292,58 @@ func (r *educationRepository) FindSavedArticles(ctx context.Context, patientID s
 	return items, nil
 }
 
-func (r *educationRepository) BroadcastEducationNotification(ctx context.Context, message string, articleID string) error {
+func insertEducationNotifications(tx *gorm.DB, title string, articleID string) (int64, error) {
 	var patientIDs []string
-	if err := r.db.WithContext(ctx).
+	if err := tx.
 		Model(&domain.Patient{}).
 		Where("deleted_at IS NULL").
 		Pluck("id", &patientIDs).Error; err != nil {
-		return errs.NewInternal("failed to fetch patient ids", err)
+		return 0, err
 	}
 
 	if len(patientIDs) == 0 {
-		return nil
+		return 0, nil
 	}
 
+	message := fmt.Sprintf("Yuk pelajari %q untuk panduan sehatmu hari ini ✨", title)
 	logs := make([]domain.NotificationLog, 0, len(patientIDs))
 	for _, pid := range patientIDs {
+		occurrenceID := "education:" + articleID + ":" + pid
 		logs = append(logs, domain.NotificationLog{
-			PatientID:   pid,
-			MessageText: message,
-			NotifiedAt:  time.Now(),
-			NotifType:   "education",
-			ArticleID:   &articleID,
+			PatientID:    pid,
+			MessageText:  message,
+			NotifiedAt:   time.Now(),
+			NotifType:    "education",
+			ActionType:   "education_detail",
+			ArticleID:    &articleID,
+			OccurrenceID: &occurrenceID,
 		})
 	}
 
-	if err := r.db.WithContext(ctx).Create(&logs).Error; err != nil {
-		return errs.NewInternal("failed to broadcast education notification", err)
-	}
-	return nil
+	result := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&logs, 500)
+	return result.RowsAffected, result.Error
 }
 
 func (r *educationRepository) FindAllDeviceTokens(ctx context.Context) ([]domain.DeviceToken, error) {
 	var devices []domain.DeviceToken
 	// Deduplicate by token so multiple registrations of the same device token don't receive duplicate pushes
 	if err := r.db.WithContext(ctx).
-		Distinct("token", "patient_id", "platform", "last_seen").
+		Table("patient_device_tokens AS pdt").
+		Select("DISTINCT pdt.token, pdt.patient_id, pdt.platform, pdt.last_seen, COALESCE(NULLIF(TRIM(p.nickname), ''), p.full_name, '') AS notification_name").
+		Joins("JOIN patients p ON p.id = pdt.patient_id AND p.deleted_at IS NULL").
 		Find(&devices).Error; err != nil {
 		return nil, errs.NewInternal("failed to fetch patient device tokens", err)
 	}
 	return devices, nil
+}
+
+func (r *educationRepository) DeleteDeviceToken(ctx context.Context, patientID string, token string) error {
+	if err := r.db.WithContext(ctx).
+		Where("patient_id = ? AND token = ?", patientID, token).
+		Delete(&domain.DeviceToken{}).Error; err != nil {
+		return errs.NewInternal("failed to delete invalid education device token", err)
+	}
+	return nil
 }
 
 func (r *educationRepository) ReplaceSections(ctx context.Context, articleID string, sections []domain.ArticleSection) error {

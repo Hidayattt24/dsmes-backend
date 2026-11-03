@@ -3,11 +3,15 @@ package education
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
+	"github.com/dsmes/dsmes-backend/internal/infrastructure/notifications"
 )
 
 type educationService struct {
@@ -134,7 +138,8 @@ func (s *educationService) CreateArticle(ctx context.Context, staffID string, re
 		YoutubeLink:          req.YoutubeLink,
 	}
 
-	if err = s.repo.CreateArticle(ctx, article); err != nil {
+	inserted, err := s.repo.CreateArticle(ctx, article)
+	if err != nil {
 		return nil, err
 	}
 
@@ -171,8 +176,8 @@ func (s *educationService) CreateArticle(ctx context.Context, staffID string, re
 
 	// Broadcast new-education notification to all patients when article is
 	// created directly as published (active).
-	if article.Status == domain.StatusPublikasi {
-		s.broadcastEducationNotif(ctx, article.Title, article.ID)
+	if inserted > 0 {
+		s.sendEducationPush(article.Title, article.ID, inserted)
 	}
 
 	res := ToArticleDetailResponse(refetched)
@@ -212,18 +217,13 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Upd
 	article.Content = req.Content
 	article.YoutubeLink = req.YoutubeLink
 
-	prevStatus := article.Status
 	if req.Status != "" {
 		article.Status = domain.ArticleStatus(req.Status)
 	}
 
-	if err = s.repo.UpdateArticle(ctx, article); err != nil {
+	inserted, err := s.repo.UpdateArticle(ctx, article)
+	if err != nil {
 		return nil, err
-	}
-
-	// Broadcast push notification when transitioning to published status
-	if prevStatus != domain.StatusPublikasi && article.Status == domain.StatusPublikasi {
-		s.broadcastEducationNotif(ctx, article.Title, article.ID)
 	}
 
 	// Omitted sections preserve legacy structured content. Explicit [] clears it.
@@ -258,6 +258,9 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Upd
 	if err != nil {
 		return nil, err
 	}
+	if inserted > 0 {
+		s.sendEducationPush(article.Title, article.ID, inserted)
+	}
 
 	res := ToArticleDetailResponse(refetched)
 	return &res, nil
@@ -269,55 +272,91 @@ func (s *educationService) PublishArticle(ctx context.Context, id string) error 
 		return err
 	}
 
-	if err := s.repo.PublishArticle(ctx, id); err != nil {
+	inserted, err := s.repo.PublishArticle(ctx, id)
+	if err != nil {
 		return err
 	}
 
 	// Broadcast only when transitioning from draft to published to avoid
 	// duplicate notifications on re-publish.
-	if article.Status != domain.StatusPublikasi {
-		s.broadcastEducationNotif(ctx, article.Title, article.ID)
+	if inserted > 0 {
+		s.sendEducationPush(article.Title, article.ID, inserted)
 	}
 
 	return nil
 }
 
-// broadcastEducationNotif asynchronously pushes a notification_log entry to
-// every active patient. It runs in a goroutine so it never blocks the request.
-func (s *educationService) broadcastEducationNotif(ctx context.Context, title string, articleID string) {
-	message := fmt.Sprintf("Yuk pelajari \"%s\" untuk panduan sehatmu hari ini ✨", title)
+// Inbox entries are committed with publication; FCM delivery is asynchronous.
+func (s *educationService) sendEducationPush(title string, articleID string, inboxCount int64) {
+	s.log.Info("education notifications stored", zap.String("article_id", articleID), zap.Int64("inbox_count", inboxCount), zap.Time("committed_at", time.Now()))
+	if s.push == nil {
+		s.log.Warn("education push unavailable: FCM sender is not configured", zap.String("article_id", articleID))
+		return
+	}
+	go s.dispatchEducationPush(title, articleID)
+}
+
+func (s *educationService) dispatchEducationPush(title string, articleID string) {
+	pushMessage := "Yuk pelajari materi terbaru untuk mendukung kesehatanmu."
 	notifTitle := fmt.Sprintf("Edukasi Baru: %s 📖", title)
-	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := s.repo.BroadcastEducationNotification(bgCtx, message, articleID); err != nil {
-			s.log.Warn("failed to broadcast education notification",
-				zap.String("article_id", articleID),
-				zap.Error(err),
-			)
-		}
-		if s.push == nil {
-			return
-		}
-		devices, err := s.repo.FindAllDeviceTokens(bgCtx)
-		if err != nil {
-			s.log.Warn("failed to fetch device tokens for education notification",
-				zap.String("article_id", articleID), zap.Error(err))
-			return
-		}
-		for _, device := range devices {
-			if _, err := s.push.Send(bgCtx, device.Token, notifTitle, message, map[string]string{
-				"type":       "education",
-				"article_id": articleID,
-				"title":      title,
-			}); err != nil {
-				s.log.Warn("failed to send education push notification",
-					zap.String("article_id", articleID),
-					zap.String("patient_id", device.PatientID),
-					zap.Error(err))
+	startedAt := time.Now()
+	bgCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	devices, err := s.repo.FindAllDeviceTokens(bgCtx)
+	if err != nil {
+		s.log.Warn("failed to fetch device tokens for education notification",
+			zap.String("article_id", articleID), zap.Error(err))
+		return
+	}
+	s.log.Info("education push started", zap.String("article_id", articleID), zap.Int("targets", len(devices)), zap.Time("started_at", startedAt))
+	var sent, failed atomic.Int64
+	semaphore := make(chan struct{}, 4)
+	var group sync.WaitGroup
+	for _, device := range devices {
+		group.Add(1)
+		go func(device domain.DeviceToken) {
+			defer group.Done()
+			select {
+			case semaphore <- struct{}{}:
+				defer func() { <-semaphore }()
+			case <-bgCtx.Done():
+				failed.Add(1)
+				return
 			}
-		}
-	}()
+			personalizedMessage := pushMessage
+			if device.NotificationName != "" {
+				personalizedMessage = fmt.Sprintf("Hai, %s! %s", device.NotificationName, pushMessage)
+			}
+			deviceCtx, stop := context.WithTimeout(bgCtx, 8*time.Second)
+			defer stop()
+			attemptedAt := time.Now()
+			_, err := s.push.Send(deviceCtx, device.Token, notifTitle, personalizedMessage, map[string]string{
+				"type": "education", "action_type": "education_detail",
+				"article_id": articleID, "title": title,
+				"sent_at": attemptedAt.UTC().Format(time.RFC3339Nano),
+			})
+			fields := []zap.Field{zap.String("article_id", articleID), zap.String("patient_id", device.PatientID),
+				zap.Time("attempted_at", attemptedAt), zap.Duration("duration", time.Since(attemptedAt))}
+			if err != nil {
+				failed.Add(1)
+				s.log.Warn("failed to send education push notification", append(fields, zap.Error(err))...)
+				if notifications.IsUnregistered(err) || strings.EqualFold(err.Error(), "NotRegistered") {
+					cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cleanupCancel()
+					if deleteErr := s.repo.DeleteDeviceToken(cleanupCtx, device.PatientID, device.Token); deleteErr != nil {
+						s.log.Warn("failed to delete invalid education device token", zap.String("patient_id", device.PatientID), zap.Error(deleteErr))
+					}
+				}
+				return
+			}
+			sent.Add(1)
+			s.log.Info("education push delivered to Firebase", fields...)
+		}(device)
+	}
+	group.Wait()
+	s.log.Info("education push completed", zap.String("article_id", articleID), zap.Int("targets", len(devices)),
+		zap.Int64("sent", sent.Load()), zap.Int64("failed", failed.Load()),
+		zap.Time("completed_at", time.Now()), zap.Duration("duration", time.Since(startedAt)))
 }
 
 func (s *educationService) CompleteArticle(ctx context.Context, patientID string, id string) error {

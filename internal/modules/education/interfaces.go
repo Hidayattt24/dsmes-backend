@@ -18,9 +18,9 @@ type EducationRepository interface {
 
 	FindAllArticles(ctx context.Context, categoryID string, status *domain.ArticleStatus, page, limit int) ([]domain.Article, int64, error)
 	FindArticleByID(ctx context.Context, id string) (*domain.Article, error)
-	CreateArticle(ctx context.Context, a *domain.Article) error
-	UpdateArticle(ctx context.Context, a *domain.Article) error
-	PublishArticle(ctx context.Context, id string) error
+	CreateArticle(ctx context.Context, a *domain.Article) (int64, error)
+	UpdateArticle(ctx context.Context, a *domain.Article) (int64, error)
+	PublishArticle(ctx context.Context, id string) (int64, error)
 	DeleteArticle(ctx context.Context, id string) error
 	GetStats(ctx context.Context) (*EducationStats, error)
 
@@ -32,10 +32,8 @@ type EducationRepository interface {
 	GetPatientSavedMap(ctx context.Context, patientID string) (map[string]bool, error)
 	GetPatientCompletedMap(ctx context.Context, patientID string) (map[string]bool, error)
 
-	// BroadcastEducationNotification inserts an education notification into
-	// every active patient's notification_logs inbox.
-	BroadcastEducationNotification(ctx context.Context, message string, articleID string) error
 	FindAllDeviceTokens(ctx context.Context) ([]domain.DeviceToken, error)
+	DeleteDeviceToken(ctx context.Context, patientID string, token string) error
 
 	// Transactional updates for sections/steps
 	ReplaceSections(ctx context.Context, articleID string, sections []domain.ArticleSection) error
