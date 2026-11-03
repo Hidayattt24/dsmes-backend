@@ -25,6 +25,8 @@ type ReminderResponse struct {
 	IconName           string                  `json:"icon_name"`
 	RepeatIntervalDays int                     `json:"repeat_interval_days"`
 	ActiveDays         []int                   `json:"active_days"`
+	SystemKey          *string                 `json:"system_key,omitempty"`
+	ActionType         string                  `json:"action_type"`
 }
 
 type NotificationResponse struct {
@@ -38,6 +40,9 @@ type NotificationResponse struct {
 	IconName     string  `json:"icon_name,omitempty"`
 	ActivityName string  `json:"activity_name,omitempty"`
 	Category     string  `json:"category,omitempty"`
+	ActionType   string  `json:"action_type"`
+	OccurrenceID *string `json:"occurrence_id,omitempty"`
+	ScheduledAt  *string `json:"scheduled_at,omitempty"`
 }
 
 type DeviceTokenRequest struct {
@@ -61,6 +66,8 @@ func ToReminderResponse(r *domain.Reminder) ReminderResponse {
 		IconName:           r.IconName,
 		RepeatIntervalDays: r.RepeatIntervalDays,
 		ActiveDays:         days,
+		SystemKey:          r.SystemKey,
+		ActionType:         r.ActionType,
 	}
 }
 

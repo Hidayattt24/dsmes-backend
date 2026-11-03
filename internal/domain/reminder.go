@@ -39,6 +39,9 @@ type Reminder struct {
 	Notes              string           `gorm:"type:text" json:"notes"`
 	IconName           string           `gorm:"type:varchar(100);default:'default'" json:"icon_name"`
 	RepeatIntervalDays int              `gorm:"default:1" json:"repeat_interval_days"`
+	SystemKey          *string          `gorm:"type:varchar(50)" json:"system_key,omitempty"`
+	ActionType         string           `gorm:"type:varchar(50);not null;default:'reminder_management'" json:"action_type"`
+	NotificationName   string           `gorm:"->;column:notification_name" json:"-"`
 
 	// Relations
 	ActiveDays []ReminderActiveDay `gorm:"foreignKey:ReminderID;constraint:OnDelete:CASCADE" json:"active_days,omitempty"`
@@ -82,25 +85,29 @@ func (SystemReminderTemplate) TableName() string { return "system_reminder_templ
 type NotificationLog struct {
 	BaseModel
 
-	ReminderID   *string   `gorm:"type:uuid" json:"reminder_id"`
-	PatientID    string    `gorm:"type:uuid;not null" json:"patient_id"`
-	MessageText  string    `gorm:"type:text;not null" json:"message_text"`
-	NotifiedAt   time.Time `gorm:"not null;default:now()" json:"notified_at"`
-	IsRead       bool      `gorm:"not null;default:false" json:"is_read"`
-	NotifType    string    `gorm:"type:varchar(50);not null;default:reminder" json:"notif_type"`
-	ArticleID    *string   `gorm:"type:uuid" json:"article_id"`
-	IconName     string    `gorm:"->;column:icon_name" json:"icon_name,omitempty"`
-	ActivityName string    `gorm:"->;column:activity_name" json:"activity_name,omitempty"`
-	Category     string    `gorm:"->;column:category" json:"category,omitempty"`
+	ReminderID   *string    `gorm:"type:uuid" json:"reminder_id"`
+	PatientID    string     `gorm:"type:uuid;not null" json:"patient_id"`
+	MessageText  string     `gorm:"type:text;not null" json:"message_text"`
+	NotifiedAt   time.Time  `gorm:"not null;default:now()" json:"notified_at"`
+	IsRead       bool       `gorm:"not null;default:false" json:"is_read"`
+	NotifType    string     `gorm:"type:varchar(50);not null;default:reminder" json:"notif_type"`
+	ArticleID    *string    `gorm:"type:uuid" json:"article_id"`
+	ActionType   string     `gorm:"type:varchar(50);not null;default:'reminder_management'" json:"action_type"`
+	OccurrenceID *string    `gorm:"type:varchar(150)" json:"occurrence_id,omitempty"`
+	ScheduledAt  *time.Time `json:"scheduled_at,omitempty"`
+	IconName     string     `gorm:"->;column:icon_name" json:"icon_name,omitempty"`
+	ActivityName string     `gorm:"->;column:activity_name" json:"activity_name,omitempty"`
+	Category     string     `gorm:"->;column:category" json:"category,omitempty"`
 }
 
 func (NotificationLog) TableName() string { return "notification_logs" }
 
 type DeviceToken struct {
-	Token     string    `gorm:"primaryKey;type:text" json:"token"`
-	PatientID string    `gorm:"type:uuid;not null;index" json:"patient_id"`
-	Platform  string    `gorm:"type:varchar(20);not null" json:"platform"`
-	LastSeen  time.Time `gorm:"not null;default:now()" json:"last_seen"`
+	Token            string    `gorm:"primaryKey;type:text" json:"token"`
+	PatientID        string    `gorm:"type:uuid;not null;index" json:"patient_id"`
+	Platform         string    `gorm:"type:varchar(20);not null" json:"platform"`
+	LastSeen         time.Time `gorm:"not null;default:now()" json:"last_seen"`
+	NotificationName string    `gorm:"->;column:notification_name" json:"-"`
 }
 
 func (DeviceToken) TableName() string { return "patient_device_tokens" }

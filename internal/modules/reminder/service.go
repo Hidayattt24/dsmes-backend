@@ -2,6 +2,7 @@ package reminder
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,9 @@ func NewReminderService(repo ReminderRepository, log *zap.Logger) ReminderServic
 }
 
 func (s *reminderService) ListReminders(ctx context.Context, patientID string) ([]ReminderResponse, error) {
+	if err := s.repo.EnsureDefaultReminders(ctx, patientID); err != nil {
+		return nil, err
+	}
 	items, err := s.repo.FindAllByPatientID(ctx, patientID)
 	if err != nil {
 		return nil, err
@@ -34,6 +38,9 @@ func (s *reminderService) ListReminders(ctx context.Context, patientID string) (
 }
 
 func (s *reminderService) RegisterDeviceToken(ctx context.Context, patientID string, req DeviceTokenRequest) error {
+	if err := s.repo.EnsureDefaultReminders(ctx, patientID); err != nil {
+		return err
+	}
 	return s.repo.UpsertDeviceToken(ctx, &domain.DeviceToken{
 		Token: req.Token, PatientID: patientID, Platform: req.Platform, LastSeen: time.Now().UTC(),
 	})
@@ -54,6 +61,7 @@ func (s *reminderService) CreateReminder(ctx context.Context, patientID string, 
 		Notes:              req.Notes,
 		IconName:           req.IconName,
 		RepeatIntervalDays: req.RepeatIntervalDays,
+		ActionType:         actionTypeFor(req.Category, req.IconName, req.ActivityName),
 	}
 
 	if err := s.repo.Create(ctx, rem, req.ActiveDays); err != nil {
@@ -86,6 +94,7 @@ func (s *reminderService) UpdateReminder(ctx context.Context, patientID string, 
 	rem.Notes = req.Notes
 	rem.IconName = req.IconName
 	rem.RepeatIntervalDays = req.RepeatIntervalDays
+	rem.ActionType = actionTypeFor(req.Category, req.IconName, req.ActivityName)
 
 	if err = s.repo.Update(ctx, rem, req.ActiveDays); err != nil {
 		return nil, err
@@ -111,7 +120,38 @@ func (s *reminderService) DeleteReminder(ctx context.Context, patientID string, 
 		return errs.NewForbidden("unauthorized access to reminder")
 	}
 
+	if rem.SystemKey != nil {
+		if !rem.IsActive {
+			return nil
+		}
+		rem.IsActive = false
+		days := make([]int, 0, len(rem.ActiveDays))
+		for _, d := range rem.ActiveDays {
+			days = append(days, d.DayOfWeek)
+		}
+		return s.repo.Update(ctx, rem, days)
+	}
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *reminderService) EnsureDefaultReminders(ctx context.Context, patientID string) error {
+	return s.repo.EnsureDefaultReminders(ctx, patientID)
+}
+
+func actionTypeFor(category domain.ReminderCategory, icon, activity string) string {
+	lower := strings.ToLower(activity)
+	switch {
+	case icon == "blood" || strings.Contains(lower, "gula"):
+		return "blood_sugar_entry"
+	case category == domain.CategoryMedisObat || icon == "medicine" || strings.Contains(lower, "obat") || strings.Contains(lower, "insulin"):
+		return "medication_entry"
+	case category == domain.CategoryAktivitasFisik:
+		return "activity_entry"
+	case category == domain.CategoryNutrisiAir && (strings.Contains(lower, "makan") || icon == "restaurant" || icon == "lunch"):
+		return "meal_entry"
+	default:
+		return "reminder_management"
+	}
 }
 
 func (s *reminderService) ToggleReminder(ctx context.Context, patientID string, id string) (*ReminderResponse, error) {
@@ -190,6 +230,11 @@ func (s *reminderService) GetNotifications(ctx context.Context, patientID string
 
 	resp := make([]NotificationResponse, len(items))
 	for i := range items {
+		var scheduledAt *string
+		if items[i].ScheduledAt != nil {
+			value := items[i].ScheduledAt.Format(time.RFC3339)
+			scheduledAt = &value
+		}
 		resp[i] = NotificationResponse{
 			ID:           items[i].ID,
 			ReminderID:   items[i].ReminderID,
@@ -201,6 +246,9 @@ func (s *reminderService) GetNotifications(ctx context.Context, patientID string
 			IconName:     items[i].IconName,
 			ActivityName: items[i].ActivityName,
 			Category:     items[i].Category,
+			ActionType:   items[i].ActionType,
+			OccurrenceID: items[i].OccurrenceID,
+			ScheduledAt:  scheduledAt,
 		}
 	}
 	return resp, nil

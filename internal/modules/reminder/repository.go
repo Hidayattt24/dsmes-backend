@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
@@ -186,6 +187,11 @@ func (r *reminderRepository) FindLogsByPatientAndDate(ctx context.Context, patie
 }
 
 func (r *reminderRepository) UpsertDeviceToken(ctx context.Context, token *domain.DeviceToken) error {
+	// A Firebase token identifies one app installation and must never remain
+	// attached to a previous account.
+	if err := r.db.WithContext(ctx).Where("token = ?", token.Token).Delete(&domain.DeviceToken{}).Error; err != nil {
+		return errs.NewInternal("failed to transfer device token", err)
+	}
 	// Clean any previous tokens for this patient on the same platform to prevent sending duplicate notifications
 	_ = r.db.WithContext(ctx).
 		Where("patient_id = ? AND platform = ? AND token != ?", token.PatientID, token.Platform, token.Token).
@@ -196,6 +202,46 @@ func (r *reminderRepository) UpsertDeviceToken(ctx context.Context, token *domai
 		return errs.NewInternal("failed to save device token", result.Error)
 	}
 	return nil
+}
+
+type defaultReminder struct {
+	key, name, category, scheduledTime, icon, action string
+	days                                             []int
+}
+
+func (r *reminderRepository) EnsureDefaultReminders(ctx context.Context, patientID string) error {
+	defaults := []defaultReminder{
+		{key: "daily_meal", name: "Catat Makanan Hari Ini", category: string(domain.CategoryNutrisiAir), scheduledTime: "12:00:00", icon: "restaurant", action: "meal_entry", days: []int{1, 2, 3, 4, 5, 6, 7}},
+		{key: "daily_exercise", name: "Olahraga Sore", category: string(domain.CategoryAktivitasFisik), scheduledTime: "16:00:00", icon: "exercise", action: "activity_entry", days: []int{1, 2, 3, 4, 5, 6, 7}},
+		{key: "weekly_blood_sugar", name: "Cek Gula Darah", category: string(domain.CategoryLainnya), scheduledTime: "07:00:00", icon: "blood", action: "blood_sugar_entry", days: []int{6}},
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, item := range defaults {
+			key := item.key
+			rem := domain.Reminder{PatientID: patientID, ActivityName: item.name, ReminderType: domain.ReminderSistem, Category: domain.ReminderCategory(item.category), ScheduledTime: item.scheduledTime, IsActive: true, IconName: item.icon, RepeatIntervalDays: 1, SystemKey: &key, ActionType: item.action}
+			result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&rem)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				continue
+			}
+			for _, day := range item.days {
+				if err := tx.Create(&domain.ReminderActiveDay{ReminderID: rem.ID, DayOfWeek: day}).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+func (r *reminderRepository) CreateNotificationOccurrence(ctx context.Context, log *domain.NotificationLog) (bool, error) {
+	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(log)
+	if result.Error != nil {
+		return false, errs.NewInternal("failed to store reminder notification", result.Error)
+	}
+	return result.RowsAffected > 0, nil
 }
 
 func (r *reminderRepository) DeleteDeviceToken(ctx context.Context, patientID string, token string) error {
@@ -211,8 +257,11 @@ func (r *reminderRepository) DeleteDeviceToken(ctx context.Context, patientID st
 func (r *reminderRepository) FindDueReminders(ctx context.Context, timePrefix string) ([]domain.Reminder, error) {
 	var reminders []domain.Reminder
 	err := r.db.WithContext(ctx).
+		Table("reminders AS r").
+		Select("r.*, COALESCE(NULLIF(TRIM(p.nickname), ''), p.full_name, '') AS notification_name").
+		Joins("JOIN patients p ON p.id = r.patient_id AND p.deleted_at IS NULL").
 		Preload("ActiveDays").
-		Where("is_active = TRUE AND scheduled_time::text LIKE ?", timePrefix+"%").
+		Where("r.is_active = TRUE AND r.scheduled_time::text LIKE ?", timePrefix+"%").
 		Find(&reminders).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch due reminders", err)
