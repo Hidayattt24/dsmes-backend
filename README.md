@@ -1,5 +1,25 @@
 # DSMES Aceh Backend — Developer & Architecture Guide
 
+## Uji notifikasi lokal
+
+API dan worker membutuhkan kredensial Firebase Admin dari project Firebase yang sama dengan aplikasi mobile. Untuk pengembangan lokal, simpan file service account dengan akses terbatas dan isi `.env` backend dengan path absolutnya:
+
+```dotenv
+FCM_CREDENTIALS_FILE=C:/path/aman/service-account.json
+```
+
+Jalankan `go run ./cmd/api` dan `go run ./cmd/worker` di terminal berbeda dari direktori backend. Keduanya membaca `.env` yang sama. Alternatifnya, set `$env:FCM_CREDENTIALS_JSON = Get-Content -Raw 'C:\path\aman\service-account.json'` pada **setiap** terminal; JSON dari variabel lingkungan diutamakan atas path file. Jangan menaruh perintah PowerShell sebagai nilai di `.env`, karena `.env` tidak mengeksekusinya. Log startup harus menampilkan `education FCM sender ready` dan `reminder FCM sender ready`. Web lokal memakai `http://localhost:8080/api/v1`; emulator Flutter lokal memakai `http://10.0.2.2:8080/api/v1`.
+
+Jadwal dapat diuji tanpa menunggu jam asli:
+
+```powershell
+go test ./cmd/worker -run 'TestDispatchSchedulesAndDeduplicates|TestCatchUpMinutesIncludesScheduledTimes' -v
+$env:RUN_REMOTE_EDUCATION_TEST = '1'
+go test ./internal/modules/education -run TestEducationPublicationInboxRollback -v
+```
+
+Tes integrasi edukasi menggunakan database terkonfigurasi dan me-rollback seluruh data tes. Untuk uji popup pada perangkat, login pasien, pastikan log `[FCM] token registered`, publikasikan artikel dari web, lalu cocokkan `education notifications stored`, `education push completed`, item inbox, dan popup pada perangkat. Uji foreground, background, dan aplikasi tertutup dilakukan pada perangkat yang sama dengan izin notifikasi aktif.
+
 Pusat backend REST API untuk platform **DSMES Aceh** (*Diabetes Self-Management Education and Support*). Backend ini menjadi pusat aturan bisnis, klasifikasi medis, autentikasi multi-peran, kalkulasi nutrisi, dan penyimpanan data bagi dua platform klien: **Aplikasi Mobile Pasien (Flutter)** dan **Portal Web Admin/Staff (Next.js)**.
 
 ---

@@ -121,7 +121,10 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 			c.Logger.Warn("education FCM notifications disabled", zap.Error(err))
 		} else {
 			pushSender = sender
+			c.Logger.Info("education FCM sender ready")
 		}
+	} else {
+		c.Logger.Warn("education FCM notifications disabled: FCM_CREDENTIALS_JSON is empty")
 	}
 	eduSvc := education.NewEducationService(eduRepo, c.Logger, pushSender)
 	eduHandler := education.NewEducationHandler(eduSvc, c.Logger)

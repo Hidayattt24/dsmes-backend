@@ -2,9 +2,28 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestResolveFCMCredentials(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "firebase.json")
+	if err := os.WriteFile(path, []byte(`{"type":"service_account"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveFCMCredentials("", path)
+	if err != nil || got != `{"type":"service_account"}` {
+		t.Fatalf("read credential file: valid=%v err=%v", got == `{"type":"service_account"}`, err)
+	}
+	got, err = resolveFCMCredentials(`{"direct":true}`, path)
+	if err != nil || got != `{"direct":true}` {
+		t.Fatalf("direct JSON must take precedence: err=%v", err)
+	}
+	if _, err := resolveFCMCredentials("Get-Content file.json -Raw", path); err == nil {
+		t.Fatal("shell command must be rejected as FCM_CREDENTIALS_JSON")
+	}
+}
 
 func TestConfigDefaults(t *testing.T) {
 	// Clear environment variables that might interfere with defaults

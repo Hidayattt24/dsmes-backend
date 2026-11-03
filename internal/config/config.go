@@ -4,7 +4,9 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -147,6 +149,7 @@ func Load() (*Config, error) {
 	v.SetDefault("AI_MODEL", "gemini-1.5-flash-latest")
 	v.SetDefault("AI_LOG_PROMPTS", false)
 	v.SetDefault("FCM_CREDENTIALS_JSON", "")
+	v.SetDefault("FCM_CREDENTIALS_FILE", "")
 
 	// ── .env file ─────────────────────────────────────────────────────────────
 	v.SetConfigName(".env")
@@ -220,7 +223,11 @@ func Load() (*Config, error) {
 		Model:      v.GetString("AI_MODEL"),
 		LogPrompts: v.GetBool("AI_LOG_PROMPTS"),
 	}
-	cfg.FCM = FCMConfig{CredentialsJSON: v.GetString("FCM_CREDENTIALS_JSON")}
+	fcmCredentials, err := resolveFCMCredentials(v.GetString("FCM_CREDENTIALS_JSON"), v.GetString("FCM_CREDENTIALS_FILE"))
+	if err != nil {
+		return nil, err
+	}
+	cfg.FCM = FCMConfig{CredentialsJSON: fcmCredentials}
 
 	// ── Production safety guards ──────────────────────────────────────────────
 	// Refuse to start in production/staging with the default or weak JWT secret.
@@ -231,6 +238,26 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func resolveFCMCredentials(credentialsJSON, credentialsFile string) (string, error) {
+	if strings.TrimSpace(credentialsJSON) != "" {
+		if !json.Valid([]byte(credentialsJSON)) {
+			return "", fmt.Errorf("config: FCM_CREDENTIALS_JSON must contain JSON, not a shell command or file path")
+		}
+		return credentialsJSON, nil
+	}
+	if strings.TrimSpace(credentialsFile) == "" {
+		return "", nil
+	}
+	contents, err := os.ReadFile(credentialsFile)
+	if err != nil {
+		return "", fmt.Errorf("config: cannot read FCM_CREDENTIALS_FILE: %w", err)
+	}
+	if !json.Valid(contents) {
+		return "", fmt.Errorf("config: FCM_CREDENTIALS_FILE does not contain valid JSON")
+	}
+	return string(contents), nil
 }
 
 // IsDevelopment returns true when APP_ENV is "development".
