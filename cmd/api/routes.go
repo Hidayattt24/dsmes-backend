@@ -16,6 +16,7 @@ import (
 
 	"github.com/gofiber/contrib/v3/swaggerui"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/static"
 	"go.uber.org/zap"
 
 	"github.com/dsmes/dsmes-backend/internal/container"
@@ -65,6 +66,10 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 			"version": "1.0.0",
 		})
 	})
+
+	// ── Static Files (Uploads) ────────────────────────────────────────────────
+	app.Use("/uploads", uploadsStaticHandler("./uploads"))
+	app.Use("/api/v1/uploads", uploadsStaticHandler("./uploads"))
 
 	// ── Instantiations ────────────────────────────────────────────────────────
 	// We instantiate all repositories, services, and handlers here using GORM DB
@@ -239,6 +244,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Get("/education/articles", eduHandler.ListAdmin)
 		admin.Get("/education/articles/:id", eduHandler.GetByID)
 		admin.Post("/education/articles", eduHandler.Create)
+		admin.Post("/education/upload-audio", eduHandler.UploadAudio)
 		admin.Put("/education/articles/:id", eduHandler.Update)
 		admin.Patch("/education/articles/:id/publish", eduHandler.Publish)
 		admin.Delete("/education/articles/:id", eduHandler.Delete)
@@ -248,6 +254,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		admin.Get("/education/:id/progress/analytics", eduProgressHandler.GetArticleAnalytics)
 		admin.Post("/education/:id/progress/read-article", eduProgressHandler.MarkArticleReadAdmin)
 		admin.Post("/education/:id/progress/watch-video", eduProgressHandler.MarkVideoWatchedAdmin)
+		admin.Post("/education/:id/progress/listen-audio", eduProgressHandler.MarkAudioListenedAdmin)
 		admin.Get("/education/:id/reviews", eduHandler.GetAdminReviews)
 
 		// Quiz / Questionnaire Management
@@ -394,6 +401,7 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 		patientGroup.Get("/education/:id/progress", eduProgressHandler.GetPatientProgress)
 		patientGroup.Post("/education/:id/read-article", eduProgressHandler.MarkArticleRead)
 		patientGroup.Post("/education/:id/watch-video", eduProgressHandler.MarkVideoWatched)
+		patientGroup.Post("/education/:id/listen-audio", eduProgressHandler.MarkAudioListened)
 		patientGroup.Post("/education/:id/review", eduHandler.SubmitReview)
 		patientGroup.Get("/education/:id/review", eduHandler.GetReview)
 		patientGroup.Get("/education/:id/rating", eduHandler.GetRatingSummary)
@@ -465,4 +473,8 @@ func registerRoutes(app *fiber.App, c *container.Container) {
 	app.Use(func(ctx fiber.Ctx) error {
 		return response.Error(ctx, fiber.StatusNotFound, "route not found")
 	})
+}
+
+func uploadsStaticHandler(root string) fiber.Handler {
+	return static.New(root, static.Config{ByteRange: true})
 }

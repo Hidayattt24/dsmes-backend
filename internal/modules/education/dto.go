@@ -20,12 +20,14 @@ type CreateArticleRequest struct {
 	Title                string           `json:"title"                  validate:"required,max=200"`
 	CategoryID           string           `json:"category_id"            validate:"omitempty,uuid4"`
 	CategoryName         string           `json:"category_name"          validate:"required"`
-	EstimatedReadMinutes int              `json:"estimated_read_minutes" validate:"required,min=1"`
+	EstimatedReadMinutes int              `json:"estimated_read_minutes" validate:"omitempty,gte=0"`
+	EstimatedReadSeconds int              `json:"estimated_read_seconds" validate:"omitempty,gte=0"`
 	AuthorName           string           `json:"author_name"`
 	BannerImageURL       string           `json:"banner_image_url"`
 	Summary              string           `json:"summary"                validate:"required"`
 	Content              string           `json:"content"`
 	YoutubeLink          string           `json:"youtube_link"`
+	AudioURL             string           `json:"audio_url"`
 	Status               string           `json:"status"                 validate:"omitempty,oneof=draft publikasi"`
 	Sections             []SectionRequest `json:"sections"`
 }
@@ -34,12 +36,14 @@ type UpdateArticleRequest struct {
 	Title                string            `json:"title"                  validate:"required,max=200"`
 	CategoryID           string            `json:"category_id"            validate:"omitempty,uuid4"`
 	CategoryName         string            `json:"category_name"          validate:"required"`
-	EstimatedReadMinutes int               `json:"estimated_read_minutes" validate:"required,min=1"`
+	EstimatedReadMinutes int               `json:"estimated_read_minutes" validate:"omitempty,gte=0"`
+	EstimatedReadSeconds int               `json:"estimated_read_seconds" validate:"omitempty,gte=0"`
 	AuthorName           string            `json:"author_name"`
 	BannerImageURL       string            `json:"banner_image_url"`
 	Summary              string            `json:"summary"                validate:"required"`
 	Content              string            `json:"content"`
 	YoutubeLink          string            `json:"youtube_link"`
+	AudioURL             string            `json:"audio_url"`
 	Status               string            `json:"status"                 validate:"omitempty,oneof=draft publikasi"`
 	Sections             *[]SectionRequest `json:"sections"`
 }
@@ -66,6 +70,7 @@ type ArticleListResponse struct {
 	CategoryID           string               `json:"category_id"`
 	CategoryName         string               `json:"category_name"`
 	EstimatedReadMinutes int                  `json:"estimated_read_minutes"`
+	EstimatedReadSeconds int                  `json:"estimated_read_seconds"`
 	AuthorName           string               `json:"author_name"`
 	BannerImageURL       string               `json:"banner_image_url"`
 	Summary              string               `json:"summary"`
@@ -74,6 +79,7 @@ type ArticleListResponse struct {
 	UpdatedAt            string               `json:"updated_at"`
 	Content              string               `json:"content"`
 	YoutubeLink          string               `json:"youtube_link"`
+	AudioURL             string               `json:"audio_url"`
 	ReadCount            int64                `json:"read_count"`
 	IsBookmarked         bool                 `json:"is_bookmarked"`
 	IsCompleted          bool                 `json:"is_completed"`
@@ -108,12 +114,26 @@ func ToArticleListResponse(a *domain.Article) ArticleListResponse {
 	if a.Category != nil {
 		catName = a.Category.Name
 	}
+	readSec := a.EstimatedReadSeconds
+	if readSec <= 0 {
+		if a.EstimatedReadMinutes > 0 {
+			readSec = a.EstimatedReadMinutes * 60
+		} else {
+			readSec = 60
+		}
+	}
+	readMin := a.EstimatedReadMinutes
+	if readMin <= 0 {
+		readMin = (readSec + 59) / 60
+	}
+
 	return ArticleListResponse{
 		ID:                   a.ID,
 		Title:                a.Title,
 		CategoryID:           a.CategoryID,
 		CategoryName:         catName,
-		EstimatedReadMinutes: a.EstimatedReadMinutes,
+		EstimatedReadMinutes: readMin,
+		EstimatedReadSeconds: readSec,
 		AuthorName:           a.AuthorName,
 		BannerImageURL:       a.BannerImageURL,
 		Summary:              a.Summary,
@@ -122,6 +142,7 @@ func ToArticleListResponse(a *domain.Article) ArticleListResponse {
 		UpdatedAt:            a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		Content:              a.Content,
 		YoutubeLink:          a.YoutubeLink,
+		AudioURL:             a.AudioURL,
 		ReadCount:            a.ReadCount,
 	}
 }

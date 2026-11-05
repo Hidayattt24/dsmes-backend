@@ -22,59 +22,13 @@ func NewEducationProgressRepository(db *gorm.DB, log *zap.Logger) EducationProgr
 }
 
 func (r *educationProgressRepository) FindAllByArticle(ctx context.Context, articleID string) ([]domain.UserArticleCompletion, error) {
-	type progressRow struct {
-		ID               string     `gorm:"column:id"`
-		PatientID        string     `gorm:"column:patient_id"`
-		ArticleID        string     `gorm:"column:article_id"`
-		ArticleRead      bool       `gorm:"column:article_read"`
-		ArticleReadAt    *time.Time `gorm:"column:article_read_at"`
-		YouTubeWatched   bool       `gorm:"column:youtube_watched"`
-		YouTubeWatchedAt *time.Time `gorm:"column:youtube_watched_at"`
-		CompletedAt      *time.Time `gorm:"column:completed_at"`
-		CompletionSource string     `gorm:"column:completion_source"`
-		CreatedAt        time.Time  `gorm:"column:created_at"`
-		PatientName      string     `gorm:"column:patient_name"`
-	}
-
-	var rows []progressRow
-	err := r.db.WithContext(ctx).Raw(`
-		SELECT
-			uac.id,
-			uac.patient_id,
-			uac.article_id,
-			uac.article_read,
-			uac.article_read_at,
-			uac.youtube_watched,
-			uac.youtube_watched_at,
-			uac.completed_at,
-			uac.completion_source,
-			uac.created_at,
-			p.full_name AS patient_name
-		FROM user_article_completions uac
-		JOIN patients p ON p.id = uac.patient_id AND p.deleted_at IS NULL
-		WHERE uac.article_id = ? AND uac.deleted_at IS NULL
-		ORDER BY COALESCE(uac.completed_at, uac.created_at) DESC
-	`, articleID).Scan(&rows).Error
+	var items []domain.UserArticleCompletion
+	err := r.db.WithContext(ctx).
+		Where("article_id = ? AND deleted_at IS NULL", articleID).
+		Order("COALESCE(completed_at, created_at) DESC").
+		Find(&items).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch education progress", err)
-	}
-
-	items := make([]domain.UserArticleCompletion, len(rows))
-	for i, r := range rows {
-		items[i] = domain.UserArticleCompletion{
-			BaseModel: domain.BaseModel{
-				ID:        r.ID,
-				CreatedAt: r.CreatedAt,
-			},
-			PatientID:        r.PatientID,
-			ArticleID:        r.ArticleID,
-			ArticleRead:      r.ArticleRead,
-			ArticleReadAt:    r.ArticleReadAt,
-			YouTubeWatched:   r.YouTubeWatched,
-			YouTubeWatchedAt: r.YouTubeWatchedAt,
-			CompletedAt:      r.CompletedAt,
-			CompletionSource: r.CompletionSource,
-		}
 	}
 	return items, nil
 }
@@ -143,6 +97,9 @@ func (r *educationProgressRepository) Upsert(ctx context.Context, progress *doma
 			"youtube_watched", "youtube_watched_at",
 			"video_started_at", "video_finished_at",
 			"video_watch_duration", "video_last_timestamp",
+			"audio_listened", "audio_listened_at",
+			"audio_started_at", "audio_finished_at",
+			"audio_listen_duration", "audio_last_timestamp",
 			"completed_at", "completion_source", "updated_at",
 		}),
 	}).Create(progress).Error
@@ -170,6 +127,7 @@ func (r *educationProgressRepository) GetAnalytics(ctx context.Context, articleI
 		TotalPatients  int64
 		ArticleRead    int64
 		YouTubeWatched int64
+		AudioListened  int64
 		ReadAndVideo   int64
 		Completed      int64
 		NotStarted     int64
@@ -181,9 +139,10 @@ func (r *educationProgressRepository) GetAnalytics(ctx context.Context, articleI
 			COUNT(*)                                                                  AS total_patients,
 			COALESCE(SUM(CASE WHEN article_read = TRUE THEN 1 ELSE 0 END), 0)         AS article_read,
 			COALESCE(SUM(CASE WHEN youtube_watched = TRUE THEN 1 ELSE 0 END), 0)      AS youtube_watched,
+			COALESCE(SUM(CASE WHEN audio_listened = TRUE THEN 1 ELSE 0 END), 0)       AS audio_listened,
 			COALESCE(SUM(CASE WHEN article_read = TRUE AND youtube_watched = TRUE THEN 1 ELSE 0 END), 0) AS read_and_video,
 			COALESCE(SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END), 0)    AS completed,
-			COALESCE(SUM(CASE WHEN article_read = FALSE AND youtube_watched = FALSE THEN 1 ELSE 0 END), 0) AS not_started
+			COALESCE(SUM(CASE WHEN article_read = FALSE AND youtube_watched = FALSE AND audio_listened = FALSE THEN 1 ELSE 0 END), 0) AS not_started
 		FROM user_article_completions
 		WHERE article_id = ? AND deleted_at IS NULL
 	`, articleID).Scan(&row).Error
@@ -192,11 +151,12 @@ func (r *educationProgressRepository) GetAnalytics(ctx context.Context, articleI
 	}
 
 	return &ProgressAnalytics{
-		TotalPatients:     row.TotalPatients,
-		CompletedCount:    row.Completed,
-		ReadArticleCount:  row.ArticleRead,
-		WatchedVideoCount: row.YouTubeWatched,
-		ReadAndVideoCount: row.ReadAndVideo,
-		NotStartedCount:   row.NotStarted,
+		TotalPatients:      row.TotalPatients,
+		CompletedCount:     row.Completed,
+		ReadArticleCount:   row.ArticleRead,
+		WatchedVideoCount:  row.YouTubeWatched,
+		ListenedAudioCount: row.AudioListened,
+		ReadAndVideoCount:  row.ReadAndVideo,
+		NotStartedCount:    row.NotStarted,
 	}, nil
 }

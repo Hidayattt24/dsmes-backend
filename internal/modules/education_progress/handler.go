@@ -90,6 +90,29 @@ func (h *EducationProgressHandler) MarkVideoWatched(c fiber.Ctx) error {
 	return response.Created(c, "video marked as watched", nil)
 }
 
+// MarkAudioListened handles POST /api/v1/patient/education/:id/listen-audio
+// Marks the audio as listened for the authenticated patient.
+func (h *EducationProgressHandler) MarkAudioListened(c fiber.Ctx) error {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req MarkAudioListenedRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+
+	articleID := c.Params("id")
+	if err := h.svc.MarkAudioListened(c.Context(), claims.UserID, articleID, req.ListenDuration, req.AudioLastTimestamp, req.IsCompleted); err != nil {
+		return err
+	}
+	return response.Created(c, "audio marked as listened", nil)
+}
+
 // GetPatientProgress handles GET /api/v1/patient/education/:id/progress
 // Returns the authenticated patient's progress for an education article.
 func (h *EducationProgressHandler) GetPatientProgress(c fiber.Ctx) error {
@@ -151,4 +174,21 @@ func (h *EducationProgressHandler) MarkVideoWatchedAdmin(c fiber.Ctx) error {
 		return err
 	}
 	return response.Created(c, "video marked as watched", nil)
+}
+
+// MarkAudioListenedAdmin handles POST /api/v1/admin/education/:id/progress/listen-audio
+// Admin marks audio as listened for a specific patient.
+func (h *EducationProgressHandler) MarkAudioListenedAdmin(c fiber.Ctx) error {
+	articleID := c.Params("id")
+	var req MarkActionRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return errs.NewBadRequest("invalid request body")
+	}
+	if fieldErrs := validator.Validate(&req); fieldErrs != nil {
+		return response.ValidationError(c, fieldErrs)
+	}
+	if err := h.svc.MarkAudioListened(c.Context(), req.PatientID, articleID, 0, 0, true); err != nil {
+		return err
+	}
+	return response.Created(c, "audio marked as listened", nil)
 }

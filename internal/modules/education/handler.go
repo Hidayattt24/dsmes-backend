@@ -1,9 +1,14 @@
 package education
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
@@ -398,4 +403,46 @@ func (h *EducationHandler) GetAdminReviews(c fiber.Ctx) error {
 		return err
 	}
 	return response.Success(c, "admin article reviews retrieved", res)
+}
+
+// UploadAudio handles POST /api/v1/admin/education/upload-audio
+func (h *EducationHandler) UploadAudio(c fiber.Ctx) error {
+	fileHeader, err := c.FormFile("audio")
+	if err != nil {
+		fileHeader, err = c.FormFile("file")
+		if err != nil {
+			return errs.NewBadRequest("audio file is required (form-data field name 'audio' or 'file')")
+		}
+	}
+
+	if fileHeader.Size > 50*1024*1024 {
+		return errs.NewBadRequest("file size exceeds 50MB limit")
+	}
+
+	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+	allowed := map[string]bool{
+		".mp3": true, ".m4a": true, ".wav": true, ".aac": true, ".ogg": true, ".webm": true,
+	}
+	if !allowed[ext] {
+		return errs.NewBadRequest("unsupported audio format (allowed: mp3, m4a, wav, aac, ogg, webm)")
+	}
+
+	uploadDir := "./uploads/audio"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		return errs.NewInternal("failed to create upload directory", err)
+	}
+
+	filename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
+	dst := filepath.Join(uploadDir, filename)
+
+	if err := c.SaveFile(fileHeader, dst); err != nil {
+		return errs.NewInternal("failed to save uploaded audio file", err)
+	}
+
+	audioURL := fmt.Sprintf("/uploads/audio/%s", filename)
+	return response.Created(c, "audio uploaded successfully", fiber.Map{
+		"url":      audioURL,
+		"filename": fileHeader.Filename,
+		"size":     fileHeader.Size,
+	})
 }

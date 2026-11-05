@@ -125,10 +125,24 @@ func (s *educationService) CreateArticle(ctx context.Context, staffID string, re
 		status = domain.ArticleStatus(req.Status)
 	}
 
+	readSec := req.EstimatedReadSeconds
+	if readSec <= 0 {
+		if req.EstimatedReadMinutes > 0 {
+			readSec = req.EstimatedReadMinutes * 60
+		} else {
+			readSec = 60
+		}
+	}
+	readMin := req.EstimatedReadMinutes
+	if readMin <= 0 {
+		readMin = (readSec + 59) / 60
+	}
+
 	article := &domain.Article{
 		Title:                req.Title,
 		CategoryID:           categoryID,
-		EstimatedReadMinutes: req.EstimatedReadMinutes,
+		EstimatedReadMinutes: readMin,
+		EstimatedReadSeconds: readSec,
 		AuthorName:           req.AuthorName,
 		BannerImageURL:       req.BannerImageURL,
 		Summary:              req.Summary,
@@ -136,6 +150,7 @@ func (s *educationService) CreateArticle(ctx context.Context, staffID string, re
 		CreatedBy:            &staffID,
 		Content:              req.Content,
 		YoutubeLink:          req.YoutubeLink,
+		AudioURL:             req.AudioURL,
 	}
 
 	inserted, err := s.repo.CreateArticle(ctx, article)
@@ -207,15 +222,33 @@ func (s *educationService) UpdateArticle(ctx context.Context, id string, req Upd
 		categoryID = req.CategoryID
 	}
 
+	readSec := req.EstimatedReadSeconds
+	if readSec <= 0 {
+		if req.EstimatedReadMinutes > 0 {
+			readSec = req.EstimatedReadMinutes * 60
+		} else {
+			readSec = article.EstimatedReadSeconds
+			if readSec <= 0 {
+				readSec = 60
+			}
+		}
+	}
+	readMin := req.EstimatedReadMinutes
+	if readMin <= 0 {
+		readMin = (readSec + 59) / 60
+	}
+
 	article.Title = req.Title
 	article.CategoryID = categoryID
 	article.Category = categoryObj
-	article.EstimatedReadMinutes = req.EstimatedReadMinutes
+	article.EstimatedReadMinutes = readMin
+	article.EstimatedReadSeconds = readSec
 	article.AuthorName = req.AuthorName
 	article.BannerImageURL = req.BannerImageURL
 	article.Summary = req.Summary
 	article.Content = req.Content
 	article.YoutubeLink = req.YoutubeLink
+	article.AudioURL = req.AudioURL
 
 	if req.Status != "" {
 		article.Status = domain.ArticleStatus(req.Status)

@@ -17,6 +17,12 @@ type PatientProgressItem struct {
 	VideoFinishedAt           *string `json:"video_finished_at"`
 	VideoWatchDuration        int     `json:"video_watch_duration"`
 	VideoLastTimestamp        int     `json:"video_last_timestamp"`
+	AudioListened             bool    `json:"audio_listened"`
+	AudioListenedAt           *string `json:"audio_listened_at"`
+	AudioStartedAt            *string `json:"audio_started_at"`
+	AudioFinishedAt           *string `json:"audio_finished_at"`
+	AudioListenDuration       int     `json:"audio_listen_duration"`
+	AudioLastTimestamp        int     `json:"audio_last_timestamp"`
 	Completed                 bool    `json:"completed"`
 	CompletedAt               *string `json:"completed_at"`
 	LastActivityAt            *string `json:"last_activity_at"`
@@ -37,6 +43,7 @@ type PatientArticleCompletionItem struct {
 	ArticleTitle     string  `json:"article_title"`
 	ArticleRead      bool    `json:"article_read"`
 	YouTubeWatched   bool    `json:"youtube_watched"`
+	AudioListened    bool    `json:"audio_listened"`
 	Completed        bool    `json:"completed"`
 	CompletedAt      *string `json:"completed_at"`
 	CompletionSource string  `json:"completion_source"`
@@ -45,12 +52,13 @@ type PatientArticleCompletionItem struct {
 
 // ProgressAnalytics holds summary statistics for an education article.
 type ProgressAnalytics struct {
-	TotalPatients     int64 `json:"total_patients"`
-	CompletedCount    int64 `json:"completed_count"`
-	ReadArticleCount  int64 `json:"read_article_count"`
-	WatchedVideoCount int64 `json:"watched_video_count"`
-	ReadAndVideoCount int64 `json:"read_and_video_count"`
-	NotStartedCount   int64 `json:"not_started_count"`
+	TotalPatients      int64 `json:"total_patients"`
+	CompletedCount     int64 `json:"completed_count"`
+	ReadArticleCount   int64 `json:"read_article_count"`
+	WatchedVideoCount  int64 `json:"watched_video_count"`
+	ListenedAudioCount int64 `json:"listened_audio_count"`
+	ReadAndVideoCount  int64 `json:"read_and_video_count"`
+	NotStartedCount    int64 `json:"not_started_count"`
 }
 
 // MarkActionRequest is the request body for marking article read or video watched.
@@ -67,4 +75,10 @@ type MarkArticleReadRequest struct {
 type MarkVideoWatchedRequest struct {
 	WatchDuration      int `json:"watch_duration" validate:"gte=0"`
 	VideoLastTimestamp int `json:"video_last_timestamp" validate:"gte=0"`
+}
+
+type MarkAudioListenedRequest struct {
+	ListenDuration     int  `json:"listen_duration" validate:"gte=0"`
+	AudioLastTimestamp int  `json:"audio_last_timestamp" validate:"gte=0"`
+	IsCompleted        bool `json:"is_completed"`
 }

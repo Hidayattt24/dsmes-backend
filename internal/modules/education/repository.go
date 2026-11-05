@@ -265,7 +265,7 @@ func (r *educationRepository) GetPatientCompletedMap(ctx context.Context, patien
 	}
 	err := r.db.WithContext(ctx).Model(&domain.UserArticleCompletion{}).
 		Select("article_id").
-		Where("patient_id = ? AND (article_read = TRUE OR youtube_watched = TRUE OR completed_at IS NOT NULL) AND deleted_at IS NULL", patientID).
+		Where("patient_id = ? AND (article_read = TRUE OR youtube_watched = TRUE OR audio_listened = TRUE OR completed_at IS NOT NULL) AND deleted_at IS NULL", patientID).
 		Find(&results).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch completed articles map", err)

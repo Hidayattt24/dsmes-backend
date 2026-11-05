@@ -22,6 +22,7 @@ type EducationProgressService interface {
 	GetPatientEducationActivities(ctx context.Context, patientID string) (*PatientEducationSummary, error)
 	MarkArticleRead(ctx context.Context, patientID, articleID string, readingDuration, lastScroll int, isCompleted bool) error
 	MarkVideoWatched(ctx context.Context, patientID, articleID string, watchDuration, lastTimestamp int) error
+	MarkAudioListened(ctx context.Context, patientID, articleID string, listenDuration, lastTimestamp int, isCompleted bool) error
 	GetPatientProgress(ctx context.Context, patientID, articleID string) (*PatientProgressItem, error)
 	LogActivity(ctx context.Context, patientID, articleID, activityType, metadata string) error
 }

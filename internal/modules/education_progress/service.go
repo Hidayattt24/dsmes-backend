@@ -211,6 +211,79 @@ func (s *educationProgressService) MarkVideoWatched(ctx context.Context, patient
 	return s.repo.Upsert(ctx, progress)
 }
 
+func (s *educationProgressService) MarkAudioListened(ctx context.Context, patientID, articleID string, listenDuration, lastTimestamp int, isCompleted bool) error {
+	_, err := s.eduRepo.FindArticleByID(ctx, articleID)
+	if err != nil {
+		return err
+	}
+
+	existing, err := s.repo.FindByPatientAndArticle(ctx, patientID, articleID)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+
+	if existing != nil {
+		if existing.AudioListenDuration == 0 {
+			_ = s.repo.LogActivity(ctx, patientID, articleID, "OPEN_AUDIO", `{"status":"started"}`)
+		}
+
+		existing.AudioListenDuration += listenDuration
+		existing.AudioLastTimestamp = lastTimestamp
+
+		if isCompleted {
+			if !existing.AudioListened {
+				existing.AudioListened = true
+				existing.AudioListenedAt = &now
+				existing.AudioFinishedAt = &now
+				_ = s.repo.LogActivity(ctx, patientID, articleID, "COMPLETE_AUDIO", `{"status":"completed"}`)
+			}
+
+			if existing.CompletedAt == nil {
+				existing.CompletedAt = &now
+				if existing.CompletionSource == "" {
+					existing.CompletionSource = "AUDIO"
+				}
+			}
+		} else if existing.AudioStartedAt == nil {
+			existing.AudioStartedAt = &now
+		}
+
+		return s.repo.Upsert(ctx, existing)
+	}
+
+	_ = s.repo.LogActivity(ctx, patientID, articleID, "OPEN_AUDIO", `{"status":"started"}`)
+
+	var completedAt *time.Time
+	var listenedAt *time.Time
+	var finishedAt *time.Time
+	var source string
+
+	if isCompleted {
+		listenedAt = &now
+		finishedAt = &now
+		completedAt = &now
+		source = "AUDIO"
+		_ = s.repo.LogActivity(ctx, patientID, articleID, "COMPLETE_AUDIO", `{"status":"completed"}`)
+	}
+
+	progress := &domain.UserArticleCompletion{
+		PatientID:           patientID,
+		ArticleID:           articleID,
+		AudioListened:       isCompleted,
+		AudioListenedAt:     listenedAt,
+		AudioStartedAt:      &now,
+		AudioFinishedAt:     finishedAt,
+		AudioListenDuration: listenDuration,
+		AudioLastTimestamp:  lastTimestamp,
+		CompletedAt:         completedAt,
+		CompletionSource:    source,
+	}
+
+	return s.repo.Upsert(ctx, progress)
+}
+
 func (s *educationProgressService) GetPatientProgress(ctx context.Context, patientID, articleID string) (*PatientProgressItem, error) {
 	record, err := s.repo.FindByPatientAndArticle(ctx, patientID, articleID)
 	if err != nil {
@@ -277,6 +350,7 @@ func (s *educationProgressService) GetPatientEducationActivities(ctx context.Con
 			ArticleTitle:     titleMap[c.ArticleID],
 			ArticleRead:      c.ArticleRead,
 			YouTubeWatched:   c.YouTubeWatched,
+			AudioListened:    c.AudioListened,
 			Completed:        c.CompletedAt != nil,
 			CompletionSource: c.CompletionSource,
 		}
@@ -291,6 +365,11 @@ func (s *educationProgressService) GetPatientEducationActivities(ctx context.Con
 		if c.YouTubeWatchedAt != nil {
 			if lastTime == nil || c.YouTubeWatchedAt.After(*lastTime) {
 				lastTime = c.YouTubeWatchedAt
+			}
+		}
+		if c.AudioListenedAt != nil {
+			if lastTime == nil || c.AudioListenedAt.After(*lastTime) {
+				lastTime = c.AudioListenedAt
 			}
 		}
 		if c.UpdatedAt.After(c.CreatedAt) {
@@ -327,6 +406,9 @@ func toProgressItem(r domain.UserArticleCompletion) PatientProgressItem {
 		YouTubeWatched:            r.YouTubeWatched,
 		VideoWatchDuration:        r.VideoWatchDuration,
 		VideoLastTimestamp:        r.VideoLastTimestamp,
+		AudioListened:             r.AudioListened,
+		AudioListenDuration:       r.AudioListenDuration,
+		AudioLastTimestamp:        r.AudioLastTimestamp,
 		Completed:                 r.CompletedAt != nil,
 		CompletionSource:          r.CompletionSource,
 	}
@@ -355,6 +437,18 @@ func toProgressItem(r domain.UserArticleCompletion) PatientProgressItem {
 		val := fmtTime(*r.VideoFinishedAt)
 		item.VideoFinishedAt = &val
 	}
+	if r.AudioListenedAt != nil {
+		val := fmtTime(*r.AudioListenedAt)
+		item.AudioListenedAt = &val
+	}
+	if r.AudioStartedAt != nil {
+		val := fmtTime(*r.AudioStartedAt)
+		item.AudioStartedAt = &val
+	}
+	if r.AudioFinishedAt != nil {
+		val := fmtTime(*r.AudioFinishedAt)
+		item.AudioFinishedAt = &val
+	}
 	if r.CompletedAt != nil {
 		val := fmtTime(*r.CompletedAt)
 		item.CompletedAt = &val
@@ -367,6 +461,11 @@ func toProgressItem(r domain.UserArticleCompletion) PatientProgressItem {
 	if r.YouTubeWatchedAt != nil {
 		if lastTime == nil || r.YouTubeWatchedAt.After(*lastTime) {
 			lastTime = r.YouTubeWatchedAt
+		}
+	}
+	if r.AudioListenedAt != nil {
+		if lastTime == nil || r.AudioListenedAt.After(*lastTime) {
+			lastTime = r.AudioListenedAt
 		}
 	}
 	if r.UpdatedAt.After(r.CreatedAt) {

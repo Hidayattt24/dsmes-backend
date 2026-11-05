@@ -99,6 +99,8 @@ func Build() (*Container, error) {
 	// Auto-migrate all domain models
 	if err := db.AutoMigrate(
 		&domain.Patient{},
+		&domain.ArticleCategory{},
+		&domain.Article{},
 		&domain.UserArticleCompletion{},
 		&domain.PatientEducationActivity{},
 		&domain.EducationReview{},

@@ -33,6 +33,7 @@ type Article struct {
 	Title                string        `gorm:"type:varchar(200);not null" json:"title"`
 	CategoryID           string        `gorm:"type:uuid;not null" json:"category_id"`
 	EstimatedReadMinutes int           `json:"estimated_read_minutes"`
+	EstimatedReadSeconds int           `gorm:"column:estimated_read_seconds;default:60" json:"estimated_read_seconds"`
 	AuthorName           string        `gorm:"type:varchar(150)" json:"author_name"`
 	BannerImageURL       string        `gorm:"type:text" json:"banner_image_url"`
 	Summary              string        `gorm:"type:text" json:"summary"`
@@ -40,6 +41,7 @@ type Article struct {
 	CreatedBy            *string       `gorm:"type:uuid" json:"created_by"`
 	Content              string        `gorm:"type:text" json:"content"`
 	YoutubeLink          string        `gorm:"type:varchar(255)" json:"youtube_link"`
+	AudioURL             string        `gorm:"type:text" json:"audio_url"`
 
 	// Virtual fields (read-only)
 	ReadCount int64 `gorm:"->"`
@@ -80,8 +82,8 @@ type ArticleSectionStep struct {
 func (ArticleSectionStep) TableName() string { return "article_section_steps" }
 
 // UserArticleCompletion tracks which educational content a patient has
-// read or watched. Completion uses OR logic: if either article_read OR
-// youtube_watched is true, completed_at is set.
+// read, watched, or listened to. Completion uses OR logic: if either article_read OR
+// youtube_watched OR audio_listened is true, completed_at is set.
 type UserArticleCompletion struct {
 	BaseModel
 
@@ -104,6 +106,14 @@ type UserArticleCompletion struct {
 	VideoFinishedAt    *time.Time `gorm:"column:video_finished_at" json:"video_finished_at"`
 	VideoWatchDuration int        `gorm:"column:video_watch_duration;not null;default:0" json:"video_watch_duration"`
 	VideoLastTimestamp int        `gorm:"column:video_last_timestamp;not null;default:0" json:"video_last_timestamp"`
+
+	// Audio listening tracking
+	AudioListened       bool       `gorm:"column:audio_listened;not null;default:false" json:"audio_listened"`
+	AudioListenedAt     *time.Time `gorm:"column:audio_listened_at" json:"audio_listened_at"`
+	AudioStartedAt      *time.Time `gorm:"column:audio_started_at" json:"audio_started_at"`
+	AudioFinishedAt     *time.Time `gorm:"column:audio_finished_at" json:"audio_finished_at"`
+	AudioListenDuration int        `gorm:"column:audio_listen_duration;not null;default:0" json:"audio_listen_duration"`
+	AudioLastTimestamp  int        `gorm:"column:audio_last_timestamp;not null;default:0" json:"audio_last_timestamp"`
 
 	// Research analytics tracking
 	CompletionSource string `gorm:"type:varchar(20)" json:"completion_source"`
@@ -150,10 +160,10 @@ func (PatientEducationActivity) TableName() string { return "patient_education_a
 type EducationReview struct {
 	BaseModel
 
-	EducationID string   `gorm:"type:uuid;not null;uniqueIndex:uq_education_patient_review" json:"education_id"`
-	PatientID   string   `gorm:"type:uuid;not null;uniqueIndex:uq_education_patient_review" json:"patient_id"`
-	Rating      int      `gorm:"not null" json:"rating"`
-	Note        string   `gorm:"type:text" json:"note"`
+	EducationID string `gorm:"type:uuid;not null;uniqueIndex:uq_education_patient_review" json:"education_id"`
+	PatientID   string `gorm:"type:uuid;not null;uniqueIndex:uq_education_patient_review" json:"patient_id"`
+	Rating      int    `gorm:"not null" json:"rating"`
+	Note        string `gorm:"type:text" json:"note"`
 
 	// Relations
 	Patient   *Patient `gorm:"foreignKey:PatientID" json:"patient,omitempty"`
@@ -161,4 +171,3 @@ type EducationReview struct {
 }
 
 func (EducationReview) TableName() string { return "education_reviews" }
-
