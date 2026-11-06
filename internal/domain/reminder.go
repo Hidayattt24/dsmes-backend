@@ -85,19 +85,20 @@ func (SystemReminderTemplate) TableName() string { return "system_reminder_templ
 type NotificationLog struct {
 	BaseModel
 
-	ReminderID   *string    `gorm:"type:uuid" json:"reminder_id"`
-	PatientID    string     `gorm:"type:uuid;not null" json:"patient_id"`
-	MessageText  string     `gorm:"type:text;not null" json:"message_text"`
-	NotifiedAt   time.Time  `gorm:"not null;default:now()" json:"notified_at"`
-	IsRead       bool       `gorm:"not null;default:false" json:"is_read"`
-	NotifType    string     `gorm:"type:varchar(50);not null;default:reminder" json:"notif_type"`
-	ArticleID    *string    `gorm:"type:uuid" json:"article_id"`
-	ActionType   string     `gorm:"type:varchar(50);not null;default:'reminder_management'" json:"action_type"`
-	OccurrenceID *string    `gorm:"type:varchar(150)" json:"occurrence_id,omitempty"`
-	ScheduledAt  *time.Time `json:"scheduled_at,omitempty"`
-	IconName     string     `gorm:"->;column:icon_name" json:"icon_name,omitempty"`
-	ActivityName string     `gorm:"->;column:activity_name" json:"activity_name,omitempty"`
-	Category     string     `gorm:"->;column:category" json:"category,omitempty"`
+	ReminderID             *string    `gorm:"type:uuid" json:"reminder_id"`
+	PatientID              string     `gorm:"type:uuid;not null" json:"patient_id"`
+	MessageText            string     `gorm:"type:text;not null" json:"message_text"`
+	NotifiedAt             time.Time  `gorm:"not null;default:now()" json:"notified_at"`
+	IsRead                 bool       `gorm:"not null;default:false" json:"is_read"`
+	NotifType              string     `gorm:"type:varchar(50);not null;default:reminder" json:"notif_type"`
+	ArticleID              *string    `gorm:"type:uuid" json:"article_id"`
+	ActionType             string     `gorm:"type:varchar(50);not null;default:'reminder_management'" json:"action_type"`
+	OccurrenceID           *string    `gorm:"type:varchar(150)" json:"occurrence_id,omitempty"`
+	ScheduledAt            *time.Time `json:"scheduled_at,omitempty"`
+	EducationFollowupDueAt *time.Time `json:"-"`
+	IconName               string     `gorm:"->;column:icon_name" json:"icon_name,omitempty"`
+	ActivityName           string     `gorm:"->;column:activity_name" json:"activity_name,omitempty"`
+	Category               string     `gorm:"->;column:category" json:"category,omitempty"`
 }
 
 func (NotificationLog) TableName() string { return "notification_logs" }

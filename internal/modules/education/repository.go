@@ -312,17 +312,20 @@ func insertEducationNotifications(tx *gorm.DB, title string, articleID string) (
 	}
 
 	message := fmt.Sprintf("Yuk pelajari %q untuk panduan sehatmu hari ini ✨", title)
+	publishedAt := time.Now().UTC()
+	followupDueAt := publishedAt.Add(48 * time.Hour)
 	logs := make([]domain.NotificationLog, 0, len(patientIDs))
 	for _, pid := range patientIDs {
 		occurrenceID := "education:" + articleID + ":" + pid
 		logs = append(logs, domain.NotificationLog{
-			PatientID:    pid,
-			MessageText:  message,
-			NotifiedAt:   time.Now(),
-			NotifType:    "education",
-			ActionType:   "education_detail",
-			ArticleID:    &articleID,
-			OccurrenceID: &occurrenceID,
+			PatientID:              pid,
+			MessageText:            message,
+			NotifiedAt:             publishedAt,
+			NotifType:              "education",
+			ActionType:             "education_detail",
+			ArticleID:              &articleID,
+			OccurrenceID:           &occurrenceID,
+			EducationFollowupDueAt: &followupDueAt,
 		})
 	}
 

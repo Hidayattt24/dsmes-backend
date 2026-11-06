@@ -13,6 +13,7 @@ import (
 	"github.com/dsmes/dsmes-backend/internal/container"
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/infrastructure/notifications"
+	"github.com/dsmes/dsmes-backend/internal/modules/education"
 	"github.com/dsmes/dsmes-backend/internal/modules/reminder"
 )
 
@@ -31,6 +32,7 @@ func main() {
 	c.Logger.Info("reminder FCM sender ready")
 
 	repo := reminder.NewReminderRepository(c.DB, c.Logger)
+	educationFollowups := education.NewEducationFollowupRepository(c.DB)
 	location, err := time.LoadLocation(c.Config.App.Timezone)
 	if err != nil {
 		log.Fatalf("failed to load application timezone: %v", err)
@@ -45,6 +47,9 @@ func main() {
 			if err := dispatchDueReminders(ctx, repo, sender, dueAt, c.Logger); err != nil {
 				c.Logger.Error("reminder dispatch query failed", zap.Time("scheduled_at", dueAt), zap.Error(err))
 			}
+		}
+		if err := education.DispatchDueEducationFollowups(ctx, educationFollowups, sender, now, c.Logger); err != nil {
+			c.Logger.Error("education followup dispatch failed", zap.Error(err))
 		}
 	}
 

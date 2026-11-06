@@ -109,8 +109,9 @@ func (r *reminderRepository) FindNotificationsByPatientID(ctx context.Context, p
 	var items []domain.NotificationLog
 	err := r.db.WithContext(ctx).
 		Table("notification_logs AS nl").
-		Select("nl.*, COALESCE(r.icon_name, '') AS icon_name, COALESCE(r.activity_name, '') AS activity_name, COALESCE(r.category::text, '') AS category").
+		Select("nl.*, COALESCE(r.icon_name, '') AS icon_name, COALESCE(r.activity_name, a.title, '') AS activity_name, COALESCE(r.category::text, '') AS category").
 		Joins("LEFT JOIN reminders r ON r.id = nl.reminder_id AND r.deleted_at IS NULL").
+		Joins("LEFT JOIN articles a ON a.id = nl.article_id AND a.deleted_at IS NULL").
 		Where("nl.patient_id = ? AND nl.deleted_at IS NULL", patientID).
 		Where("nl.article_id IS NULL OR nl.article_id IN (SELECT id FROM articles WHERE deleted_at IS NULL)").
 		Order("nl.notified_at DESC").

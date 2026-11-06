@@ -12,6 +12,7 @@ import (
 
 	"github.com/dsmes/dsmes-backend/internal/domain"
 	"github.com/dsmes/dsmes-backend/internal/infrastructure/notifications"
+	"github.com/dsmes/dsmes-backend/internal/pkg/errs"
 )
 
 type educationService struct {
@@ -93,14 +94,18 @@ func (s *educationService) GetArticle(ctx context.Context, id string, patientID 
 		return nil, err
 	}
 
-	// Record pageview asynchronously only if viewed by a patient
-	if patientID != nil {
+	// A successful patient detail request must be recorded so it cannot receive
+	// a follow-up for content it already opened.
+	if patientID != nil && *patientID != "" {
 		view := &domain.ArticleView{
 			ArticleID: id,
 			PatientID: patientID,
 			ViewedAt:  time.Now(),
 		}
-		_ = s.repo.RecordView(ctx, view)
+		if err := s.repo.RecordView(ctx, view); err != nil {
+			s.log.Warn("failed to record education article view", zap.String("article_id", id), zap.Error(err))
+			return nil, errs.NewInternal("failed to record article view", err)
+		}
 	}
 
 	res := ToArticleDetailResponse(a)
