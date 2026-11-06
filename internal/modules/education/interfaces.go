@@ -29,8 +29,8 @@ type EducationRepository interface {
 	SaveArticle(ctx context.Context, patientID string, articleID string) error
 	UnsaveArticle(ctx context.Context, patientID string, articleID string) error
 	FindSavedArticles(ctx context.Context, patientID string) ([]domain.Article, error)
-	GetPatientSavedMap(ctx context.Context, patientID string) (map[string]bool, error)
-	GetPatientCompletedMap(ctx context.Context, patientID string) (map[string]bool, error)
+	GetPatientSavedMap(ctx context.Context, patientID string, articleIDs ...string) (map[string]bool, error)
+	GetPatientCompletedMap(ctx context.Context, patientID string, articleIDs ...string) (map[string]bool, error)
 
 	FindAllDeviceTokens(ctx context.Context) ([]domain.DeviceToken, error)
 	DeleteDeviceToken(ctx context.Context, patientID string, token string) error

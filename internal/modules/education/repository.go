@@ -91,7 +91,7 @@ func (r *educationRepository) FindAllArticles(ctx context.Context, categoryID st
 	}
 
 	offset := (page - 1) * limit
-	err := q.Select("articles.*, (SELECT COUNT(*) FROM article_views WHERE article_views.article_id = articles.id AND article_views.deleted_at IS NULL) as read_count").
+	err := q.Select("articles.id, articles.title, articles.category_id, articles.estimated_read_minutes, articles.estimated_read_seconds, articles.author_name, articles.banner_image_url, articles.summary, articles.status, articles.created_at, articles.updated_at, articles.youtube_link, articles.audio_url, (SELECT COUNT(*) FROM article_views WHERE article_views.article_id = articles.id AND article_views.deleted_at IS NULL) as read_count").
 		Preload("Category").
 		Offset(offset).Limit(limit).
 		Order("articles.created_at DESC").
@@ -241,14 +241,17 @@ func (r *educationRepository) UnsaveArticle(ctx context.Context, patientID strin
 	return nil
 }
 
-func (r *educationRepository) GetPatientSavedMap(ctx context.Context, patientID string) (map[string]bool, error) {
+func (r *educationRepository) GetPatientSavedMap(ctx context.Context, patientID string, articleIDs ...string) (map[string]bool, error) {
 	var results []struct {
 		ArticleID string
 	}
-	err := r.db.WithContext(ctx).Model(&domain.UserSavedArticle{}).
+	query := r.db.WithContext(ctx).Model(&domain.UserSavedArticle{}).
 		Select("article_id").
-		Where("patient_id = ? AND deleted_at IS NULL", patientID).
-		Find(&results).Error
+		Where("patient_id = ? AND deleted_at IS NULL", patientID)
+	if len(articleIDs) > 0 {
+		query = query.Where("article_id IN ?", articleIDs)
+	}
+	err := query.Find(&results).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch saved articles map", err)
 	}
@@ -259,14 +262,17 @@ func (r *educationRepository) GetPatientSavedMap(ctx context.Context, patientID 
 	return m, nil
 }
 
-func (r *educationRepository) GetPatientCompletedMap(ctx context.Context, patientID string) (map[string]bool, error) {
+func (r *educationRepository) GetPatientCompletedMap(ctx context.Context, patientID string, articleIDs ...string) (map[string]bool, error) {
 	var results []struct {
 		ArticleID string
 	}
-	err := r.db.WithContext(ctx).Model(&domain.UserArticleCompletion{}).
+	query := r.db.WithContext(ctx).Model(&domain.UserArticleCompletion{}).
 		Select("article_id").
-		Where("patient_id = ? AND (article_read = TRUE OR youtube_watched = TRUE OR audio_listened = TRUE OR completed_at IS NOT NULL) AND deleted_at IS NULL", patientID).
-		Find(&results).Error
+		Where("patient_id = ? AND (article_read = TRUE OR youtube_watched = TRUE OR audio_listened = TRUE OR completed_at IS NOT NULL) AND deleted_at IS NULL", patientID)
+	if len(articleIDs) > 0 {
+		query = query.Where("article_id IN ?", articleIDs)
+	}
+	err := query.Find(&results).Error
 	if err != nil {
 		return nil, errs.NewInternal("failed to fetch completed articles map", err)
 	}
@@ -280,7 +286,7 @@ func (r *educationRepository) GetPatientCompletedMap(ctx context.Context, patien
 func (r *educationRepository) FindSavedArticles(ctx context.Context, patientID string) ([]domain.Article, error) {
 	var items []domain.Article
 	err := r.db.WithContext(ctx).
-		Select("articles.*, (SELECT COUNT(*) FROM article_views WHERE article_views.article_id = articles.id AND article_views.deleted_at IS NULL) as read_count").
+		Select("articles.id, articles.title, articles.category_id, articles.estimated_read_minutes, articles.estimated_read_seconds, articles.author_name, articles.banner_image_url, articles.summary, articles.status, articles.created_at, articles.updated_at, articles.youtube_link, articles.audio_url, (SELECT COUNT(*) FROM article_views WHERE article_views.article_id = articles.id AND article_views.deleted_at IS NULL) as read_count").
 		Joins("JOIN user_saved_articles usa ON usa.article_id = articles.id").
 		Preload("Category").
 		Where("usa.patient_id = ? AND articles.deleted_at IS NULL", patientID).

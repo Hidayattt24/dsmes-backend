@@ -77,7 +77,7 @@ type ArticleListResponse struct {
 	Status               domain.ArticleStatus `json:"status"`
 	CreatedAt            string               `json:"created_at"`
 	UpdatedAt            string               `json:"updated_at"`
-	Content              string               `json:"content"`
+	Content              string               `json:"content,omitempty"`
 	YoutubeLink          string               `json:"youtube_link"`
 	AudioURL             string               `json:"audio_url"`
 	ReadCount            int64                `json:"read_count"`
@@ -169,8 +169,10 @@ func ToArticleDetailResponse(a *domain.Article) ArticleDetailResponse {
 		}
 	}
 
+	detail := ToArticleListResponse(a)
+	detail.Content = a.Content
 	return ArticleDetailResponse{
-		ArticleListResponse: ToArticleListResponse(a),
+		ArticleListResponse: detail,
 		Sections:            sections,
 	}
 }

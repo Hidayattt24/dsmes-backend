@@ -38,6 +38,7 @@ func (s *educationService) ListCategories(ctx context.Context) ([]CategoryRespon
 }
 
 func (s *educationService) ListArticles(ctx context.Context, patientID *string, categoryID string, status *domain.ArticleStatus, page, limit int) ([]ArticleListResponse, int64, error) {
+	started := time.Now()
 	if page < 1 {
 		page = 1
 	}
@@ -49,12 +50,19 @@ func (s *educationService) ListArticles(ctx context.Context, patientID *string, 
 	if err != nil {
 		return nil, 0, err
 	}
+	queryDuration := time.Since(started)
 
 	var savedMap map[string]bool
 	var completedMap map[string]bool
 	if patientID != nil && *patientID != "" {
-		savedMap, _ = s.repo.GetPatientSavedMap(ctx, *patientID)
-		completedMap, _ = s.repo.GetPatientCompletedMap(ctx, *patientID)
+		ids := make([]string, 0, len(items))
+		for i := range items {
+			ids = append(ids, items[i].ID)
+		}
+		if len(ids) > 0 {
+			savedMap, _ = s.repo.GetPatientSavedMap(ctx, *patientID, ids...)
+			completedMap, _ = s.repo.GetPatientCompletedMap(ctx, *patientID, ids...)
+		}
 	}
 
 	resp := make([]ArticleListResponse, len(items))
@@ -66,6 +74,15 @@ func (s *educationService) ListArticles(ctx context.Context, patientID *string, 
 		if completedMap != nil {
 			resp[i].IsCompleted = completedMap[items[i].ID]
 		}
+	}
+	if s.log != nil {
+		s.log.Debug("education list prepared",
+			zap.Int("page", page),
+			zap.Int("count", len(resp)),
+			zap.Int64("total", total),
+			zap.Duration("article_query", queryDuration),
+			zap.Duration("flags_and_mapping", time.Since(started)-queryDuration),
+		)
 	}
 	return resp, total, nil
 }
@@ -88,8 +105,8 @@ func (s *educationService) GetArticle(ctx context.Context, id string, patientID 
 
 	res := ToArticleDetailResponse(a)
 	if patientID != nil && *patientID != "" {
-		savedMap, _ := s.repo.GetPatientSavedMap(ctx, *patientID)
-		completedMap, _ := s.repo.GetPatientCompletedMap(ctx, *patientID)
+		savedMap, _ := s.repo.GetPatientSavedMap(ctx, *patientID, a.ID)
+		completedMap, _ := s.repo.GetPatientCompletedMap(ctx, *patientID, a.ID)
 		if savedMap != nil {
 			res.IsBookmarked = savedMap[a.ID]
 		}
@@ -432,7 +449,14 @@ func (s *educationService) ListSavedArticles(ctx context.Context, patientID stri
 		return nil, err
 	}
 
-	completedMap, _ := s.repo.GetPatientCompletedMap(ctx, patientID)
+	ids := make([]string, 0, len(items))
+	for i := range items {
+		ids = append(ids, items[i].ID)
+	}
+	var completedMap map[string]bool
+	if len(ids) > 0 {
+		completedMap, _ = s.repo.GetPatientCompletedMap(ctx, patientID, ids...)
+	}
 
 	resp := make([]ArticleListResponse, len(items))
 	for i := range items {
