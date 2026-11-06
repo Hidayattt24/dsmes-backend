@@ -311,7 +311,9 @@ func (r *quizRepository) Update(ctx context.Context, q *domain.Questionnaire) er
 			}
 		}
 
-		if err := tx.Save(q).Error; err != nil {
+		// FindByID preloads only the article ID and title. Persist the foreign key,
+		// but never write that partial article back as an association.
+		if err := tx.Omit("Education").Save(q).Error; err != nil {
 			return errs.NewInternal("failed to update questionnaire", err)
 		}
 
